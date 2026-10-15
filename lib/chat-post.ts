@@ -1,7 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingSchemaError } from "@/lib/schema-ready";
-import { MESSAGE_MAX } from "@/lib/chat-access";
+import { fitPostBody } from "@/lib/chat-access";
 import { notifyNewMessage } from "@/lib/chat-notify";
 
 /**
@@ -30,10 +30,18 @@ export async function postToChannel(
     body: string;
     /** Ping everyone who can read the channel. Staff-only in the chat UI. */
     mentionEveryone?: boolean;
+    /**
+     * Where the whole thing lives (an announcement's page). Appended, after
+     * "…", only when the body has to be cut to fit MESSAGE_MAX — so a long
+     * post never just stops mid-sentence.
+     */
+    link?: string;
+    /** People who get no chat bell for this post (they were already told another way). */
+    excludeBells?: readonly string[];
   },
 ): Promise<PostResult> {
   try {
-    const body = input.body.trim().slice(0, MESSAGE_MAX);
+    const body = fitPostBody(input.body, input.link);
     if (!body) return { ok: false, reason: "Nothing to post." };
     const admin = createAdminClient();
     const lookup = admin
@@ -73,6 +81,7 @@ export async function postToChannel(
         senderId: input.senderId,
         mentions: [],
         mentionEveryone: !!input.mentionEveryone,
+        excludeBells: input.excludeBells,
       }).catch((err) => console.error("[chat-post] notify failed", err));
     }
     return { ok: true, messageId, channelId: (channel as { id: string }).id };
@@ -99,16 +108,14 @@ export async function teamChannelId(teamId: string): Promise<string | null> {
 
 /**
  * One line in #staff, the team-only channel: the feed the Discord admin
- * channel used to carry (new applications, acceptances, refunds, pass
- * requests, challenge entries). Posted as a system line, never pings, and
- * never throws — the job that triggered it has already happened.
+ * channel used to carry (new applications, acceptances, enrollments, refunds,
+ * pass requests, challenge entries), each line built by lib/staff-feed.ts
+ * from a name, what happened and an admin link — never an email or an
+ * amount. Posted as a system line that still counts as unread there
+ * (chat_counts_as_message in 0101), never pings, and never throws — the job
+ * that triggered it has already happened.
  */
 export async function postStaffFeed(text: string): Promise<void> {
   const res = await postToChannel({ systemKey: "staff" }, { senderId: null, body: text });
   if (!res.ok && !/isn't set up yet/.test(res.reason)) console.error("[chat-post] staff feed", res.reason);
-}
-
-/** "$130.00" for the feed. */
-export function feedMoney(cents: number | null | undefined): string {
-  return `$${((cents ?? 0) / 100).toFixed(2)}`;
 }

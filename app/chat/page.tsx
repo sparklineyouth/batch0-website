@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { requireViewer, roleHome } from "@/lib/auth";
 import { isMissingSchemaError } from "@/lib/schema-ready";
 import { isUuid } from "@/lib/chat-access";
-import { buildSidebar, getChatViewer, getPeople, type SidebarData } from "@/lib/chat";
+import { buildSidebar, getChatViewer, type SidebarData } from "@/lib/chat";
 import { buildChannelPayload, type ChannelPayload, type ChannelTarget } from "@/lib/chat-payload";
 import { ChatApp } from "@/components/chat/chat-app";
 
@@ -33,6 +33,7 @@ export default async function ChatPage(props: {
   let sidebar: SidebarData;
   try {
     viewer = await getChatViewer(profile.id, caps);
+    // The sidebar's people include the viewer: their own name, for the footer.
     sidebar = await buildSidebar(viewer);
   } catch (err) {
     return <Unavailable home={home} homeLabel={homeLabel} missing={isMissingSchemaError(err)} />;
@@ -62,9 +63,7 @@ export default async function ChatPage(props: {
     if (first) payload = await buildChannelPayload(viewer, { channelId: first.id }).catch(() => null);
   }
 
-  // The viewer's own name, for the footer.
-  const me = (await getPeople([profile.id])).get(profile.id);
-  if (me) sidebar = { ...sidebar, people: { ...sidebar.people, [profile.id]: me } };
+  const me = sidebar.people[profile.id];
 
   return (
     // A fixed, full-viewport surface: each pane scrolls on its own, the

@@ -6,7 +6,9 @@ import { handleChargeRefunded } from "@/lib/stripe-fulfillment";
 import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { reconcileStripe } from "@/lib/stripe-reconcile";
-import { postStaffFeed, feedMoney } from "@/lib/chat-post";
+import { postStaffFeed } from "@/lib/chat-post";
+import { env } from "@/lib/env";
+import { paymentRefundedLine } from "@/lib/staff-feed";
 
 /**
  * Pull every transaction Stripe knows about back into the platform.
@@ -77,11 +79,11 @@ export async function refundPayment(paymentId: string, reason?: string) {
       reason: reason ?? null,
     },
   });
+  // #staff: who, and a link. The amount and the reason stay behind
+  // payments.view (lib/staff-feed.ts).
   {
-    const { data: who } = await admin.from("profiles").select("full_name, email").eq("id", p.user_id).maybeSingle();
-    await postStaffFeed(
-      `Refunded **${feedMoney(refund.amount)}** to ${who?.full_name ?? who?.email ?? "a student"} (enrollment payment)${reason?.trim() ? ` — ${reason.trim()}` : ""}`,
-    );
+    const { data: who } = await admin.from("profiles").select("full_name").eq("id", p.user_id).maybeSingle();
+    await postStaffFeed(paymentRefundedLine({ name: who?.full_name, siteUrl: env.siteUrl }));
   }
 
   revalidatePath("/admin/payments");

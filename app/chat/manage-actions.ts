@@ -4,7 +4,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPermission, requireActor } from "@/lib/server-guards";
 import { runAction, type ActionResult } from "@/lib/action-result";
 import { logAudit } from "@/lib/audit";
+import { isMissingSchemaError } from "@/lib/schema-ready";
 import {
+  asUuid,
   AUDIENCES,
   CHANNEL_NAME_PATTERN,
   isUuid,
@@ -14,11 +16,13 @@ import {
   type Audience,
   type Posting,
 } from "@/lib/chat-access";
-import { getChannelRow, getChatViewer, getPeople, getReport, type ChannelRow } from "@/lib/chat";
+import { countChannelReports, getChannelRow, getChatViewer, getPeople, getPerson, getReport, type ChannelRow } from "@/lib/chat";
+import { removeChannelFiles } from "@/lib/chat-files";
 
 /**
- * Running chat: creating, editing, archiving and deleting text channels, and
- * adding people to one beyond its audience. Everything here needs
+ * Running chat: creating, editing, archiving and deleting text channels,
+ * adding people to one beyond its audience, working reports, and muting
+ * someone in chat. Everything here needs
  * `chat.manage` — the same key the read rule (0101 chat_is_staff) and the
  * /admin/chat route use. Used from the admin page and from a channel's
  * settings inside /chat.
@@ -127,18 +131,27 @@ export async function setChannelArchived(id: string, archived: boolean): Promise
 
 /**
  * Delete a channel and every message in it. Only for channels batch0 didn't
- * make itself (a cohort's or team's channel goes when the cohort or team
- * does) — archive is the reversible option and the default in the UI.
+ * make itself (a cohort's or team's channel is archived, not deleted, when
+ * the cohort or team goes), and never one with a report on it, whatever its
+ * status and whoever can see it: the report and the revisions behind it are
+ * evidence, and deleting the room must not be a way to lose them — not even
+ * for a moderator the report is about, who can't see it in the queue. Archive
+ * is the reversible option, and the default in the UI.
  */
+const REPORTED_CHANNEL = "This channel has been reported, so it's kept as a record. Archive it instead.";
+
 export async function deleteChannel(id: string, confirmName: string): Promise<ActionResult> {
   return runAction({ name: "chat.channel_delete" }, async () => {
     await assertPermission("chat.manage");
     const channel = await textChannel(id);
     if (channel.systemKey) throw new Error("batch0 made this channel, so it can be archived but not deleted.");
     if (String(confirmName ?? "").trim() !== channel.name) throw new Error(`Type the channel's name (${channel.name}) to delete it.`);
-    const { error } = await createAdminClient().from("chat_channels").delete().eq("id", id);
-    if (error) throw new Error(error.message);
-    await logAudit({ action: "chat.channel_delete", targetType: "chat_channel", targetId: id, payload: { name: channel.name, messages: channel.messageCount } });
+    if ((await countChannelReports(channel.id)) > 0) throw new Error(REPORTED_CHANNEL);
+    const { error } = await createAdminClient().from("chat_channels").delete().eq("id", channel.id);
+    // A report filed since the count: 0101's foreign key refuses the delete.
+    if (error) throw new Error(error.code === "23503" ? REPORTED_CHANNEL : error.message);
+    await removeChannelFiles(channel.id);
+    await logAudit({ action: "chat.channel_delete", targetType: "chat_channel", targetId: channel.id, payload: { name: channel.name, messages: channel.messageCount } });
     revalidate();
   });
 }
@@ -182,10 +195,12 @@ export async function resolveReport(id: string, status: "actioned" | "dismissed"
   return runAction({ name: "chat.report_resolve" }, async () => {
     const actor = await assertPermission("chat.manage");
     if (!isUuid(id)) throw new Error("That report doesn't exist.");
+    id = id.toLowerCase();
     if (!["actioned", "dismissed", "open"].includes(status)) throw new Error("Pick an outcome.");
     const admin = createAdminClient();
-    // A moderator the report is about never works it — not even after
-    // leaving the group, and not when it's their own message in a channel.
+    // A moderator any report on the channel names never works it — not even
+    // after leaving the group, and not when it's their own message in a
+    // channel (getReport applies channelReportsOpenTo).
     const report = await getReport(id, await getChatViewer(actor.userId, actor.caps));
     if (!report) throw new Error("That report doesn't exist.");
     const { error } = await admin
@@ -200,6 +215,70 @@ export async function resolveReport(id: string, status: "actioned" | "dismissed"
     await logAudit({ action: `chat.report_${status}`, targetType: "chat_report", targetId: id });
     revalidatePath("/admin/chat");
     revalidatePath(`/admin/chat/reports/${id}`);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Muting: what stops someone posting in chat without touching their role,
+// enrollment or anything else they do on batch0 (chat_mutes, 0101).
+// ---------------------------------------------------------------------------
+
+/** The longest timed mute: a year. Longer than that is "until lifted". */
+const MUTE_MAX_MINUTES = 60 * 24 * 365;
+
+/**
+ * Mute someone in chat for `minutes`, or until a moderator lifts it (null).
+ * While muted they can read everything they could before, report and block,
+ * and still DM the batch0 team — about the mute, say — but can't post, react,
+ * pin, or start or change a conversation; the composer says so. Staff can't
+ * be muted: they run chat and could lift it themselves (change their role).
+ */
+export async function mutePerson(userId: string, minutes: number | null, reason: string): Promise<ActionResult> {
+  return runAction({ name: "chat.mute" }, async () => {
+    const actor = await assertPermission("chat.manage");
+    const id = asUuid(userId);
+    if (!id) throw new Error("That person isn't available.");
+    if (id === actor.userId) throw new Error("You can't mute yourself.");
+    const person = await getPerson(id);
+    if (!person) throw new Error("That person isn't available.");
+    if (person.isStaff) throw new Error(`${person.name} runs chat, so a mute wouldn't hold. Change their role first.`);
+    let until: string | null = null;
+    if (minutes !== null) {
+      const m = Math.round(Number(minutes));
+      if (!Number.isFinite(m) || m < 1 || m > MUTE_MAX_MINUTES) throw new Error("Pick how long to mute them for.");
+      until = new Date(Date.now() + m * 60_000).toISOString();
+    }
+    const note = String(reason ?? "").trim().slice(0, 500) || null;
+    const { error } = await createAdminClient()
+      .from("chat_mutes")
+      .upsert(
+        { user_id: id, until, reason: note, created_by: actor.userId, created_at: new Date().toISOString() },
+        { onConflict: "user_id" },
+      );
+    if (error) {
+      if (isMissingSchemaError(error)) throw new Error("Muting needs the latest chat migration (0101). Run it again, then try.");
+      throw new Error(error.message);
+    }
+    // The reason stays on the mute row (staff only); the audit row says what
+    // was done, by whom, for how long.
+    await logAudit({ action: "chat.mute", targetType: "profile", targetId: id, payload: { minutes: minutes === null ? null : Math.round(Number(minutes)) } });
+    revalidatePath("/admin/chat", "layout");
+  });
+}
+
+/** Lift someone's chat mute. Nothing to do when they aren't muted. */
+export async function unmutePerson(userId: string): Promise<ActionResult> {
+  return runAction({ name: "chat.unmute" }, async () => {
+    await assertPermission("chat.manage");
+    const id = asUuid(userId);
+    if (!id) throw new Error("That person isn't available.");
+    const { data, error } = await createAdminClient().from("chat_mutes").delete().eq("user_id", id).select("user_id");
+    if (error) {
+      if (isMissingSchemaError(error)) return;
+      throw new Error(error.message);
+    }
+    if ((data ?? []).length > 0) await logAudit({ action: "chat.unmute", targetType: "profile", targetId: id });
+    revalidatePath("/admin/chat", "layout");
   });
 }
 

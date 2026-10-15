@@ -5,6 +5,7 @@ import { ArrowLeft, CheckCheck, Hash, Lock, Megaphone, Plus, Search, Settings2, 
 import { badgeText } from "@/lib/chat-access";
 import { closeConversation } from "@/app/chat/actions";
 import { Avatar } from "./avatar";
+import { tracked } from "./api";
 import { BlockedPeopleDialog } from "./dialogs";
 import type { ChatPerson, ChatViewerInfo, SidebarData, SidebarItem } from "./types";
 
@@ -139,7 +140,7 @@ export function ChatSidebar({
         </Section>
       </nav>
 
-      <div className="flex shrink-0 items-center gap-2.5 border-t border-line px-3 py-2.5 pb-[calc(0.625rem+var(--safe-bottom))]">
+      <div className="flex shrink-0 items-center gap-2.5 border-t border-line px-3 py-2.5">
         <Avatar name={me?.name ?? viewer.name} online size={32} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-ink">{me?.name ?? viewer.name}</p>
@@ -163,6 +164,11 @@ export function ChatSidebar({
           Blocked
         </button>
       </div>
+      <p className="shrink-0 px-4 pb-[calc(0.5rem+var(--safe-bottom))] text-[11px] text-ink-faint">
+        <Link href="/community-guidelines" prefetch={false} className="hover:text-ink hover:underline">
+          Community guidelines
+        </Link>
+      </p>
       <BlockedPeopleDialog open={blockedOpen} onClose={() => setBlockedOpen(false)} />
     </div>
   );
@@ -239,8 +245,13 @@ function ConversationRow({
           ? undefined
           : async () => {
               setClosing(true);
-              await closeConversation(item.id).catch(() => undefined);
-              setClosing(false);
+              try {
+                await tracked(closeConversation(item.id));
+              } catch {
+                /* the sidebar refresh shows whether it closed */
+              } finally {
+                setClosing(false);
+              }
               onClosed();
             }
       }
@@ -299,7 +310,7 @@ function PersonRow({
           onClick={onClose}
           aria-label={`Close conversation with ${label}`}
           title="Close (it comes back when there's a new message)"
-          className="absolute right-1.5 top-1/2 hidden h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-ink-faint hover:bg-paper hover:text-ink group-hover:inline-flex group-focus-within:inline-flex"
+          className="absolute right-1.5 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-ink-faint opacity-0 hover:bg-paper hover:text-ink focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
         >
           <X className="h-3.5 w-3.5" />
         </button>

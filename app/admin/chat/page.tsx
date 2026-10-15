@@ -4,7 +4,7 @@ import { requirePermission } from "@/lib/auth";
 import { isMissingSchemaError } from "@/lib/schema-ready";
 import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
-import { getChatViewer, getChannelRow, listAllChannels, listMembers, listReports, getPeople, type ChannelRow, type ChatReport } from "@/lib/chat";
+import { getChatViewer, getChannelRow, listAllChannels, listMembers, listReports, getPeople, pageAll, type ChannelRow, type ChatReport } from "@/lib/chat";
 import { ChannelAdmin, type ChannelAdminRow } from "./channel-admin";
 
 export const metadata = { title: "Chat · Admin" };
@@ -14,7 +14,8 @@ export const dynamic = "force-dynamic";
  * Running batch0 Chat: every text channel (create, edit, archive, delete,
  * extra members), and the report queue. DMs and groups don't appear here —
  * there is no staff view of them until one is reported, and then it's the
- * report, below.
+ * report, below. The queue leaves out every report on a channel any report
+ * names this moderator in (lib/chat.ts listReports).
  */
 export default async function AdminChatPage(props: { searchParams?: Promise<{ reports?: string }> }) {
   const sp = (await props.searchParams) ?? {};
@@ -22,8 +23,9 @@ export default async function AdminChatPage(props: { searchParams?: Promise<{ re
   const status = sp.reports === "closed" ? "closed" : "open";
 
   let channels: ChannelRow[];
+  let viewer: Awaited<ReturnType<typeof getChatViewer>>;
   try {
-    channels = await listAllChannels();
+    [channels, viewer] = await Promise.all([listAllChannels(), getChatViewer(profile.id, caps)]);
   } catch (err) {
     if (!isMissingSchemaError(err)) throw err;
     return (
@@ -40,14 +42,18 @@ export default async function AdminChatPage(props: { searchParams?: Promise<{ re
   }
 
   const admin = createAdminClient();
-  const viewer = await getChatViewer(profile.id, caps);
   const [cohorts, teams, members, reports] = await Promise.all([
     admin.from("cohorts").select("id, name, status").order("starts_on", { ascending: false }),
-    admin.from("teams").select("id, name, cohort_id").order("name").limit(1000),
+    // Every team (one channel each): paged past PostgREST's 1000-row cap.
+    pageAll<{ id: string; name: string; cohort_id: string | null }>(
+      (from, to) => admin.from("teams").select("id, name, cohort_id").order("name").order("id").range(from, to),
+      "teams",
+    ).then((data) => ({ data })),
     listMembers(channels.map((c) => c.id)),
+    // Every open report; the newest hundred closed ones.
     status === "open"
       ? listReports(viewer, "open")
-      : Promise.all([listReports(viewer, "actioned"), listReports(viewer, "dismissed")]).then(([a, d]) =>
+      : Promise.all([listReports(viewer, "actioned", { limit: 100 }), listReports(viewer, "dismissed", { limit: 100 })]).then(([a, d]) =>
           [...a, ...d].sort((x, y) => (x.createdAt < y.createdAt ? 1 : -1)).slice(0, 100),
         ),
   ]);

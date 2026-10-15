@@ -39,8 +39,6 @@ const CHECKLIST_ICONS = [FolderArchive, MessagesSquare, Rocket, Settings];
 const CHECKLIST_ICON_BY_HREF: Record<string, typeof FolderArchive> = {
   "/dashboard/resources": FolderArchive,
   "/chat": MessagesSquare,
-  // Checklists saved before Chat still point here.
-  "/dashboard/community": MessagesSquare,
   "/dashboard/team": Rocket,
   "/dashboard/settings": Settings,
 };

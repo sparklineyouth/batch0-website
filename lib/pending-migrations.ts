@@ -50,9 +50,11 @@ export const MIGRATION_PROBES: readonly MigrationProbe[] = [
     columns: "slug",
     leftover: { column: "permissions", values: ["ai_usage.view"] },
   },
-  // batch0 Chat: its tables, and the Discord permission it renames.
+  // batch0 Chat: its tables, and the Discord permission it removes (and
+  // deliberately doesn't turn into chat.manage, which opens reported DMs).
   { migration: "0101", table: "chat_channels", columns: "id, dm_key, system_key" },
   { migration: "0101", table: "chat_message_revisions", columns: "id" },
+  { migration: "0101", table: "chat_mutes", columns: "user_id, until" },
   {
     migration: "0101",
     table: "app_roles",

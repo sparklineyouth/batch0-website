@@ -1,11 +1,12 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Archive, Hash, Lock, Megaphone, Pencil, Plus, Trash2, UserMinus, Users } from "lucide-react";
+import { Archive, Hash, Lock, Megaphone, Pencil, Plus, Trash2, UserMinus, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
 import { Modal } from "@/components/chat/modal";
-import { resultError } from "@/components/chat/util";
+import { OFFLINE, resultError } from "@/components/chat/util";
+import type { ActionResult } from "@/lib/action-result";
 import { AUDIENCES, SLOWMODE_CHOICES, TOPIC_MAX, normalizeChannelName, type Audience, type Posting } from "@/lib/chat-access";
 import {
   createChannel,
@@ -44,8 +45,18 @@ const AUDIENCE_LABEL: Record<Audience, string> = {
   members: "Only people I add",
 };
 
+// 16px on phones: iOS Safari zooms the page into any smaller field it focuses.
 const field =
-  "w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-ink/40 focus:outline-none";
+  "w-full rounded-md border border-line bg-paper px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-ink/40 focus:outline-none md:text-sm";
+
+/** Run an action without ever throwing: a dropped connection is an answer too, so busy states always come back down. */
+async function attempt<T>(run: () => Promise<ActionResult<T>>): Promise<ActionResult<T>> {
+  try {
+    return await run();
+  } catch {
+    return { ok: false, error: OFFLINE };
+  }
+}
 
 function slowLabel(s: number) {
   return s === 0 ? "Off" : s < 60 ? `${s}s` : s < 3600 ? `${s / 60} min` : "1 hour";
@@ -58,6 +69,8 @@ export function ChannelAdmin({ rows, cohorts, teams }: { rows: ChannelAdminRow[]
   const [membersOf, setMembersOf] = useState<ChannelAdminRow | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const shown = rows.filter((r) => showArchived || !r.archived);
   const archivedCount = rows.filter((r) => r.archived).length;
@@ -81,7 +94,14 @@ export function ChannelAdmin({ rows, cohorts, teams }: { rows: ChannelAdminRow[]
       <p className="mt-1 text-xs text-ink-faint">
         Every cohort and team gets its own channel automatically. Lower position numbers sort first in the sidebar.
       </p>
-      {error ? <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
+      {error ? (
+        <p className="mt-2 flex items-start gap-2 text-xs text-red-600 dark:text-red-400" role="alert">
+          <span className="min-w-0 flex-1 break-words">{error}</span>
+          <button type="button" onClick={() => setError(null)} aria-label="Dismiss" className="shrink-0 rounded hover:bg-wash">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </p>
+      ) : null}
 
       <div className="mt-3 overflow-x-auto rounded-md border border-line">
         <table className="w-full min-w-[720px] text-left text-sm">
@@ -134,8 +154,12 @@ export function ChannelAdmin({ rows, cohorts, teams }: { rows: ChannelAdminRow[]
                       </IconButton>
                       <IconButton
                         label={r.archived ? "Unarchive" : "Archive"}
+                        disabled={archiving === r.id}
                         onClick={async () => {
-                          const res = await setChannelArchived(r.id, !r.archived);
+                          setArchiving(r.id);
+                          setError(null);
+                          const res = await attempt(() => setChannelArchived(r.id, !r.archived));
+                          setArchiving(null);
                           if (!res.ok) setError(resultError(res, "Couldn't do that."));
                           router.refresh();
                         }}
@@ -191,20 +215,23 @@ export function ChannelAdmin({ rows, cohorts, teams }: { rows: ChannelAdminRow[]
             People who see this channel on top of its audience. Add people from the channel&apos;s menu in{" "}
             <a className="link-ink" href={`/chat?c=${membersOf.id}`}>chat</a>.
           </p>
-          {removeError ? <p className="mb-3 text-xs text-red-600 dark:text-red-400">{removeError}</p> : null}
+          {removeError ? <p className="mb-3 text-xs text-red-600 dark:text-red-400" role="alert">{removeError}</p> : null}
           {membersOf.members.length === 0 ? (
             <p className="text-sm text-ink-faint">Nobody extra.</p>
           ) : (
             <ul className="divide-y divide-line">
               {membersOf.members.map((m) => (
                 <li key={m.id} className="flex items-center justify-between gap-2 py-2 text-sm">
-                  <span className="truncate text-ink">{m.name}</span>
+                  <span className="min-w-0 truncate text-ink">{m.name}</span>
                   <Button
                     size="sm"
                     variant="ghost"
+                    disabled={removing === m.id}
                     onClick={async () => {
                       setRemoveError(null);
-                      const res = await removeChannelMember(membersOf.id, m.id);
+                      setRemoving(m.id);
+                      const res = await attempt(() => removeChannelMember(membersOf.id, m.id));
+                      setRemoving(null);
                       if (!res.ok) {
                         // Shown in the modal: the page behind it is covered.
                         setRemoveError(resultError(res, "Couldn't remove them."));
@@ -227,14 +254,25 @@ export function ChannelAdmin({ rows, cohorts, teams }: { rows: ChannelAdminRow[]
   );
 }
 
-function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
+function IconButton({
+  label,
+  onClick,
+  disabled = false,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-label={label}
       title={label}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-ink-soft hover:bg-wash hover:text-ink"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-ink-soft hover:bg-wash hover:text-ink disabled:opacity-50"
     >
       {children}
     </button>
@@ -267,10 +305,11 @@ function ChannelForm({
   const fixed = !!row?.system;
 
   const save = async () => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     const input: ChannelInput = { name, topic, audience, cohortId, teamId, posting, slowmodeSeconds: slowmode, position };
-    const res = row ? await updateChannel(row.id, input) : await createChannel(input);
+    const res = await attempt<unknown>(() => (row ? updateChannel(row.id, input) : createChannel(input)));
     setBusy(false);
     if (!res.ok) setError(resultError(res, "Couldn't save the channel."));
     else onSaved();
@@ -349,7 +388,7 @@ function ChannelForm({
       {audience === "members" ? (
         <p className="mt-3 text-[11px] text-ink-faint">After saving, open the channel in chat and use “Add people”.</p>
       ) : null}
-      {error ? <p className="mt-3 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
+      {error ? <p className="mt-3 text-xs text-red-600 dark:text-red-400" role="alert">{error}</p> : null}
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
         <Button onClick={save} disabled={busy || !name.trim()}>{row ? "Save" : "Create channel"}</Button>
@@ -372,7 +411,7 @@ function DeleteChannel({ row, onClose, onDone }: { row: ChannelAdminRow; onClose
         Type <strong className="text-ink">{row.name}</strong> to confirm
         <input data-autofocus value={confirm} onChange={(e) => setConfirm(e.target.value)} className={`${field} mt-1`} />
       </label>
-      {error ? <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
+      {error ? <p className="mt-2 text-xs text-red-600 dark:text-red-400" role="alert">{error}</p> : null}
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
         <Button
@@ -380,7 +419,8 @@ function DeleteChannel({ row, onClose, onDone }: { row: ChannelAdminRow; onClose
           disabled={busy || confirm.trim() !== row.name}
           onClick={async () => {
             setBusy(true);
-            const res = await deleteChannel(row.id, confirm);
+            setError(null);
+            const res = await attempt(() => deleteChannel(row.id, confirm));
             setBusy(false);
             if (!res.ok) setError(resultError(res, "Couldn't delete the channel."));
             else onDone();

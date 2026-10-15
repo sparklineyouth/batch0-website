@@ -98,6 +98,9 @@ export default async function Footer({ config, applyHref = "/apply" }: { config?
           <Link href="/refund-policy" className="hover:text-ink">
             Refund policy
           </Link>
+          <Link href="/community-guidelines" className="hover:text-ink">
+            Community guidelines
+          </Link>
           {/*
             In the legal row rather than only in the nav column above: every
             policy on this site now names /support as a way to exercise

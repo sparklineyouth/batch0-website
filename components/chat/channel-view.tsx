@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Archive,
@@ -23,15 +23,17 @@ import {
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { typingLine } from "@/lib/chat-view";
-import { blockPerson, closeConversation, fetchMembers, leaveGroup, setNotify, unblockPerson } from "@/app/chat/actions";
+import { blockPerson, closeConversation, leaveGroup, setNotify, unblockPerson } from "@/app/chat/actions";
 import { setChannelArchived } from "@/app/chat/manage-actions";
 import { Avatar } from "./avatar";
 import { MessageList, type MessageActions } from "./message-list";
 import { Composer } from "./composer";
-import { MenuItem, Popover } from "./popover";
-import { AddPeopleDialog, ChannelSettingsDialog, RenameGroupDialog, ReportDialog } from "./dialogs";
+import { MenuItem, MenuSeparator, Popover } from "./popover";
+import { AddPeopleDialog, ChannelSettingsDialog, FlagDialog, MuteDialog, RenameGroupDialog, ReportDialog } from "./dialogs";
 import type { MarkupContext } from "./markup";
-import { resultError } from "./util";
+import { chatApi, NOT_AVAILABLE, tracked } from "./api";
+import { OFFLINE, resultError } from "./util";
+import type { ActionResult } from "@/lib/action-result";
 import type { ChannelPayload, ChatPerson, ChatViewerInfo, Panel, UiMessage } from "./types";
 
 export function ChannelView({
@@ -42,6 +44,7 @@ export function ChannelView({
   online,
   channelNames,
   loading,
+  opening,
   error,
   onDismissError,
   typingIds,
@@ -70,6 +73,7 @@ export function ChannelView({
   onLeft,
   blocked,
   onBlocksChanged,
+  wasDeleted,
 }: {
   viewer: ChatViewerInfo;
   payload: ChannelPayload | null;
@@ -78,6 +82,8 @@ export function ChannelView({
   online: Set<string>;
   channelNames: Map<string, string>;
   loading: boolean;
+  /** The name of the conversation being opened, while it loads. */
+  opening: string | null;
   error: string | null;
   onDismissError: () => void;
   typingIds: string[];
@@ -102,22 +108,33 @@ export function ChannelView({
   onOpenChannel: (id: string) => void;
   onMessagePerson: (userId: string) => void;
   onNearBottom: (near: boolean) => void;
-  onChannelChanged: () => void;
-  onLeft: () => void;
+  /** Settings, notifications, members or a block changed for this channel: refetch it. */
+  onChannelChanged: (channelId: string) => void;
+  /** Closed or left: drop it. */
+  onLeft: (channelId: string) => void;
   blocked: readonly string[];
   onBlocksChanged: () => void;
+  /** Was this message deleted while the page has been open? */
+  wasDeleted: (id: string) => boolean;
 }) {
   const channel = payload?.channel ?? null;
   const [replyTo, setReplyTo] = useState<UiMessage | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<UiMessage | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [report, setReport] = useState<{ message: UiMessage | null } | null>(null);
+  const [flagging, setFlagging] = useState<UiMessage | null>(null);
+  const [muting, setMuting] = useState<{ userId: string; name: string } | null>(null);
   const [menu, setMenu] = useState(false);
   const [dialog, setDialog] = useState<"settings" | "rename" | "add" | "leave" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [members, setMembers] = useState<ChatPerson[]>([]);
   const membersFor = useRef<string | null>(null);
+  const optionsRef = useRef<HTMLButtonElement>(null);
+  // Which channel is on screen now, for answers that land after a switch.
+  const openIdRef = useRef<string | null>(channel?.id ?? null);
+  openIdRef.current = channel?.id ?? null;
 
   // Reset per-channel UI on switch. A draft's first message turns it into
   // the DM with that person: same conversation, so it keeps the draft's key
@@ -137,19 +154,35 @@ export function ChannelView({
     setNotice(null);
   }, [key]);
 
-  // Who the "@" menu can offer: everyone who can read the channel.
+  // The reply bar, the edit box and the delete prompt follow what they point
+  // at: an edit shows its new words, a delete takes them away.
+  useEffect(() => {
+    if (replyTo) {
+      if (wasDeleted(replyTo.id)) setReplyTo(null);
+      else {
+        const now = messages.find((m) => m.id === replyTo.id);
+        if (now && now !== replyTo) setReplyTo(now);
+      }
+    }
+    if (confirmDelete && wasDeleted(confirmDelete.id)) setConfirmDelete(null);
+    if (editingId && wasDeleted(editingId)) setEditingId(null);
+  }, [messages, replyTo, confirmDelete, editingId, wasDeleted]);
+
+  // Who the "@" menu offers first: everyone who can read the channel (the
+  // composer asks the server past that, as you type).
   useEffect(() => {
     if (!channel) {
       setMembers(payload?.draftTo ? [payload.draftTo] : []);
       return;
     }
-    const key = `${channel.id}:${channel.memberIds.length}`;
-    if (membersFor.current === key) return;
-    membersFor.current = key;
+    const k = `${channel.id}:${channel.memberIds.length}`;
+    if (membersFor.current === k) return;
+    membersFor.current = k;
     setMembers(Object.values(people).filter((p) => channel.memberIds.includes(p.id)));
-    fetchMembers(channel.id)
+    chatApi
+      .members(channel.id)
       .then((list) => {
-        if (membersFor.current === key) setMembers(list);
+        if (membersFor.current === k) setMembers(list);
       })
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -166,32 +199,67 @@ export function ChannelView({
     [viewer.id, people, members, channelNames, onMessagePerson, onOpenChannel],
   );
 
+  /** A notice for this channel, unless the person has moved on by the time it's ready. */
+  const noticeFor = useCallback((id: string, text: string) => {
+    if (openIdRef.current === id) setNotice(text);
+  }, []);
+
+  const blockedRef = useRef(blocked);
+  blockedRef.current = blocked;
   const toggleBlock = useCallback(
     async (userId: string) => {
-      const isBlocked = blocked.includes(userId);
-      const res = isBlocked ? await unblockPerson(userId) : await blockPerson(userId);
+      const id = openIdRef.current;
+      const kind = channel?.kind;
+      const isBlocked = blockedRef.current.includes(userId);
+      const res = await tracked(isBlocked ? unblockPerson(userId) : blockPerson(userId)).catch(() => ({ ok: false as const, error: OFFLINE }));
       if (!res.ok) {
-        setNotice(resultError(res, "Couldn't do that."));
+        if (id) noticeFor(id, resultError(res, "Couldn't do that."));
         return;
       }
-      setNotice(isBlocked ? "Unblocked." : "Blocked. They aren't told.");
+      if (id) noticeFor(id, isBlocked ? "Unblocked." : "Blocked. They aren't told.");
       onBlocksChanged();
-      if (channel?.kind === "dm") onChannelChanged();
+      if (id && kind === "dm") onChannelChanged(id);
     },
-    [blocked, channel?.kind, onBlocksChanged, onChannelChanged],
+    [channel?.kind, noticeFor, onBlocksChanged, onChannelChanged],
   );
 
-  const actions: MessageActions = {
-    onReply: (m) => setReplyTo(m),
-    onEdit,
-    onDelete: (m) => setConfirmDelete(m),
-    onReact,
-    onPin,
-    onReport: (m) => setReport({ message: m }),
-    onBlock: (id) => void toggleBlock(id),
-    onRetry,
-    onDiscard,
-    onMessagePerson,
+  // Stable, so a re-render here (typing, presence, a poll) doesn't re-render every message.
+  const actions: MessageActions = useMemo(
+    () => ({
+      onReply: (m) => setReplyTo(m),
+      onEdit,
+      onDelete: (m) => setConfirmDelete(m),
+      onReact,
+      onPin,
+      onReport: (m) => setReport({ message: m }),
+      onBlock: (id) => void toggleBlock(id),
+      onRetry,
+      onDiscard,
+      onMessagePerson,
+      onFlag: (m) => setFlagging(m),
+      onMute: (userId, name) => setMuting({ userId, name }),
+    }),
+    [onEdit, onReact, onPin, toggleBlock, onRetry, onDiscard, onMessagePerson],
+  );
+
+  /** Run a channel-menu action; its notice and refetch go to that channel, even after a switch. */
+  const menuAction = (run: () => Promise<ActionResult>, done: string, failed: string) => {
+    if (!channel) return;
+    const id = channel.id;
+    setMenu(false);
+    void tracked(run())
+      .catch((): ActionResult => ({ ok: false, error: OFFLINE }))
+      .then((res) => {
+        noticeFor(id, res.ok ? done : resultError(res, failed));
+        onChannelChanged(id);
+      });
+  };
+
+  /** Close a DM or group in the sidebar (a newer message brings it back). */
+  const close = async (id: string) => {
+    const res = await tracked(closeConversation(id)).catch((): ActionResult => ({ ok: false, error: OFFLINE }));
+    if (!res.ok) noticeFor(id, resultError(res, "Couldn't close that."));
+    else onLeft(id);
   };
 
   const editLast = () => {
@@ -203,15 +271,24 @@ export function ChannelView({
   const typingNames = typingIds.map((id) => people[id]?.name ?? members.find((m) => m.id === id)?.name ?? "Someone");
 
   if (!payload) {
+    // Nothing open: loading one (its name, a spinner, no composer to type
+    // into the wrong conversation), why one couldn't open, or a prompt.
     return (
       <div className="flex h-full flex-col">
-        <MobileBar onBack={onBack} title="Chat" />
-        <div className="flex flex-1 items-center justify-center p-8">
+        <MobileBar onBack={onBack} title={opening || "Chat"} />
+        {opening ? (
+          <div className="hidden shrink-0 items-center gap-2 border-b border-line px-5 py-2.5 md:flex">
+            <h1 className="truncate text-[15px] font-semibold text-ink">{opening}</h1>
+          </div>
+        ) : null}
+        <div className="flex flex-1 items-center justify-center p-8" aria-busy={loading}>
           {loading ? (
-            <Loader2 className="h-6 w-6 animate-spin text-ink-faint" />
+            <Loader2 className="h-6 w-6 animate-spin text-ink-faint" aria-label="Loading" />
           ) : (
-            <div className="max-w-sm text-center">
-              <p className="font-display text-3xl text-ink">{error ? "Not available" : "Pick a conversation"}</p>
+            <div className="max-w-sm text-center" role={error ? "alert" : undefined}>
+              <p className="font-display text-3xl text-ink">
+                {error ? (error === NOT_AVAILABLE ? "Not available" : "Couldn't open that") : "Pick a conversation"}
+              </p>
               <p className="mt-2 text-sm text-ink-soft">
                 {error ?? "Choose a channel or a direct message on the left, or start a new one."}
               </p>
@@ -228,6 +305,8 @@ export function ChannelView({
   const placeholder =
     channel?.kind === "channel" ? `Message #${label}` : `Message ${label}`;
   const otherId = channel?.kind === "dm" ? channel.otherId : (payload.draftTo?.id ?? null);
+  // A moderator reading a reported DM or group gets no options at all.
+  const hasOptions = !!channel && (!channel.moderatorView || (channel.kind === "channel" && channel.canManage));
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -249,104 +328,103 @@ export function ChannelView({
             <p className="truncate text-xs text-ink-faint">{channel.topic}</p>
           ) : channel?.kind === "group" ? (
             <p className="truncate text-xs text-ink-faint">{channel.memberIds.length} members</p>
-          ) : otherId ? (
+          ) : otherId && !channel?.moderatorView ? (
             <p className="truncate text-xs text-ink-faint">{online.has(otherId) ? "Online" : "Offline"}</p>
           ) : null}
         </div>
+        {loading ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-ink-faint" aria-label="Loading" /> : null}
         {channel ? (
           <div className="flex shrink-0 items-center">
-            <HeaderButton label="Search" active={panel === "search"} onClick={() => onPanel("search")}>
+            <HeaderButton label="Search" panel="search" active={panel === "search"} onClick={() => onPanel("search")}>
               <Search className="h-4 w-4" />
             </HeaderButton>
-            <HeaderButton label={`Pinned messages${payload.pins ? ` (${payload.pins})` : ""}`} active={panel === "pins"} onClick={() => onPanel("pins")}>
+            <HeaderButton label={`Pinned messages${payload.pins ? ` (${payload.pins})` : ""}`} panel="pins" active={panel === "pins"} onClick={() => onPanel("pins")}>
               <Pin className="h-4 w-4" />
             </HeaderButton>
             {channel.kind !== "dm" ? (
-              <HeaderButton label="Members" active={panel === "members"} onClick={() => onPanel("members")}>
+              <HeaderButton label="Members" panel="members" active={panel === "members"} onClick={() => onPanel("members")}>
                 <Users className="h-4 w-4" />
               </HeaderButton>
             ) : null}
-            <div className="relative">
-              <HeaderButton label="Channel options" active={menu} onClick={() => setMenu((m) => !m)}>
-                {channel.notify === "none" ? <BellOff className="h-4 w-4" /> : <Settings2 className="h-4 w-4" />}
-              </HeaderButton>
-              <Popover open={menu} onClose={() => setMenu(false)} className="right-0 top-10 w-60">
-                <div role="menu">
-                  {!channel.moderatorView ? (
-                    <>
-                      <p className="px-2.5 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">Notifications</p>
-                      {(
-                        [
-                          ["all", "All messages"],
-                          ["mentions", "Only @mentions"],
-                          ["none", "Nothing (mute)"],
-                        ] as const
-                      ).map(([v, l]) => (
+            {hasOptions ? (
+              <div className="relative">
+                <HeaderButton ref={optionsRef} label="Channel options" menu expanded={menu} onClick={() => setMenu((m) => !m)}>
+                  {channel.notify === "none" ? <BellOff className="h-4 w-4" /> : <Settings2 className="h-4 w-4" />}
+                </HeaderButton>
+                <Popover open={menu} onClose={() => setMenu(false)} toggleRef={optionsRef} className="right-0 top-10 w-60">
+                  <div role="menu" aria-label="Channel options">
+                    {!channel.moderatorView ? (
+                      <>
+                        <div role="group" aria-labelledby="chat-notify-label">
+                          <p id="chat-notify-label" className="px-2.5 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
+                            Notifications
+                          </p>
+                          {(
+                            [
+                              ["all", "All messages"],
+                              ["mentions", "Only @mentions"],
+                              ["none", "Nothing (mute)"],
+                            ] as const
+                          ).map(([v, l]) => (
+                            <MenuItem
+                              key={v}
+                              icon={v === "none" ? BellOff : Bell}
+                              checked={channel.notify === v}
+                              onClick={() =>
+                                menuAction(() => setNotify(channel.id, v), `Notifications: ${l.toLowerCase()}.`, "Couldn't save that.")
+                              }
+                            >
+                              {l}
+                            </MenuItem>
+                          ))}
+                        </div>
+                        <MenuSeparator />
+                      </>
+                    ) : null}
+                    {channel.kind === "channel" && channel.canManage ? (
+                      <>
+                        <MenuItem icon={Pencil} onClick={() => { setMenu(false); setDialog("settings"); }}>Edit channel</MenuItem>
+                        <MenuItem icon={UserPlus} onClick={() => { setMenu(false); setDialog("add"); }}>Add people</MenuItem>
                         <MenuItem
-                          key={v}
-                          icon={v === "none" ? BellOff : Bell}
-                          onClick={async () => {
-                            setMenu(false);
-                            const res = await setNotify(channel.id, v);
-                            setNotice(res.ok ? `Notifications: ${l.toLowerCase()}.` : resultError(res, "Couldn't save that."));
-                            onChannelChanged();
-                          }}
+                          icon={Archive}
+                          onClick={() =>
+                            menuAction(
+                              () => setChannelArchived(channel.id, !channel.archived),
+                              channel.archived ? "Channel restored." : "Channel archived: read-only for everyone.",
+                              "Couldn't do that.",
+                            )
+                          }
                         >
-                          {l}
-                          {channel.notify === v ? " ✓" : ""}
+                          {channel.archived ? "Unarchive" : "Archive channel"}
                         </MenuItem>
-                      ))}
-                      <div className="my-1 h-px bg-line" />
-                    </>
-                  ) : null}
-                  {channel.kind === "channel" && channel.canManage ? (
-                    <>
-                      <MenuItem icon={Pencil} onClick={() => { setMenu(false); setDialog("settings"); }}>Edit channel</MenuItem>
-                      <MenuItem icon={UserPlus} onClick={() => { setMenu(false); setDialog("add"); }}>Add people</MenuItem>
-                      <MenuItem
-                        icon={Archive}
-                        onClick={async () => {
-                          setMenu(false);
-                          const res = await setChannelArchived(channel.id, !channel.archived);
-                          setNotice(res.ok ? (channel.archived ? "Channel restored." : "Channel archived: read-only for everyone.") : resultError(res, "Couldn't do that."));
-                          onChannelChanged();
-                        }}
-                      >
-                        {channel.archived ? "Unarchive" : "Archive channel"}
-                      </MenuItem>
-                    </>
-                  ) : null}
-                  {channel.kind === "group" && !channel.moderatorView ? (
-                    <>
-                      <MenuItem icon={Pencil} onClick={() => { setMenu(false); setDialog("rename"); }}>Rename group</MenuItem>
-                      <MenuItem icon={UserPlus} onClick={() => { setMenu(false); setDialog("add"); }}>Add people</MenuItem>
-                      <MenuItem icon={Flag} danger onClick={() => { setMenu(false); setReport({ message: null }); }}>Report conversation</MenuItem>
-                      <MenuItem icon={LogOut} danger onClick={() => { setMenu(false); setDialog("leave"); }}>Leave group</MenuItem>
-                    </>
-                  ) : null}
-                  {channel.kind === "dm" && !channel.moderatorView ? (
-                    <>
-                      {otherId ? (
-                        <MenuItem icon={Ban} danger onClick={() => { setMenu(false); void toggleBlock(otherId); }}>
-                          {channel.blockedByYou ? "Unblock" : "Block"} {label.split(" ")[0]}
+                      </>
+                    ) : null}
+                    {channel.kind === "group" && !channel.moderatorView ? (
+                      <>
+                        <MenuItem icon={Pencil} onClick={() => { setMenu(false); setDialog("rename"); }}>Rename group</MenuItem>
+                        <MenuItem icon={UserPlus} onClick={() => { setMenu(false); setDialog("add"); }}>Add people</MenuItem>
+                        <MenuItem icon={X} onClick={() => { setMenu(false); void close(channel.id); }}>Close conversation</MenuItem>
+                        <MenuItem icon={Flag} danger onClick={() => { setMenu(false); setReport({ message: null }); }}>Report conversation</MenuItem>
+                        <MenuItem icon={LogOut} danger onClick={() => { setMenu(false); setDialog("leave"); }}>Leave group</MenuItem>
+                      </>
+                    ) : null}
+                    {channel.kind === "dm" && !channel.moderatorView ? (
+                      <>
+                        {otherId ? (
+                          <MenuItem icon={Ban} danger onClick={() => { setMenu(false); void toggleBlock(otherId); }}>
+                            {channel.blockedByYou ? "Unblock" : "Block"} {label.split(" ")[0]}
+                          </MenuItem>
+                        ) : null}
+                        <MenuItem icon={Flag} danger onClick={() => { setMenu(false); setReport({ message: null }); }}>Report conversation</MenuItem>
+                        <MenuItem icon={X} onClick={() => { setMenu(false); void close(channel.id); }}>
+                          Close conversation
                         </MenuItem>
-                      ) : null}
-                      <MenuItem icon={Flag} danger onClick={() => { setMenu(false); setReport({ message: null }); }}>Report conversation</MenuItem>
-                      <MenuItem
-                        icon={X}
-                        onClick={async () => {
-                          setMenu(false);
-                          await closeConversation(channel.id).catch(() => undefined);
-                          onLeft();
-                        }}
-                      >
-                        Close conversation
-                      </MenuItem>
-                    </>
-                  ) : null}
-                </div>
-              </Popover>
-            </div>
+                      </>
+                    ) : null}
+                  </div>
+                </Popover>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </header>
@@ -420,6 +498,7 @@ export function ChannelView({
           onEditLast={editLast}
           canMentionEveryone={!!channel?.canMentionEveryone}
           draftKey={key}
+          selfId={viewer.id}
         />
       )}
 
@@ -436,10 +515,16 @@ export function ChannelView({
         pending={deleting}
         onCancel={() => setConfirmDelete(null)}
         onConfirm={async () => {
-          if (!confirmDelete) return;
+          if (!confirmDelete || deleting) return;
           setDeleting(true);
-          const err = await onDelete(confirmDelete.id);
-          setDeleting(false);
+          let err: string | null;
+          try {
+            err = await onDelete(confirmDelete.id);
+          } catch {
+            err = OFFLINE;
+          } finally {
+            setDeleting(false);
+          }
           setConfirmDelete(null);
           if (err) setNotice(err);
         }}
@@ -458,6 +543,30 @@ export function ChannelView({
         />
       ) : null}
 
+      {flagging && channel ? (
+        <FlagDialog
+          message={flagging}
+          people={people}
+          onClose={() => setFlagging(null)}
+          onDone={() => {
+            setFlagging(null);
+            setNotice("Sent to the batch0 team. Someone will take a look.");
+          }}
+        />
+      ) : null}
+
+      {muting ? (
+        <MuteDialog
+          userId={muting.userId}
+          name={muting.name}
+          onClose={() => setMuting(null)}
+          onDone={(text) => {
+            setMuting(null);
+            setNotice(text);
+          }}
+        />
+      ) : null}
+
       {dialog === "settings" && channel ? (
         <ChannelSettingsDialog
           channel={channel}
@@ -465,7 +574,7 @@ export function ChannelView({
           onSaved={() => {
             setDialog(null);
             setNotice("Channel saved.");
-            onChannelChanged();
+            onChannelChanged(channel.id);
           }}
         />
       ) : null}
@@ -475,7 +584,7 @@ export function ChannelView({
           onClose={() => setDialog(null)}
           onSaved={() => {
             setDialog(null);
-            onChannelChanged();
+            onChannelChanged(channel.id);
           }}
         />
       ) : null}
@@ -487,7 +596,7 @@ export function ChannelView({
             setDialog(null);
             setNotice(`Added ${n === 1 ? "1 person" : `${n} people`}.`);
             membersFor.current = null;
-            onChannelChanged();
+            onChannelChanged(channel.id);
           }}
         />
       ) : null}
@@ -497,13 +606,23 @@ export function ChannelView({
         description="You won't see new messages. Someone in it can add you back."
         confirmLabel="Leave"
         destructive
+        pending={leaving}
         onCancel={() => setDialog(null)}
         onConfirm={async () => {
-          if (!channel) return;
-          const res = await leaveGroup(channel.id);
+          if (!channel || leaving) return;
+          const id = channel.id;
+          setLeaving(true);
+          let res: ActionResult;
+          try {
+            res = await tracked(leaveGroup(id));
+          } catch {
+            res = { ok: false, error: OFFLINE };
+          } finally {
+            setLeaving(false);
+          }
           setDialog(null);
-          if (!res.ok) setNotice(resultError(res, "Couldn't leave the group."));
-          else onLeft();
+          if (!res.ok) noticeFor(id, resultError(res, "Couldn't leave the group."));
+          else onLeft(id);
         }}
       />
     </div>
@@ -515,7 +634,7 @@ function Intro({ payload, label }: { payload: ChannelPayload; label: string }) {
   if (!c) {
     return (
       <div>
-        <p className="font-display text-3xl text-ink">{label}</p>
+        <p className="break-words font-display text-3xl text-ink">{label}</p>
         <p className="mt-1 text-sm text-ink-soft">
           {payload.draftCompose && !payload.draftCompose.ok
             ? `You can't start a private conversation with ${label}.`
@@ -527,7 +646,7 @@ function Intro({ payload, label }: { payload: ChannelPayload; label: string }) {
   if (c.kind === "channel") {
     return (
       <div>
-        <p className="font-display text-3xl text-ink">Welcome to #{label}</p>
+        <p className="break-words font-display text-3xl text-ink">Welcome to #{label}</p>
         <p className="mt-1 text-sm text-ink-soft">
           {c.topic ?? "This is the start of the channel."}
           {c.posting === "staff" ? " Only the batch0 team posts here; you can react." : ""}
@@ -536,9 +655,19 @@ function Intro({ payload, label }: { payload: ChannelPayload; label: string }) {
       </div>
     );
   }
+  if (c.moderatorView) {
+    return (
+      <div>
+        <p className="break-words font-display text-3xl text-ink">{label}</p>
+        <p className="mt-1 text-sm text-ink-soft">
+          This is the start of the {c.kind === "group" ? "group" : "conversation"}. You can read it because it was reported.
+        </p>
+      </div>
+    );
+  }
   return (
     <div>
-      <p className="font-display text-3xl text-ink">{label}</p>
+      <p className="break-words font-display text-3xl text-ink">{label}</p>
       <p className="mt-1 text-sm text-ink-soft">
         {c.kind === "group" ? "This is the start of the group." : `This is the start of your conversation with ${label}.`} Only the people in it can read it — unless someone in it reports it to the batch0 team.
       </p>
@@ -546,20 +675,37 @@ function Intro({ payload, label }: { payload: ChannelPayload; label: string }) {
   );
 }
 
-function HeaderButton({ label, active, onClick, children }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode }) {
+const HeaderButton = forwardRef<
+  HTMLButtonElement,
+  {
+    label: string;
+    active?: boolean;
+    /** It opens a side panel: which one (focus comes back here when it closes). */
+    panel?: Exclude<Panel, null>;
+    /** It opens a menu. */
+    menu?: boolean;
+    expanded?: boolean;
+    onClick: () => void;
+    children: React.ReactNode;
+  }
+>(function HeaderButton({ label, active, panel, menu, expanded, onClick, children }, ref) {
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
       aria-label={label}
       title={label}
-      aria-pressed={active}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${active ? "bg-wash text-ink" : "text-ink-soft hover:bg-wash hover:text-ink"}`}
+      aria-pressed={menu ? undefined : !!active}
+      aria-haspopup={menu ? "menu" : undefined}
+      aria-expanded={menu ? !!expanded : undefined}
+      data-panel-toggle={panel}
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-md ${active || expanded ? "bg-wash text-ink" : "text-ink-soft hover:bg-wash hover:text-ink"}`}
     >
       {children}
     </button>
   );
-}
+});
 
 function Banner({
   icon: Icon,
@@ -580,7 +726,7 @@ function Banner({
       role={tone === "error" ? "alert" : "status"}
     >
       <Icon className="mt-px h-3.5 w-3.5 shrink-0" />
-      <span className="min-w-0 flex-1">{children}</span>
+      <span className="min-w-0 flex-1 break-words">{children}</span>
       {onDismiss ? (
         <button type="button" onClick={onDismiss} aria-label="Dismiss" className="shrink-0 rounded hover:bg-paper">
           <X className="h-3.5 w-3.5" />
@@ -596,7 +742,7 @@ function MobileBar({ onBack, title }: { onBack: () => void; title: string }) {
       <button type="button" onClick={onBack} aria-label="Back to conversations" className="rounded-md p-1.5 text-ink-soft hover:bg-wash">
         <ArrowLeft className="h-5 w-5" />
       </button>
-      <span className="text-sm font-semibold text-ink">{title}</span>
+      <span className="min-w-0 truncate text-sm font-semibold text-ink">{title}</span>
     </div>
   );
 }

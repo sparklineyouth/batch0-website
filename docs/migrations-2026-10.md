@@ -40,7 +40,16 @@ check-ins, in-app files, discussions and the old recorder at once:
    - 0101: there is no community at all until it runs — `/chat` says chat
      isn't set up yet, the Discord integration is already gone from the code,
      and announcement cross-posts report that they couldn't post. Run it
-     after 0099 (it rewrites the lesson sentences 0099 wrote).
+     after 0099: it rewrites the lesson sentences 0099 wrote. **If 0099 ever
+     runs after 0101, run 0101 again**, or those lessons say "Discord" again.
+     (The DM reports can't end up in two queues either way: 0101 files each
+     one it carries as closed when 0099 already moved it to Support, and
+     otherwise marks the old report handled, so a later 0099 has nothing to
+     move.)
+   - The Discord server itself: the deploy stops managing it (nothing kicks
+     people or strips their roles any more), and deleting the bot or the app
+     removes nobody. Lock it when the deploy goes live (`docs/chat.md`,
+     *Deploying*).
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -85,17 +94,27 @@ check-ins, in-app files, discussions and the old recorder at once:
     reports, and every team thread into Chat, removes `discord.manage`
     (**not** converted: grant `chat.manage` at `/admin/roles` to whoever runs
     Chat, since it opens reported DMs), drops the Discord schema above, and
-    rewrites the lesson sentences and the one stored email that sent students
-    to Discord. DM reports 0099 already moved to Support arrive closed, and
-    blocks are copied once (a `chat_blocks_carried` setting), so a re-run
-    never undoes an unblock.
-- **Don't roll back past this deploy once 0093, 0099 or 0100 has run.** The
-  previous code writes check-ins (0093), lesson comments and announcement
-  reactions (0099) as the signed-in user, and those write policies are gone:
-  posting would fail with a permission error. Roles also lose the pulse,
-  interventions (0093), discussions (0099) and AI-usage (0100) permissions
-  its pages need. No data is lost. Fix forward instead. Before any of them
-  has run, rolling back is safe.
+    rewrites the lesson sentences, the one stored email and the saved kickoff
+    checklist rows that sent students to Discord. DM reports 0099 already
+    moved to Support arrive closed (decided once, when carried, so a report
+    staff reopen stays open after a re-run); one still open in the old table
+    is marked handled there, since Chat now has it. Blocks are copied once (a
+    `chat_blocks_carried` setting), so a re-run never undoes an unblock. The
+    old DM and team-thread tables keep their rows but lose every policy:
+    only the service role reads them now. Unread old "messaged you" bells
+    are marked read (Chat counts those DMs itself), old Discord blocker bells
+    lose their dead discord.com links, and admins can no longer read other
+    people's chat bells (the `notifications` read policy is replaced).
+- **Don't roll back past this deploy once 0093, 0099, 0100 or 0101 has
+  run.** The previous code writes check-ins (0093), lesson comments and
+  announcement reactions (0099) as the signed-in user, and those write
+  policies are gone: posting would fail with a permission error. Roles also
+  lose the pulse, interventions (0093), discussions (0099) and AI-usage (0100)
+  permissions its pages need. 0101 drops the Discord columns and tables the
+  previous code selects by name: its admin person pages 404 (they read
+  `profiles.discord_username`), its every-minute Discord cron fails, and
+  Discord linking can't save. Fix forward instead. Before any of them has
+  run, rolling back is safe.
 - People with `settings.manage` see one line on `/admin`, *Database update
   needed: run migrations 0093–0101*, while a probe finds one missing
   (`lib/pending-migrations.ts`, cached 5 minutes). It checks the new tables and
@@ -113,7 +132,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0098 | `0098_events.sql` | Event writes need `events.manage`; "Everyone signed in" events are no longer readable without signing in. New events default to chat on and auto-record (the admin form starts "Everyone signed in" events moderated). |
 | 0099 | `0099_retire_community.sql` | Discussions, team thread, reactions, lesson comments and DMs lose client write policies. Open private questions and open DM reports move into Support. Lessons that sent students to Discussions, office hours or the check-in point at Discord, Support and 1:1 calls. |
 | 0100 | `0100_admin_cleanup.sql` | Removes the retired `ai_usage.view` permission from roles and deletes leftover founder-pass self-check rows (negative serials). |
-| 0101 | `0101_chat.sql` | batch0 Chat: channels, DMs and group DMs (`chat_*` tables, read-only policies, `chat_can_read()`, realtime on `chat_messages`, the private `chat-files` bucket), the starting channels plus one per cohort and team, old DMs and team threads carried in, `discord.manage` removed (not converted), and the Discord integration's tables, columns and settings dropped. See `docs/chat.md`. |
+| 0101 | `0101_chat.sql` | batch0 Chat: channels, DMs and group DMs (`chat_*` tables including `chat_mutes`, read-only policies, `chat_can_read()`, realtime on `chat_messages`, private presence and typing topics on `realtime.messages`, a trigram index for search, the private `chat-files` bucket), the starting channels plus one per cohort and team (kept, archived, when their team or cohort is deleted), old DMs and team threads carried in, `discord.manage` removed (not converted), admins kept out of other people's chat bells, and the Discord integration's tables, columns and settings dropped. See `docs/chat.md`. |
 
 ## Verify
 

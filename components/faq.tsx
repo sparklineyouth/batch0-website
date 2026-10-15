@@ -1,6 +1,7 @@
 import React from "react";
 import type { SiteConfig } from "@/lib/site-config";
 import { activePromo, promoSentence } from "@/lib/promo";
+import { SITE } from "@/lib/schema";
 
 /**
  * Parent-facing FAQ. Direct answers: cost in the first sentence, real
@@ -22,7 +23,9 @@ export default function FAQ({ config }: { config: SiteConfig }) {
   // deadline passes, with no deploy and no cache to wait out.
   const promo = activePromo(new Date(), settings.promo);
 
-  const faqs: { q: string; a: string }[] = [
+  // `more` is a page that answers the question in full: a link under the
+  // answer, and its URL at the end of the structured answer.
+  const faqs: { q: string; a: string; more?: { href: string; label: string } }[] = [
     {
       q: "How much does it cost?",
       // During a sale this answer quoted the discounted price with no
@@ -75,7 +78,10 @@ export default function FAQ({ config }: { config: SiteConfig }) {
     },
     {
       q: "How is the community moderated?",
-      a: `Every program space — community feed, batch0 Chat, session chat — is staff-moderated with published community guidelines. Students are 13–18, so there are no unmonitored private channels between students and adults: students talk with mentors and investors in team and cohort channels the batch0 team can see, never in private messages. Anyone can report a message, sessions may be recorded, and anything concerning goes straight to ${contactEmail}, where a human (a parent can be that human) gets a reply within a couple of days.`,
+      // Every claim here is enforced (lib/chat-access.ts, docs/chat.md); the
+      // privacy policy names who reads which channel.
+      a: `Every program space — batch0 Chat and session chat — is moderated by the batch0 team under published community guidelines. Mentors, investors and other adults outside the batch0 team can't message students privately: they talk with students only where the team can read along, in channels like #general and, for a student's assigned mentors, their team and cohort channels. Students can message each other, and the batch0 team, privately; nobody else reads those conversations unless someone in one reports a message, which hands it to the team. Anyone can report a message, sessions may be recorded, and anything concerning goes straight to ${contactEmail}, where a human (a parent can be that human) gets a reply within a couple of days.`,
+      more: { href: "/community-guidelines", label: "Read the community guidelines" },
     },
     {
       q: "What is demo day?",
@@ -97,7 +103,10 @@ export default function FAQ({ config }: { config: SiteConfig }) {
     mainEntity: faqs.map((f) => ({
       "@type": "Question",
       name: f.q,
-      acceptedAnswer: { "@type": "Answer", text: f.a },
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: f.more ? `${f.a} ${f.more.label}: ${SITE}${f.more.href}` : f.a,
+      },
     })),
   };
 
@@ -138,6 +147,14 @@ export default function FAQ({ config }: { config: SiteConfig }) {
                 </summary>
                 <p className="max-w-[38rem] pb-6 text-[15px] leading-[1.65] text-ink-soft">
                   {f.a}
+                  {f.more && (
+                    <>
+                      {" "}
+                      <a href={f.more.href} className="link-ink">
+                        {f.more.label} →
+                      </a>
+                    </>
+                  )}
                 </p>
               </details>
             ))}

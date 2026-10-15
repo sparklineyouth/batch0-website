@@ -182,7 +182,7 @@ export function KickoffForm({
                   replaceAt(checklist, i, { ...row, label: e.target.value }),
                 )
               }
-              placeholder="Label — e.g. Say hi to your cohort in #general"
+              placeholder="Label — e.g. Say hi in #general and your cohort's channel"
             />
             <Input
               className="mt-2 font-mono text-xs"

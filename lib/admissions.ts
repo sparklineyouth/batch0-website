@@ -12,6 +12,7 @@ import {
   type PassGrant,
 } from "@/lib/founder-pass-tiers";
 import { postStaffFeed } from "@/lib/chat-post";
+import { acceptedLine } from "@/lib/staff-feed";
 
 // Admission side-effects, in one place.
 //
@@ -114,7 +115,7 @@ export async function announceAcceptance(
 
   // The staff feed, in #staff (it used to be a Discord channel).
   await postStaffFeed(
-    `Accepted: **${app.full_name ?? app.applicantName ?? app.applicantEmail ?? "applicant"}** into ${cohortName} · ${env.siteUrl}/admin/applications/${app.id}`,
+    acceptedLine({ name: app.full_name || app.applicantName, cohortName, applicationId: app.id, siteUrl: env.siteUrl }),
   );
 }
 

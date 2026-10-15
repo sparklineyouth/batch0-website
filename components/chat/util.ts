@@ -1,8 +1,31 @@
 import type { ActionResult } from "@/lib/action-result";
 
+/** What a write says when it never reached the server (offline, or a deploy swapped the actions out). */
+export const OFFLINE = "Couldn't reach batch0. Check your connection and try again.";
+
+/** Who a message is from once the account behind it is gone. */
+export const DELETED_NAME = "Deleted account";
+
+/** A person's name, "Deleted account" for a sender with no account left, "batch0" for system lines. */
+export function senderName(
+  m: { senderId: string | null; kind?: "message" | "system" },
+  people: Record<string, { name: string }>,
+): string {
+  if (!m.senderId) return m.kind === "system" ? "batch0" : DELETED_NAME;
+  return people[m.senderId]?.name ?? DELETED_NAME;
+}
+
 /** The message an ActionResult failed with, or the fallback. */
 export function resultError(res: ActionResult<unknown> | { ok: false; error: string }, fallback: string): string {
   return !res.ok && res.error ? res.error : fallback;
+}
+
+/**
+ * Does Enter send? Not on a touch keyboard: it has no Shift+Enter, so Enter
+ * is the only way to start a new line there, and the Send button sends.
+ */
+export function enterSends(): boolean {
+  return typeof window === "undefined" || !window.matchMedia("(hover: none) and (pointer: coarse)").matches;
 }
 
 /**

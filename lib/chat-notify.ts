@@ -1,17 +1,15 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyMany } from "@/lib/notifications";
-import { shouldBell, wantsBell, type NotifyPref } from "@/lib/chat-access";
+import { bellTitle, shouldBell, wantsBell, type NotifyPref } from "@/lib/chat-access";
 import {
   getChannelRow,
   getPerson,
   listChannelAudienceIds,
   listMembers,
-  getPeople,
   readersAmong,
   type ChannelRow,
 } from "@/lib/chat";
-import { groupDisplayName } from "@/lib/chat-access";
 
 /**
  * Who hears about a new chat message, and how.
@@ -28,7 +26,8 @@ import { groupDisplayName } from "@/lib/chat-access";
  * In-app bells only. No email: a chat is a conversation, and mailing every
  * line would make it unusable. And no body, ever — admins can read every
  * notification (0016), so the words would be a staff read path into DMs;
- * migration 0101 strips any body in SQL as well.
+ * migration 0101 strips any body in SQL as well. For the same reason a
+ * group's bell never names the group or its members (bellTitle).
  */
 
 export const CHAT_BELL_TYPES = ["chat_dm", "chat_mention", "chat_message"] as const;
@@ -63,6 +62,8 @@ export async function notifyNewMessage(input: {
   mentions: readonly string[];
   mentionEveryone: boolean;
   channel?: ChannelRow;
+  /** People who get no chat bell for this one (an announcement's own recipients already have theirs). */
+  excludeBells?: readonly string[];
 }): Promise<void> {
   const channel = input.channel ?? (await getChannelRow(input.channelId));
   if (!channel) return;
@@ -72,25 +73,33 @@ export async function notifyNewMessage(input: {
   const mentioned = new Set(input.mentions);
   let candidates: string[];
   if (channel.kind === "channel") {
-    const { data: allPrefs, error } = await admin
-      .from("chat_reads")
-      .select("user_id")
-      .eq("channel_id", channel.id)
-      .eq("notify", "all")
-      .limit(2000);
-    if (error) throw new Error(`Couldn't check chat bells: ${error.message}`);
+    const allPrefs: string[] = [];
+    // Paged: PostgREST stops at 1000 rows without saying so.
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await admin
+        .from("chat_reads")
+        .select("user_id")
+        .eq("channel_id", channel.id)
+        .eq("notify", "all")
+        .order("user_id")
+        .range(from, from + 999);
+      if (error) throw new Error(`Couldn't check chat bells: ${error.message}`);
+      allPrefs.push(...((data ?? []) as { user_id: string }[]).map((r) => r.user_id));
+      if ((data ?? []).length < 1000) break;
+    }
     // A preference outlives access: nothing deletes chat_reads when someone
     // leaves a team or a private channel, or a channel's audience narrows.
     // So "All messages" is re-vetted against who can read it right now —
     // otherwise a bell would tell them who's posting where they can't look.
-    const subscribed = await readersAmong(channel, ((allPrefs ?? []) as any[]).map((r) => r.user_id));
+    const subscribed = await readersAmong(channel, allPrefs);
     const everyone = input.mentionEveryone ? await listChannelAudienceIds(channel) : [];
     candidates = Array.from(new Set([...input.mentions, ...everyone, ...subscribed]));
     if (input.mentionEveryone) for (const id of everyone) mentioned.add(id);
   } else {
     candidates = (await listMembers([channel.id])).get(channel.id) ?? [];
   }
-  candidates = candidates.filter((id) => id && id !== input.senderId);
+  const excluded = new Set(input.excludeBells ?? []);
+  candidates = candidates.filter((id) => id && id !== input.senderId && !excluded.has(id));
   if (candidates.length === 0) return;
 
   const link = chatLink(channel.id);
@@ -125,39 +134,31 @@ export async function notifyNewMessage(input: {
   if (recipients.length === 0) return;
 
   const sender = (await getPerson(input.senderId))?.name ?? "Someone";
-  let groupName = "";
-  if (channel.kind === "group") {
-    const members = (await listMembers([channel.id])).get(channel.id) ?? [];
-    const people = await getPeople(members);
-    groupName = groupDisplayName(
-      channel.name,
-      members.map((id) => ({ id, name: people.get(id)?.name ?? "Deleted account" })),
-      "",
-    );
-  }
-
   await notifyMany(
     recipients.map((userId) => {
-      if (channel.kind === "dm") return { userId, type: "chat_dm", title: `${sender} messaged you`, link };
-      if (channel.kind === "group") return { userId, type: "chat_dm", title: `${sender} in ${groupName}`, link };
-      if (mentioned.has(userId)) {
-        return {
-          userId,
-          type: "chat_mention",
-          title: input.mentionEveryone && !input.mentions.includes(userId)
-            ? `${sender} pinged everyone in #${channel.name}`
-            : `${sender} mentioned you in #${channel.name}`,
-          link,
-        };
-      }
-      return { userId, type: "chat_message", title: `${sender} posted in #${channel.name}`, link };
+      const isMention = channel.kind === "channel" && mentioned.has(userId);
+      return {
+        userId,
+        type: channel.kind === "channel" ? (isMention ? "chat_mention" : "chat_message") : "chat_dm",
+        title: bellTitle(channel.kind, {
+          sender,
+          channelName: channel.name,
+          mentioned: isMention,
+          everyone: isMention && input.mentionEveryone && !input.mentions.includes(userId),
+        }),
+        link,
+      };
     }),
   );
 }
 
-/** Take down this person's chat bells for a channel they've now caught up on. */
+/**
+ * Take down this person's chat bells for a channel they've now caught up on.
+ * A failure is logged and counts as nothing cleared: the bell stays up, which
+ * is the honest state, and the read cursor already moved.
+ */
 export async function clearChannelBells(userId: string, channelId: string): Promise<number> {
-  const { data } = await createAdminClient()
+  const { data, error } = await createAdminClient()
     .from("notifications")
     .update({ read_at: new Date().toISOString() })
     .eq("user_id", userId)
@@ -165,5 +166,9 @@ export async function clearChannelBells(userId: string, channelId: string): Prom
     .in("type", CHAT_BELL_TYPES as unknown as string[])
     .is("read_at", null)
     .select("id");
+  if (error) {
+    console.error("[chat] clearing bells failed", error.message);
+    return 0;
+  }
   return data?.length ?? 0;
 }

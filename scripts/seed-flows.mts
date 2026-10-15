@@ -1615,7 +1615,7 @@ const parentPreflight: SeedFlow = {
       key: "safety",
       title: "Safety, privacy, and who your kid talks to",
       kind: "content",
-      body: `**Who students interact with:** vetted mentors, program staff, other admitted students (also 13–18), and — around Demo Day — invited investors. Community spaces are moderated; there are no private unmonitored channels with unknown adults.
+      body: `**Who students interact with:** vetted mentors, program staff, other admitted students (also 13–18), and — around Demo Day — invited investors. Every program space is moderated under published community guidelines (batch0.org/community-guidelines). Mentors, investors and other adults outside the batch0 team can't message students privately — they talk with students only where the team can read along. Students can message each other and the batch0 team privately, and anyone can report a message, which hands the conversation to the team.
 
 **Customer interviews:** the program teaches students to talk to potential users. Our safety rules: parents know who's being interviewed, public places for in-person conversations, logged channels (email/DMs) for remote ones, and no sharing of home address or personal financial details.
 
@@ -1767,7 +1767,7 @@ It ends with a short **baseline submission** — the problem you're investigatin
           {
             key: "guidelines",
             label: "Community guidelines read",
-            hint: "Short version: be direct, be kind, bring evidence.",
+            hint: "batch0.org/community-guidelines. Short version: be direct, be kind, bring evidence.",
           },
           {
             key: "parent-ack",

@@ -132,6 +132,12 @@ export default async function AdminStudentDetail(
   // Deleting a full-access account is blocked server-side; mirror that here.
   const targetCaps = await capabilitiesForRole(profile.role);
 
+  // Chat's safeguarding rule (lib/chat-access.ts conversationAllowed): only
+  // chat staff may message a student privately. Anyone else here would land
+  // on a draft that can't be sent, and nobody can message themselves.
+  const canMessage =
+    profile.id !== actor.id && (can(caps, "chat.manage") || profile.role !== "student");
+
   const latestApp = (applications ?? [])[0] as any;
   const currentEnrollment = (enrollments ?? [])[0] as any;
   const hasRefundable = (payments ?? []).some(
@@ -159,10 +165,14 @@ export default async function AdminStudentDetail(
             {displayEmail(profile.email) ?? (
               <span className="text-ink-faint">No email on file</span>
             )}
-            {" · "}
-            <Link href={`/chat?to=${profile.id}`} prefetch={false} className="link-ink">
-              Message in Chat
-            </Link>
+            {canMessage && (
+              <>
+                {" · "}
+                <Link href={`/chat?to=${profile.id}`} prefetch={false} className="link-ink">
+                  Message in Chat
+                </Link>
+              </>
+            )}
           </p>
           <p className="mt-1 text-xs text-ink-faint">
             Joined <LocalTime value={profile.created_at} mode="date" />

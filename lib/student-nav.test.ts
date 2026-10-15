@@ -51,6 +51,7 @@ const ALL_ON = { referralsEnabled: true, demoDayTicket: false };
 test("enrolled, cohort running: the program, not the lifecycle", () => {
   assert.deepEqual(visible({ ...ALL_ON, enrolled: true, preCohort: false }), [
     "/dashboard",
+    "/chat",
     "/dashboard/course",
     "/dashboard/assignments",
     "/dashboard/team",
@@ -58,7 +59,6 @@ test("enrolled, cohort running: the program, not the lifecycle", () => {
     "/dashboard/calls",
     "/dashboard/resources",
     "/dashboard/announcements",
-    "/chat",
     "/dashboard/billing",
     "/dashboard/support",
     "/dashboard/settings",
@@ -91,6 +91,13 @@ test("the referrals flag hides Refer friends", () => {
 
 test("Chat is in every student's nav: the team for an applicant, the cohort after", () => {
   for (const ctx of everyContext()) assert.ok(visible(ctx).includes("/chat"), JSON.stringify(ctx));
+});
+
+test("Chat sits in the group that can't be collapsed, so its unread badge is always mounted", () => {
+  // components/sidebar-nav.tsx renders a labeled group's items only while it's
+  // open; the unlabeled top group has no toggle.
+  const home = STUDENT_NAV_LAYOUT.find((g) => g.label === "");
+  assert.ok(home?.items.some((i) => i.href === "/chat"));
 });
 
 test("Team page tool chips shown pre-cohort all pass the middleware", () => {

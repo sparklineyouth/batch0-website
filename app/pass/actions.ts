@@ -13,6 +13,7 @@ import {
 import { env } from "@/lib/env";
 import { feedbackTopicLabel } from "@/lib/founder-pass-topics";
 import { postStaffFeed } from "@/lib/chat-post";
+import { feedbackCreditLine, rebuildLine } from "@/lib/staff-feed";
 
 export type RedeemActionResult =
   | { ok: true; serial: number }
@@ -158,16 +159,16 @@ export async function redeemFeedbackCreditAction(input: {
   }
 
   await postStaffFeed(
-    `Feedback credit redeemed by **${await holderName(admin, user.id, user.email)}** on ${feedbackTopicLabel(input.topic)} · ${env.siteUrl}/admin/passes#requests`,
+    feedbackCreditLine({ name: await holderName(admin, user.id), topic: feedbackTopicLabel(input.topic), siteUrl: env.siteUrl }),
   );
   revalidatePath("/pass");
   return { ok: true };
 }
 
-/** A pass holder's name for the #staff line. */
-async function holderName(admin: ReturnType<typeof createAdminClient>, userId: string, email?: string | null): Promise<string> {
-  const { data } = await admin.from("profiles").select("full_name, email").eq("id", userId).maybeSingle();
-  return (data as any)?.full_name || (data as any)?.email || email || "A pass holder";
+/** A pass holder's name for the #staff line; lib/staff-feed.ts falls back. */
+async function holderName(admin: ReturnType<typeof createAdminClient>, userId: string): Promise<string | null> {
+  const { data } = await admin.from("profiles").select("full_name").eq("id", userId).maybeSingle();
+  return (data as { full_name: string | null } | null)?.full_name ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -207,9 +208,7 @@ export async function submitRebuildAction(input: {
     return { ok: false, message: messages[result.reason] };
   }
 
-  await postStaffFeed(
-    `Seven-day rebuild submitted by **${await holderName(admin, user.id, user.email)}**: queued for one fresh review · ${env.siteUrl}/admin/applications`,
-  );
+  await postStaffFeed(rebuildLine({ name: await holderName(admin, user.id), siteUrl: env.siteUrl }));
   revalidatePath("/pass");
   revalidatePath("/dashboard/application");
   revalidatePath("/dashboard");

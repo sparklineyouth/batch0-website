@@ -73,16 +73,19 @@ const nextConfig = {
       // and admin pages cut as bulk. Old notification links and bookmarks land
       // on the section they lived in instead of a 404. Open private questions
       // and DM reports moved into Support (0099), so the staff queues' links
-      // go there too.
+      // go there too: an old "Reported conversation" bell (/admin/messages/<id>)
+      // lands where its sensitive Support ticket is still open (0101 files the
+      // carried report as already actioned in Chat).
       // Direct messages came back as batch0 Chat (0101) with the same ids, so
       // an old "messaged you" bell (/messages?c=<id>) opens the same
-      // conversation; the query string passes through. Reported DMs are
-      // worked from Admin → Chat now.
+      // conversation; the query string passes through. Browsers that cached
+      // the permanent /messages → /notifications this replaced never ask for
+      // it, so /notifications forwards their ?c= to /chat as well.
       { source: "/messages/:path*", destination: "/chat", permanent: false },
-      { source: "/admin/messages/:path*", destination: "/admin/chat", permanent: false },
       ...[
         ["/dashboard/discussions/:path*", "/dashboard/support"],
         ["/admin/discussions/:path*", "/admin/support"],
+        ["/admin/messages/:path*", "/admin/support"],
         ["/admin/ai-usage/:path*", "/admin"],
         ["/admin/mentors/match/:path*", "/admin/mentors"],
         ["/admin/course/analytics/:path*", "/admin/course"],

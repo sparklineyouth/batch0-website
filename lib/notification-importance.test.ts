@@ -138,3 +138,24 @@ test("retired types are quiet, labelled, and not offered in settings", () => {
   // A person's explicit choice still wins for the rows they already have.
   assert.equal(importanceOf("direct_message", { direct_message: "important" }), "important");
 });
+
+test("every chat bell is a settings row: DMs, mentions, reports and help flags are important", () => {
+  // The types lib/chat-notify.ts and app/chat/actions.ts send. Unlisted, one
+  // would still be important (DEFAULT_FOR_UNKNOWN) but nobody could quiet it
+  // from the settings tab, and it would show as a humanised type name.
+  const expected: Record<string, "important" | "other"> = {
+    chat_dm: "important",
+    chat_mention: "important",
+    chat_message: "other",
+    chat_reported: "important",
+    chat_flagged: "important",
+  };
+  const offered = new Map(NOTIFICATION_KINDS.map((k) => [k.type, k]));
+  for (const [type, importance] of Object.entries(expected)) {
+    assert.ok(offered.has(type), `${type} must be a settings row`);
+    assert.equal(defaultImportance(type), importance, type);
+  }
+  // Both go to chat staff only, so they sit with the other staff queues.
+  assert.equal(offered.get("chat_reported")?.group, "Staff queues");
+  assert.equal(offered.get("chat_flagged")?.group, "Staff queues");
+});

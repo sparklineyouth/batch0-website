@@ -331,7 +331,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         key: "chat.manage",
         label: "Run chat",
         description:
-          "Create and edit chat channels, post in read-only channels, pin and remove messages, and work the chat report queue. Reported DMs open to this role.",
+          "Create and edit chat channels, post in read-only channels, pin and remove messages, mute people, and work the chat report queue. Reads every channel, #staff included (applications, enrollments, refunds and pass requests by name), and reported direct and group messages it isn't part of. Can message any student privately: only a report opens that conversation to anyone else.",
         sensitive: true,
       },
       {

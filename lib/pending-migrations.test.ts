@@ -80,6 +80,12 @@ test("a database without Chat, or still granting discord.manage, needs 0101", as
     error: p.table.startsWith("chat_") ? MISSING_TABLE : null,
   }));
   assert.deepEqual(noChat, { missing: ["0101"], complete: true });
+  // An earlier draft of 0101 made the channels but not the mutes the posting
+  // checks read: still needs this one.
+  const draft = await checkPendingMigrations(async (p) => ({
+    error: p.table === "chat_mutes" ? MISSING_TABLE : null,
+  }));
+  assert.deepEqual(draft, { missing: ["0101"], complete: true });
   const stale = await checkPendingMigrations(async (p) => ({
     error: null,
     found: !!p.leftover?.values.includes("discord.manage"),

@@ -110,6 +110,11 @@ export default async function AdminAppPerson(
     enrollment?.cohort,
   );
   const team = embed<{ id: string; name: string }>(membership?.team);
+  // Chat's safeguarding rule (lib/chat-access.ts conversationAllowed): only
+  // chat staff may message a student privately. Anyone else would land on a
+  // draft that can't be sent, and nobody can message themselves.
+  const canMessage =
+    person.id !== viewer.profile.id && (can(caps, "chat.manage") || person.role !== "student");
   const owed = assignments.items.filter((i) => isOwed(i.status));
   const handedIn = owed.filter((i) => isHandedIn(i.status)).length;
   const missing = owed.filter((i) => i.status === "missing").length;
@@ -140,14 +145,16 @@ export default async function AdminAppPerson(
             <Mail className="h-4 w-4" />
             Email
           </a>
-          <Link
-            href={`/chat?to=${person.id as string}`}
-            prefetch={false}
-            className="press flex h-11 flex-1 items-center justify-center gap-2 rounded-md border border-line bg-wash text-[13px] font-medium text-ink active:scale-[0.99]"
-          >
-            <MessagesSquare className="h-4 w-4" />
-            Message
-          </Link>
+          {canMessage && (
+            <Link
+              href={`/chat?to=${person.id as string}`}
+              prefetch={false}
+              className="press flex h-11 flex-1 items-center justify-center gap-2 rounded-md border border-line bg-wash text-[13px] font-medium text-ink active:scale-[0.99]"
+            >
+              <MessagesSquare className="h-4 w-4" />
+              Message
+            </Link>
+          )}
         </div>
         <p className="mt-2 truncate text-center font-mono text-[11px] text-ink-faint">
           {person.email as string}

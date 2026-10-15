@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { sendEmail } from "@/lib/email/send";
 import { notifyMany } from "@/lib/notifications";
 import { postToChannel } from "@/lib/chat-post";
+import { env } from "@/lib/env";
 
 export type AnnouncementInput = {
   cohortId: string | null; // null = all enrolled
@@ -121,12 +122,21 @@ export async function broadcastAnnouncement(
     // postToChannel never throws: a chat copy that doesn't land is reported
     // back to the composer, it doesn't undo the notifications and emails
     // that already went out.
+    //
+    // Chat caps a message at MESSAGE_MAX; an announcement has no limit. The
+    // link is what a cut-short copy ends with, so the rest is one tap away.
+    //
+    // Everyone above already got this announcement's own bell, so the chat
+    // copy rings nobody twice: not an @everyone ping, and not the "All
+    // messages" bell of someone who follows the channel.
     const posted = await postToChannel(
       { systemKey: input.cohortId ? `cohort:${input.cohortId}` : "announcements" },
       {
         senderId: authorId,
         body: chatAnnouncementBody({ title: input.title, body: input.body }),
         mentionEveryone,
+        link: announcementId ? `${env.siteUrl}${notificationLink}` : undefined,
+        excludeBells: Array.from(new Set(recipients.map((r) => r.user_id as string))),
       },
     );
     chatPosted = posted.ok;

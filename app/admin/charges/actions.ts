@@ -8,7 +8,8 @@ import { notify } from "@/lib/notifications";
 import { stripe } from "@/lib/stripe";
 import { env } from "@/lib/env";
 import type { ChargeKind } from "@/lib/types";
-import { postStaffFeed, feedMoney } from "@/lib/chat-post";
+import { postStaffFeed } from "@/lib/chat-post";
+import { chargeRefundedLine } from "@/lib/staff-feed";
 
 export type ChargeInput = {
   userId: string;
@@ -193,12 +194,14 @@ export async function refundCharge(chargeId: string, reason?: string) {
     body: `$${(existing.amount_cents / 100).toFixed(2)} returned to your card.`,
     link: "/dashboard/billing",
   });
-  // The #staff feed, where the Discord admin feed used to get refunds.
-  // postStaffFeed never throws: the refund already happened.
+  // The #staff feed, where the Discord admin feed used to get refunds: who,
+  // and a link. The amount and the reason stay behind charges.manage
+  // (lib/staff-feed.ts). postStaffFeed never throws: the refund already
+  // happened.
   {
-    const { data: p } = await admin.from("profiles").select("full_name, email").eq("id", existing.user_id).maybeSingle();
+    const { data: p } = await admin.from("profiles").select("full_name").eq("id", existing.user_id).maybeSingle();
     await postStaffFeed(
-      `${existing.kind === "fine" ? "Fine" : "Fee"} refunded to **${p?.full_name ?? p?.email ?? "a student"}**: ${existing.description} (${feedMoney(existing.amount_cents)})${reason?.trim() ? ` — ${reason.trim()}` : ""} · ${env.siteUrl}/admin/charges`,
+      chargeRefundedLine({ name: p?.full_name, kind: existing.kind === "fine" ? "fine" : "fee", userId: existing.user_id, siteUrl: env.siteUrl }),
     );
   }
 

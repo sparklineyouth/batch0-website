@@ -31,6 +31,7 @@ import {
   type UploadedFile,
 } from "@/lib/challenges";
 import { postStaffFeed } from "@/lib/chat-post";
+import { challengeEntryLine } from "@/lib/staff-feed";
 
 // ---------------------------------------------------------------------------
 // Entrant actions: register → draft (autosave) → submit.
@@ -797,7 +798,7 @@ async function fanOutSubmitted(ctx: Ctx, submissionId: string) {
       });
     }
     await postStaffFeed(
-      `🏆 New **${c.title}** submission from ${profile?.full_name ?? ctx.email ?? "an entrant"} · ${env.siteUrl}/admin/challenges/${c.id}/submissions/${submissionId}`,
+      challengeEntryLine({ name: profile?.full_name, challengeTitle: c.title, challengeId: c.id, submissionId, siteUrl: env.siteUrl }),
     );
   } catch (err) {
     console.error("[challenge] post-submit notifications failed", err);

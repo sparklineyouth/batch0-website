@@ -8,6 +8,7 @@ import { notify } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { stripe } from "@/lib/stripe";
 import { handleChargeRefunded } from "@/lib/stripe-fulfillment";
+import { purgeChatContentFor } from "@/lib/chat-purge";
 import { env } from "@/lib/env";
 import type { ActionResult } from "@/lib/action-result";
 
@@ -293,6 +294,13 @@ export async function deleteUserAccount(userId: string, reason: string) {
   }
 
   const admin = createAdminClient();
+
+  // Chat keeps a deleted account's messages in everyone else's history
+  // (sender_id goes null), so their words, earlier versions and files are
+  // blanked first, except what's under a report, which is kept as evidence
+  // (the privacy policy says so). Before the auth delete: if it fails, the
+  // account is still here and a retry is safe, since the purge is idempotent.
+  await purgeChatContentFor(userId);
 
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) throw new Error(error.message);

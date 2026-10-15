@@ -11,7 +11,7 @@ export default function TermsPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Terms of Service</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: October 1, 2026
+        Last updated: October 15, 2026
       </p>
 
       <p>
@@ -55,7 +55,9 @@ export default function TermsPage() {
       <p>
         Don't use batch0 to harass other users, infringe intellectual
         property, distribute malware, or attempt to compromise the
-        platform's security.
+        platform's security. Our{" "}
+        <a href="/community-guidelines">Community Guidelines</a> spell out
+        what that means in batch0 Chat and in live sessions.
       </p>
 
       <h2>Content you upload</h2>
@@ -119,7 +121,7 @@ export default function TermsPage() {
           name: "Terms of Service",
           description:
             "The terms that govern batch0, the live online startup accelerator for high schoolers.",
-          dateModified: "2026-10-01",
+          dateModified: "2026-10-15",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Terms", path: "/terms" }])} />

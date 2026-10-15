@@ -89,3 +89,71 @@ export async function signChatFile(path: string, opts: { downloadName?: string }
   const sep = data.signedUrl.includes("?") ? "&" : "?";
   return `${data.signedUrl}${sep}download=${encodeURIComponent(opts.downloadName)}`;
 }
+
+/** Objects per page when listing a folder; storage's own default. */
+const LIST_PAGE = 100;
+
+/**
+ * Every object directly inside one folder of the bucket (files only, not
+ * subfolders). Throws when a page can't be listed: an error must never read
+ * as "nothing there" to a caller about to decide what to keep.
+ */
+async function listFolderFiles(folder: string): Promise<{ path: string; createdAt: string | null }[]> {
+  const bucket = createAdminClient().storage.from(CHAT_FILES_BUCKET);
+  const out: { path: string; createdAt: string | null }[] = [];
+  for (let offset = 0; ; offset += LIST_PAGE) {
+    const { data, error } = await bucket.list(folder, { limit: LIST_PAGE, offset });
+    if (error) throw new Error(`Couldn't list chat files: ${error.message}`);
+    const page = (data ?? []) as { name: string; id: string | null; created_at?: string | null }[];
+    // A folder comes back with no id.
+    for (const o of page) if (o.id) out.push({ path: `${folder}/${o.name}`, createdAt: o.created_at ?? null });
+    if (page.length < LIST_PAGE) return out;
+  }
+}
+
+/** The subfolder names directly inside one folder (`<channel>/` holds one per uploader). */
+async function listSubfolders(folder: string): Promise<string[]> {
+  const bucket = createAdminClient().storage.from(CHAT_FILES_BUCKET);
+  const out: string[] = [];
+  for (let offset = 0; ; offset += LIST_PAGE) {
+    const { data, error } = await bucket.list(folder, { limit: LIST_PAGE, offset });
+    if (error) throw new Error(`Couldn't list chat files: ${error.message}`);
+    const page = (data ?? []) as { name: string; id: string | null }[];
+    for (const o of page) if (!o.id) out.push(o.name);
+    if (page.length < LIST_PAGE) return out;
+  }
+}
+
+/** Delete these objects, a batch at a time. Throws on a failed batch. */
+export async function removeChatFiles(paths: readonly string[]): Promise<void> {
+  const bucket = createAdminClient().storage.from(CHAT_FILES_BUCKET);
+  const unique = Array.from(new Set(paths.filter((p) => typeof p === "string" && p.length > 0)));
+  for (let i = 0; i < unique.length; i += 100) {
+    const { error } = await bucket.remove(unique.slice(i, i + 100));
+    if (error) throw new Error(`Couldn't delete chat files: ${error.message}`);
+  }
+}
+
+/**
+ * Everything one uploader staged in one channel's folder
+ * (`<channel>/<uploader>/…`): sent or not.
+ */
+export async function listStagedFiles(channelId: string, userId: string): Promise<{ path: string; createdAt: string | null }[]> {
+  return listFolderFiles(`${channelId.toLowerCase()}/${userId.toLowerCase()}`);
+}
+
+/**
+ * Take a deleted channel's files with it (a group whose last member left, a
+ * channel staff deleted). Best effort and logged: the channel is already gone,
+ * and a file nobody can reach any more is storage, not exposure.
+ */
+export async function removeChannelFiles(channelId: string): Promise<void> {
+  try {
+    const root = channelId.toLowerCase();
+    for (const uploader of await listSubfolders(root)) {
+      await removeChatFiles((await listFolderFiles(`${root}/${uploader}`)).map((f) => f.path));
+    }
+  } catch (err) {
+    console.error("[chat-files] removing a deleted channel's files failed", channelId, err);
+  }
+}

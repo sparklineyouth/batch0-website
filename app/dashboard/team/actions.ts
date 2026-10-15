@@ -154,7 +154,9 @@ export async function leaveTeam() {
     // Last one out — flush the team's storage prefixes before deleting
     // the row so we don't leave orphan bytes paying rent in the bucket.
     // DB rows (including legacy team_drive_files) cascade-delete via FK;
-    // this clears the storage objects: older drive uploads + the logo.
+    // this clears the storage objects: older drive uploads + the logo. The
+    // team's chat channel isn't one of them: 0101 archives it as a staff
+    // channel, history, files and reports kept (chat_keep_scoped_channels).
     await purgeTeamStorage(admin, membership.team_id);
     await admin.from("teams").delete().eq("id", membership.team_id);
   }

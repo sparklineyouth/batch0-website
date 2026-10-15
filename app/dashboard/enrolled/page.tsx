@@ -105,8 +105,8 @@ export default async function EnrolledPage(
           <NextStep
             href="/chat"
             icon={MessagesSquare}
-            title="Say hi in #general"
-            body="Meet your cohort in Chat."
+            title="Say hi in Chat"
+            body="In #general, and in your cohort's own channel."
           />
           <NextStep
             href="/dashboard/team"

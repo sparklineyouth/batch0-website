@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Hash, Loader2, Lock, Megaphone, Search, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,24 +13,41 @@ import {
   type Posting,
 } from "@/lib/chat-access";
 import { plainText } from "@/lib/chat-format";
+import type { ActionResult } from "@/lib/action-result";
 import {
   addToGroup,
   createGroup,
   fetchBlockedPeople,
+  flagForTeam,
   renameGroup,
   reportConversation,
   reportMessage,
   searchPeople,
   unblockPerson,
 } from "@/app/chat/actions";
-import { addChannelMembers, updateChannel } from "@/app/chat/manage-actions";
+import { addChannelMembers, mutePerson, unmutePerson, updateChannel } from "@/app/chat/manage-actions";
 import { Avatar, RoleTag } from "./avatar";
 import { Modal } from "./modal";
-import { resultError } from "./util";
+import { tracked } from "./api";
+import { OFFLINE, resultError, senderName } from "./util";
 import type { ChannelInfo, ChatPerson, ChatViewerInfo, SidebarData, UiMessage } from "./types";
 
+// 16px on phones: iOS Safari zooms the page into any smaller field it focuses.
 const field =
-  "w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:border-ink/40 focus:outline-none";
+  "w-full rounded-md border border-line bg-paper px-3 py-2 text-base text-ink placeholder:text-ink-faint focus:border-ink/40 focus:outline-none md:text-sm";
+
+/**
+ * Run a write for a dialog: never throws (a dropped connection, or a deploy
+ * that swapped the actions out, is an answer like any other), so `busy`
+ * always comes back down and the dialog can always be closed.
+ */
+async function attempt<T>(run: () => Promise<ActionResult<T>>): Promise<ActionResult<T>> {
+  try {
+    return await tracked(run());
+  } catch {
+    return { ok: false, error: OFFLINE };
+  }
+}
 
 function ErrorLine({ text }: { text: string | null }) {
   return text ? <p className="mt-2 text-xs text-red-600 dark:text-red-400" role="alert">{text}</p> : null;
@@ -47,7 +65,7 @@ function usePeopleSearch(open: boolean) {
     setLoading(true);
     const t = setTimeout(async () => {
       try {
-        const found = await searchPeople(query);
+        const found = await tracked(searchPeople(query));
         if (n === seq.current) setResults(found);
       } catch {
         if (n === seq.current) setResults([]);
@@ -167,7 +185,7 @@ export function NewConversationDialog({
     }
     setBusy(true);
     setError(null);
-    const res = await createGroup({ userIds: picked.map((p) => p.id), name });
+    const res = await attempt(() => createGroup({ userIds: picked.map((p) => p.id), name }));
     setBusy(false);
     if (!res.ok || !res.data) setError(resultError(res, "Couldn't start the group."));
     else onOpenChannel(res.data.channelId);
@@ -215,6 +233,7 @@ export function QuickSwitcher({
 }) {
   const [q, setQ] = useState("");
   const [index, setIndex] = useState(0);
+  const ids = useId();
   useEffect(() => {
     if (open) {
       setQ("");
@@ -241,6 +260,11 @@ export function QuickSwitcher({
       <input
         data-autofocus
         value={q}
+        role="combobox"
+        aria-expanded={items.length > 0}
+        aria-controls={`${ids}-list`}
+        aria-autocomplete="list"
+        aria-activedescendant={items[index] ? `${ids}-${index}` : undefined}
         onChange={(e) => setQ(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
@@ -258,25 +282,27 @@ export function QuickSwitcher({
         className={field}
         aria-label="Search channels and conversations"
       />
-      <ul className="mt-2">
+      <ul id={`${ids}-list`} role="listbox" aria-label="Channels and conversations" className="mt-2">
         {items.map((i, n) => {
           const Icon = i.kind === "channel" ? (i.posting === "staff" ? Megaphone : i.audience === "everyone" || i.audience === "cohort" ? Hash : Lock) : i.kind === "group" ? Users : null;
           return (
-            <li key={i.id}>
-              <button
-                type="button"
-                onClick={() => onOpen(i.id)}
-                className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm ${n === index ? "bg-wash" : "hover:bg-wash"}`}
-              >
-                {Icon ? <Icon className="h-4 w-4 text-ink-faint" /> : <Avatar name={i.label} size={22} />}
-                <span className={`min-w-0 flex-1 truncate ${i.unread ? "font-semibold text-ink" : "text-ink-soft"}`}>{i.label}</span>
-                {i.unread ? <span className="h-1.5 w-1.5 rounded-full bg-ink" /> : null}
-              </button>
+            <li
+              key={i.id}
+              id={`${ids}-${n}`}
+              role="option"
+              aria-selected={n === index}
+              onClick={() => onOpen(i.id)}
+              onMouseMove={() => setIndex(n)}
+              className={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm ${n === index ? "bg-wash" : "hover:bg-wash"}`}
+            >
+              {Icon ? <Icon className="h-4 w-4 text-ink-faint" aria-hidden /> : <Avatar name={i.label} size={22} />}
+              <span className={`min-w-0 flex-1 truncate ${i.unread ? "font-semibold text-ink" : "text-ink-soft"}`}>{i.label}</span>
+              {i.unread ? <span className="h-1.5 w-1.5 rounded-full bg-ink" aria-label="Unread" /> : null}
             </li>
           );
         })}
-        {items.length === 0 ? <li className="py-4 text-center text-xs text-ink-faint">Nothing matches.</li> : null}
       </ul>
+      {items.length === 0 ? <p className="py-4 text-center text-xs text-ink-faint" role="status">Nothing matches.</p> : null}
     </Modal>
   );
 }
@@ -285,10 +311,18 @@ export function QuickSwitcher({
 export function BlockedPeopleDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [people, setPeople] = useState<ChatPerson[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
+    let live = true;
     setPeople(null);
-    fetchBlockedPeople().then(setPeople).catch(() => setError("Couldn't load your block list."));
+    setError(null);
+    tracked(fetchBlockedPeople())
+      .then((list) => live && setPeople(list))
+      .catch(() => live && setError("Couldn't load your block list. Close this and try again."));
+    return () => {
+      live = false;
+    };
   }, [open]);
   return (
     <Modal open={open} title="Blocked" onClose={onClose}>
@@ -308,8 +342,12 @@ export function BlockedPeopleDialog({ open, onClose }: { open: boolean; onClose:
               <Button
                 size="sm"
                 variant="secondary"
+                disabled={busy === p.id}
                 onClick={async () => {
-                  const res = await unblockPerson(p.id);
+                  setBusy(p.id);
+                  setError(null);
+                  const res = await attempt(() => unblockPerson(p.id));
+                  setBusy(null);
                   if (res.ok) setPeople((list) => (list ?? []).filter((x) => x.id !== p.id));
                   else setError(resultError(res, "Couldn't unblock."));
                 }}
@@ -348,11 +386,12 @@ export function ReportDialog({
   const [error, setError] = useState<string | null>(null);
   const privateThread = channel.kind !== "channel";
   const submit = async () => {
+    if (busy) return;
     setBusy(true);
     setError(null);
-    const res = message
-      ? await reportMessage({ messageId: message.id, reason })
-      : await reportConversation({ channelId: channel.id, reason });
+    const res = await attempt(() =>
+      message ? reportMessage({ messageId: message.id, reason }) : reportConversation({ channelId: channel.id, reason }),
+    );
     setBusy(false);
     if (!res.ok) setError(resultError(res, "Couldn't send the report."));
     else onDone();
@@ -361,14 +400,17 @@ export function ReportDialog({
     <Modal open title={message ? "Report message" : "Report conversation"} onClose={onClose} busy={busy}>
       {message ? (
         <blockquote className="mb-3 border-l-2 border-line pl-3 text-sm text-ink-soft">
-          <strong className="text-ink">{message.senderId ? (people[message.senderId]?.name ?? "Someone") : "batch0"}:</strong>{" "}
+          <strong className="text-ink">{senderName(message, people)}:</strong>{" "}
           {plainText(message.body || "[attachment]", (id) => people[id]?.name, () => null, 200)}
         </blockquote>
       ) : null}
       <p className="mb-3 text-xs leading-relaxed text-ink-soft">
         {privateThread
           ? "Reporting hands this whole conversation — your messages included — to the batch0 team so they can act on it. Nobody else in it is told who reported."
-          : "The batch0 team will see the message and your reason. The person you report isn't told who reported them."}
+          : "The batch0 team will see the message and your reason. The person you report isn't told who reported them."}{" "}
+        <Link href="/community-guidelines" target="_blank" className="link-ink">
+          Community guidelines
+        </Link>
       </p>
       <textarea
         data-autofocus
@@ -400,17 +442,20 @@ export function ChannelSettingsDialog({ channel, onClose, onSaved }: { channel: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
+    if (busy) return;
     setBusy(true);
     setError(null);
-    const res = await updateChannel(channel.id, {
-      name,
-      topic,
-      audience: channel.audience,
-      cohortId: channel.cohortId,
-      teamId: channel.teamId,
-      posting,
-      slowmodeSeconds: slowmode,
-    });
+    const res = await attempt(() =>
+      updateChannel(channel.id, {
+        name,
+        topic,
+        audience: channel.audience,
+        cohortId: channel.cohortId,
+        teamId: channel.teamId,
+        posting,
+        slowmodeSeconds: slowmode,
+      }),
+    );
     setBusy(false);
     if (!res.ok) setError(resultError(res, "Couldn't save the channel."));
     else onSaved();
@@ -467,7 +512,8 @@ export function RenameGroupDialog({ channel, onClose, onSaved }: { channel: Chan
           disabled={busy}
           onClick={async () => {
             setBusy(true);
-            const res = await renameGroup(channel.id, name);
+            setError(null);
+            const res = await attempt(() => renameGroup(channel.id, name));
             setBusy(false);
             if (!res.ok) setError(resultError(res, "Couldn't rename the group."));
             else onSaved();
@@ -508,7 +554,7 @@ export function AddPeopleDialog({ channel, onClose, onSaved }: { channel: Channe
             setBusy(true);
             setError(null);
             const ids = picked.map((p) => p.id);
-            const res = isGroup ? await addToGroup(channel.id, ids) : await addChannelMembers(channel.id, ids);
+            const res = await attempt<unknown>(() => (isGroup ? addToGroup(channel.id, ids) : addChannelMembers(channel.id, ids)));
             setBusy(false);
             if (!res.ok) setError(resultError(res, "Couldn't add them."));
             else onSaved(ids.length);
@@ -516,6 +562,150 @@ export function AddPeopleDialog({ channel, onClose, onSaved }: { channel: Channe
         >
           Add {picked.length || ""}
         </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * "Ask the team for help" about a message in a channel: every chat moderator
+ * gets a bell that opens it. Not a report — nobody is in trouble — so it
+ * hands over nothing but the link and the note.
+ */
+export function FlagDialog({
+  message,
+  people,
+  onClose,
+  onDone,
+}: {
+  message: UiMessage;
+  people: Record<string, ChatPerson>;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    const res = await attempt(() => flagForTeam(message.id, note));
+    setBusy(false);
+    if (!res.ok) setError(resultError(res, "Couldn't reach the team. Try again."));
+    else onDone();
+  };
+  return (
+    <Modal open title="Ask the team for help" onClose={onClose} busy={busy}>
+      <blockquote className="mb-3 border-l-2 border-line pl-3 text-sm text-ink-soft">
+        <strong className="text-ink">{senderName(message, people)}:</strong>{" "}
+        {plainText(message.body || "[attachment]", (id) => people[id]?.name, () => null, 200)}
+      </blockquote>
+      <p className="mb-3 text-xs leading-relaxed text-ink-soft">
+        The batch0 team gets a notification that opens this message. Use it when someone&apos;s stuck or something needs a
+        staff eye. To flag something wrong, report it instead.
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <input
+          data-autofocus
+          value={note}
+          onChange={(e) => setNote(e.target.value.slice(0, 300))}
+          placeholder="What do you need? (optional)"
+          className={field}
+          aria-label="What do you need?"
+          maxLength={300}
+        />
+        <ErrorLine text={error} />
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button type="submit" disabled={busy}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Ask the team
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+const MUTE_CHOICES: { minutes: number | null; label: string }[] = [
+  { minutes: 60, label: "1 hour" },
+  { minutes: 60 * 24, label: "24 hours" },
+  { minutes: 60 * 24 * 7, label: "7 days" },
+  { minutes: null, label: "Until lifted" },
+];
+
+/**
+ * Staff: stop someone posting in chat for a while. They can still read,
+ * report, block and message the team; the composer tells them why it's off.
+ */
+export function MuteDialog({
+  userId,
+  name,
+  onClose,
+  onDone,
+}: {
+  userId: string;
+  name: string;
+  onClose: () => void;
+  onDone: (notice: string) => void;
+}) {
+  const [choice, setChoice] = useState(1);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ids = useId();
+  const run = async (lift: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    const pick = MUTE_CHOICES[choice];
+    const res = await attempt(() => (lift ? unmutePerson(userId) : mutePerson(userId, pick.minutes, reason)));
+    setBusy(false);
+    if (!res.ok) setError(resultError(res, lift ? "Couldn't lift the mute." : "Couldn't mute them."));
+    else onDone(lift ? `${name} can post again.` : `${name} is muted in chat${pick.minutes === null ? " until you lift it" : ` for ${pick.label}`}.`);
+  };
+  return (
+    <Modal open title={`Mute ${name} in chat`} onClose={onClose} busy={busy}>
+      <p className="mb-3 text-xs leading-relaxed text-ink-soft">
+        They can still read, report, block and message the batch0 team, but can&apos;t post, react or start conversations.
+        Their composer says so. The mute is logged.
+      </p>
+      <fieldset>
+        <legend className="mb-1.5 text-xs font-medium text-ink-soft">For how long</legend>
+        <div className="grid grid-cols-2 gap-1.5">
+          {MUTE_CHOICES.map((c, i) => (
+            <label
+              key={c.label}
+              className={`flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-2 text-sm ${choice === i ? "border-ink/40 bg-wash text-ink" : "border-line text-ink-soft"}`}
+            >
+              <input type="radio" name={`${ids}-mute`} checked={choice === i} onChange={() => setChoice(i)} className="accent-current" />
+              {c.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <label className="mt-3 block text-xs font-medium text-ink-soft">
+        Why (staff see this)
+        <input value={reason} onChange={(e) => setReason(e.target.value.slice(0, 500))} className={`${field} mt-1`} placeholder="e.g. spamming #general after a warning" />
+      </label>
+      <ErrorLine text={error} />
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <button type="button" className="link-ink text-xs" onClick={() => void run(true)} disabled={busy}>
+          Lift a mute instead
+        </button>
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant="danger" onClick={() => void run(false)} disabled={busy}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Mute
+          </Button>
+        </div>
       </div>
     </Modal>
   );

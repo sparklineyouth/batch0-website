@@ -1,9 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  asUuid,
   attentionFor,
   badgeText,
   BELL_QUIET_MS,
+  bellTitle,
+  channelReportsOpenTo,
+  defaultReadCursor,
+  dmVerdict,
+  ONLY_THE_TEAM_REASON,
+  reachVerdict,
+  FINE_REASON,
+  fitPostBody,
+  MESSAGE_MAX,
+  muteActive,
+  MUTED_REASON,
+  reportPartyIds,
+  reportRouting,
+  UNREAD_LOOKBACK_MS,
   canDeleteMessage,
   canEditMessage,
   canManageChannel,
@@ -178,15 +193,69 @@ test("a report is never shown to someone it's about", () => {
   assert.equal(reportOpenTo([ME, YOU], staff), false, "a party to the conversation");
   assert.equal(reportOpenTo([], viewer()), false, "not staff");
   assert.equal(reportOpenTo([], viewer({ staff: true, userId: "" })), false);
-  const dmReport = { channelId: "d1", partyIds: [YOU] };
-  assert.equal(reportVisibleTo(dmReport, "dm", staff), true);
-  assert.equal(reportVisibleTo(dmReport, "dm", { ...staff, memberOf: ["d1"] }), false, "joined after the report");
-  assert.equal(reportVisibleTo({ channelId: "c1", partyIds: [YOU] }, "channel", { ...staff, memberOf: ["c1"] }), true);
-  assert.equal(reportVisibleTo({ channelId: "c1", partyIds: [ME] }, "channel", staff), false, "sent the reported message");
+  const dm = { id: "d1", kind: "dm" as const };
+  assert.equal(reportVisibleTo(dm, [{ partyIds: [YOU] }], staff), true);
+  assert.equal(reportVisibleTo(dm, [{ partyIds: [YOU] }], { ...staff, memberOf: ["d1"] }), false, "joined after the report");
+  const c1 = { id: "c1", kind: "channel" as const };
+  assert.equal(reportVisibleTo(c1, [{ partyIds: [YOU] }], { ...staff, memberOf: ["c1"] }), true);
+  assert.equal(reportVisibleTo(c1, [{ partyIds: [ME] }], staff), false, "sent the reported message");
+  assert.equal(reportVisibleTo(c1, [], staff), false, "nothing reported");
   // The read rule follows: a party's `reported` is false, so no read path.
-  const dm = channel({ id: "d1", kind: "dm", audience: "members" });
-  assert.equal(canReadChannel(dm, staff, reportOpenTo([ME, YOU], staff)), false);
-  assert.equal(canReadChannel(dm, staff, reportOpenTo([YOU], staff)), true);
+  const dmScope = channel({ id: "d1", kind: "dm", audience: "members" });
+  assert.equal(canReadChannel(dmScope, staff, channelReportsOpenTo([{ partyIds: [ME, YOU] }], staff)), false);
+  assert.equal(canReadChannel(dmScope, staff, channelReportsOpenTo([{ partyIds: [YOU] }], staff)), true);
+});
+
+test("a party to any report on a channel stays out of every report on it", () => {
+  const staff = viewer({ staff: true });
+  const first = { partyIds: [ME, YOU] };
+  // Reported, then left the group: a later report can't see them as a member
+  // any more, but the earlier one still names them.
+  const later = { partyIds: [YOU] };
+  assert.equal(channelReportsOpenTo([later], staff), true, "on its own the later report would open it");
+  assert.equal(channelReportsOpenTo([first, later], staff), false);
+  assert.equal(channelReportsOpenTo([later, first], staff), false, "order doesn't matter");
+  assert.equal(channelReportsOpenTo([], staff), false, "no report, no read path");
+  assert.equal(channelReportsOpenTo([later], viewer()), false, "never for non-staff");
+  assert.equal(reportVisibleTo({ id: "g", kind: "group" }, [first, later], staff), false);
+});
+
+test("a report freezes everyone it could be about", () => {
+  const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const MOD = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  // A group: members now, everyone who ever posted (the moderator who said
+  // it and left), the reported sender, and earlier reports' parties.
+  assert.deepEqual(
+    reportPartyIds({ kind: "group", members: [ME, YOU], senders: [ME, MOD, null], messageSenderId: null, earlier: [] }).sort(),
+    [ME, YOU, MOD].sort(),
+  );
+  assert.deepEqual(
+    reportPartyIds({ kind: "dm", members: [ME], senders: [], messageSenderId: YOU, earlier: [{ partyIds: [A] }] }).sort(),
+    [ME, YOU, A].sort(),
+  );
+  // A text channel: the message's sender (and earlier parties), not the room.
+  assert.deepEqual(
+    reportPartyIds({ kind: "channel", members: [ME], senders: [ME, YOU], messageSenderId: MOD, earlier: [] }),
+    [MOD],
+  );
+  assert.deepEqual(
+    reportPartyIds({ kind: "channel", members: [], senders: [], messageSenderId: null, earlier: [{ partyIds: [MOD] }] }),
+    [MOD],
+  );
+});
+
+test("report bells go to moderators it leaves out, and escalate when that's nobody", () => {
+  const M1 = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const M2 = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  // The reported moderator is never told; the other one is.
+  assert.deepEqual(reportRouting([M1, M2], [{ partyIds: [ME, M1] }], ME), { notify: [M2], escalate: false });
+  // Every moderator is a party: nobody in chat can see it.
+  assert.deepEqual(reportRouting([M1], [{ partyIds: [ME, M1] }], ME), { notify: [], escalate: true });
+  assert.deepEqual(reportRouting([], [{ partyIds: [ME] }], ME), { notify: [], escalate: true });
+  // An earlier report naming M2 keeps M2 out of the new one too.
+  assert.deepEqual(reportRouting([M1, M2], [{ partyIds: [M2] }, { partyIds: [ME] }], ME), { notify: [M1], escalate: false });
+  // A moderator who reports isn't belled about their own report, but can see it.
+  assert.deepEqual(reportRouting([M1], [{ partyIds: [YOU] }], M1), { notify: [], escalate: false });
 });
 
 test("dmKey is order-independent and refuses a DM with yourself", () => {
@@ -197,6 +266,11 @@ test("dmKey is order-independent and refuses a DM with yourself", () => {
   assert.equal(otherInDmKey(dmKey(ME, YOU), YOU), ME);
   assert.equal(otherInDmKey(dmKey(ME, YOU), "someone"), null);
   assert.equal(otherInDmKey("legacy:abc", ME), null);
+  // Case can't make one person two, or two people one row.
+  assert.throws(() => dmKey(ME, ME.toUpperCase()));
+  assert.equal(dmKey(ME, YOU.toUpperCase()), dmKey(ME, YOU));
+  assert.equal(otherInDmKey(dmKey(ME, YOU), ME.toUpperCase()), YOU);
+  assert.equal(otherInDmKey(dmKey(ME, YOU).toUpperCase(), ME), YOU);
 });
 
 test("group names fall back to the other members", () => {
@@ -313,9 +387,11 @@ test("isUuid", () => {
   assert.equal(isUuid(ME), true);
   assert.equal(isUuid("deleted:x"), false);
   assert.equal(isUuid(undefined), false);
+  assert.equal(asUuid(ME.toUpperCase()), ME);
+  assert.equal(asUuid("nope"), null);
 });
 
-test("starting a group: two or more others, within the cap, for vetted people", () => {
+test("one other person is a DM; a group is two or more, within the cap, for vetted people", () => {
   assert.equal(canStartGroup(viewer(), 0).ok, false);
   assert.equal(canStartGroup(viewer(), 1).ok, true);
   assert.equal(canStartGroup(viewer(), 2).ok, true);
@@ -358,4 +434,70 @@ test("the badge counts what the sidebar shows as unread, and nothing else", () =
   assert.equal(attentionFor("group", k, "none", true), 0, "muted");
   assert.equal(attentionFor("dm", k, null, false), 0, "closed since its last message");
   assert.equal(attentionFor("dm", { unread: 0, mentions: 0 }, null, true), 0);
+});
+
+test("a mute or a fine stops posting, except for staff", () => {
+  const now = Date.parse("2026-10-15T12:00:00Z");
+  assert.equal(muteActive(null, now), false);
+  assert.equal(muteActive({ until: null }, now), true, "until lifted");
+  assert.equal(muteActive({ until: "2026-10-15T13:00:00Z" }, now), true);
+  assert.equal(muteActive({ until: "2026-10-15T11:00:00Z" }, now), false, "expired");
+  assert.deepEqual(canPost(channel(), viewer(), { muted: true }), { ok: false, reason: MUTED_REASON });
+  assert.deepEqual(canPost(channel(), viewer(), { fined: true }), { ok: false, reason: FINE_REASON });
+  assert.equal(canPost(channel(), viewer({ staff: true }), { muted: true, fined: true }).ok, true);
+  const dm = channel({ kind: "dm", audience: "members" });
+  const me = viewer({ memberOf: ["c1"] });
+  assert.deepEqual(canPost(dm, me, { otherPresent: true, muted: true }), { ok: false, reason: MUTED_REASON });
+  // The channel's own state speaks first.
+  const ann = canPost(channel({ posting: "staff" }), viewer(), { muted: true });
+  assert.ok(!ann.ok && ann.reason !== MUTED_REASON);
+});
+
+test("bell titles never carry a group's name or members", () => {
+  const t = (kind: "dm" | "group" | "channel", over: Partial<Parameters<typeof bellTitle>[1]> = {}) =>
+    bellTitle(kind, { sender: "Ann", channelName: "help", mentioned: false, everyone: false, ...over });
+  assert.equal(t("dm"), "Ann messaged you");
+  assert.equal(t("group", { channelName: "secret plans" }), "Ann in a group chat");
+  assert.equal(t("channel"), "Ann posted in #help");
+  assert.equal(t("channel", { mentioned: true }), "Ann mentioned you in #help");
+  assert.equal(t("channel", { mentioned: true, everyone: true }), "Ann pinged everyone in #help");
+});
+
+test("a channel never opened counts as unread from two weeks back, a conversation from the start", () => {
+  const now = Date.parse("2026-10-15T12:00:00Z");
+  assert.equal(defaultReadCursor("channel", now), new Date(now - UNREAD_LOOKBACK_MS).toISOString());
+  assert.equal(defaultReadCursor("dm", now), new Date(0).toISOString());
+  assert.equal(defaultReadCursor("group", now), new Date(0).toISOString());
+});
+
+test("a long cross-post is cut at a word, with an ellipsis and the link", () => {
+  assert.equal(fitPostBody("  short  ", "/x"), "short");
+  const long = "word ".repeat(1500);
+  const out = fitPostBody(long, "https://batch0.org/dashboard/announcements#a-1");
+  assert.ok(out.length <= MESSAGE_MAX);
+  assert.ok(out.endsWith("…\n\nRead the rest: https://batch0.org/dashboard/announcements#a-1"));
+  assert.ok(/word…/.test(out), "cut after a whole word");
+  const noLink = fitPostBody("x".repeat(MESSAGE_MAX + 10));
+  assert.equal(noLink.length, MESSAGE_MAX);
+  assert.ok(noLink.endsWith("…"));
+});
+
+test("who can open a DM: reachable first, then the safeguarding rule", () => {
+  const student = { id: "s", student: true, staff: false };
+  const mentor = { id: "m", student: false, staff: false };
+  const staff = { id: "a", student: false, staff: true };
+  const as = (party: typeof student, over: { vetted?: boolean } = {}) => ({ staff: party.staff, vetted: over.vetted ?? true, party });
+  // A fresh signup learns nothing about a mentor — not even that safeguarding applies.
+  assert.deepEqual(dmVerdict(as(student, { vetted: false }), { ...mentor, vetted: true }), { ok: false, reason: ONLY_THE_TEAM_REASON });
+  // An accepted student is told why they can't DM a mentor.
+  assert.deepEqual(dmVerdict(as(student), { ...mentor, vetted: true }), { ok: false, reason: SAFEGUARD_REASON });
+  assert.equal(dmVerdict(as(student), { ...student, id: "s2", vetted: true }).ok, true);
+  assert.equal(dmVerdict(as(student, { vetted: false }), { ...staff, vetted: false }).ok, true, "anyone can write to the team");
+  assert.equal(dmVerdict(as(staff), { ...student, vetted: false }).ok, true, "the team can write to anyone");
+  assert.equal(dmVerdict(as(student), { ...student, id: "s2", vetted: false }).ok, false, "not let in yet");
+  // A group checks reach per person and safeguarding once, on everyone: a
+  // mentor is reachable for a student, so a group with staff in it can form.
+  assert.equal(reachVerdict({ staff: false, vetted: true }, { staff: false, vetted: true }).ok, true);
+  assert.equal(conversationAllowed([student, mentor, staff]), true);
+  assert.equal(reachVerdict({ staff: false, vetted: false }, { staff: false, vetted: true }).ok, false);
 });

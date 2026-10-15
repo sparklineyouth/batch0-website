@@ -26,6 +26,9 @@ import { Templates } from "@/lib/email/templates";
 import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
 import { logAudit } from "@/lib/audit";
+import { env } from "@/lib/env";
+import { postStaffFeed } from "@/lib/chat-post";
+import { enrolledLine } from "@/lib/staff-feed";
 import { cohortHasStarted, fmtDateOnly, todayISO } from "@/lib/pre-cohort";
 import {
   findProfileByEmail,
@@ -398,6 +401,14 @@ async function announceEnrollment(args: {
       // delivery path — webhook, retry, or reconciliation on return.
       dedupeKey: `enrolled:${args.cohortId ?? "no-cohort"}`,
     });
+    // The #staff feed: a seat was paid for. This used to be the Discord
+    // "New enrollment" post in #announcements; it stays with the team now,
+    // since a public channel naming each paying student (most of them minors)
+    // isn't the community's business. Only the transition into paid gets
+    // here, so a webhook retry doesn't post twice.
+    await postStaffFeed(
+      enrolledLine({ name: profile?.full_name, cohortName: args.cohortName, userId: args.userId, siteUrl: env.siteUrl }),
+    );
   } catch (err) {
     console.error("[stripe] enrollment announce failed", err);
   }

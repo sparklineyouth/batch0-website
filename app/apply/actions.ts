@@ -30,6 +30,7 @@ import { attachCampaignAttribution } from "@/lib/campaign-attribution-server";
 import { getUser as getVerifiedTokenUser } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { postStaffFeed } from "@/lib/chat-post";
+import { applicationLine } from "@/lib/staff-feed";
 
 // Optional URL: empty string allowed, otherwise must be a valid URL
 const optionalUrl = z
@@ -661,8 +662,9 @@ async function upsertApplication(
           link: `/admin/applications/${applicationId}`,
         });
       }
+      // Name and link only: #staff readers needn't hold applications.view.
       await postStaffFeed(
-        `${autoAdmitted ? "Auto-admitted by founder pass" : "New application"}: **${profile?.full_name ?? profile?.email ?? user.email ?? "applicant"}** · ${env.siteUrl}/admin/applications/${applicationId}`,
+        applicationLine({ name: profile?.full_name, applicationId, autoAdmitted, siteUrl: env.siteUrl }),
       );
     } catch (err) {
       console.error("[apply] post-submit notifications failed", err);

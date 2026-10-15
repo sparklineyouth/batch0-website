@@ -7,13 +7,15 @@ import { isMissingSchemaError } from "@/lib/schema-ready";
 import {
   attentionFor,
   canReadChannel,
+  channelReportsOpenTo,
   compareChannels,
   compareConversations,
   groupDisplayName,
   isConversationVisible,
   isUuid,
+  muteActive,
   otherInDmKey,
-  reportOpenTo,
+  PEOPLE_SEARCH_MAX,
   reportVisibleTo,
   type Audience,
   type ChannelKind,
@@ -24,9 +26,10 @@ import {
   type ReactionMap,
   type Party,
   conversationAllowed,
-  SAFEGUARD_REASON,
+  dmVerdict,
+  reachVerdict,
 } from "@/lib/chat-access";
-import { plainText } from "@/lib/chat-format";
+import { cutBody, plainText } from "@/lib/chat-format";
 import type { ChatAttachment } from "@/lib/chat-files-rules";
 
 /**
@@ -41,6 +44,11 @@ import type { ChatAttachment } from "@/lib/chat-files-rules";
  *
  * Emails never enter a shape that reaches the browser. A person is a name, a
  * role label and a staff flag.
+ *
+ * PostgREST answers at most max-rows rows (1000 on Supabase) and says nothing
+ * when it stops. Every read that can outgrow that pages (pageAll) or is
+ * chunked so a chunk can't: a list that silently loses its tail would drop
+ * someone's DMs, @everyone bells or channels without an error.
  */
 
 // ---------------------------------------------------------------------------
@@ -78,6 +86,11 @@ export type ReplyPreview = {
   senderId: string | null;
   preview: string;
   deleted: boolean;
+  /**
+   * The replied-to message's mentions, as the server vetted them when it was
+   * sent: the only <@id>s in `preview` that get a name.
+   */
+  mentions?: string[];
 };
 
 export type ChatMessage = {
@@ -126,8 +139,10 @@ const CHANNEL_COLS =
 const MESSAGE_COLS =
   "id, channel_id, sender_id, body, kind, reply_to_id, mentions, mention_everyone, attachments, reactions, created_at, edited_at, deleted_at, pinned_at";
 
+type DbError = { message: string; code?: string } | null;
+
 /** A failed read throws: an outage must never render as "nothing here" (or "nobody blocked you"). */
-function must<T>(res: { data: T | null; error: { message: string; code?: string } | null }, what: string): T | null {
+function must<T>(res: { data: T | null; error: DbError }, what: string): T | null {
   if (res.error) {
     const err = new Error(`Couldn't load ${what}: ${res.error.message}`) as Error & { code?: string };
     err.code = res.error.code;
@@ -142,6 +157,27 @@ function chunks<T>(items: readonly T[], size = 150): T[][] {
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
 }
+
+/** Supabase's default max-rows. A page this long means there may be more. */
+const PAGE_ROWS = 1000;
+
+/**
+ * Every row a query matches, a page at a time. `build` must order by a
+ * unique key, or rows can repeat or go missing between pages.
+ */
+export async function pageAll<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: unknown; error: DbError }>,
+  what: string,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE_ROWS) {
+    const page = (must(await build(from, from + PAGE_ROWS - 1), what) ?? []) as T[];
+    out.push(...page);
+    if (page.length < PAGE_ROWS) return out;
+  }
+}
+
+const uniq = <T,>(xs: Iterable<T>): T[] => Array.from(new Set(xs));
 
 export function toChannel(r: any): ChannelRow {
   return {
@@ -167,7 +203,7 @@ export function toChannel(r: any): ChannelRow {
   };
 }
 
-function toAttachments(raw: unknown): ChatAttachment[] {
+export function toAttachments(raw: unknown): ChatAttachment[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((a) => a && typeof a === "object" && typeof (a as any).path === "string")
@@ -231,7 +267,7 @@ async function toPeople(rows: any[]): Promise<ChatPerson[]> {
 }
 
 export async function getPeople(ids: readonly (string | null | undefined)[]): Promise<Map<string, ChatPerson>> {
-  const real = Array.from(new Set(ids.filter(isUuid)));
+  const real = uniq(ids.filter(isUuid).map((id) => id.toLowerCase()));
   if (real.length === 0) return new Map();
   const admin = createAdminClient();
   const rows = (
@@ -246,7 +282,7 @@ export async function getPeople(ids: readonly (string | null | undefined)[]): Pr
 }
 
 export async function getPerson(id: string): Promise<ChatPerson | null> {
-  return (await getPeople([id])).get(id) ?? null;
+  return (await getPeople([id])).get(id.toLowerCase()) ?? null;
 }
 
 export function deletedPerson(id: string): ChatPerson {
@@ -275,39 +311,62 @@ async function staffRoleSlugs(): Promise<string[]> {
 }
 
 /**
- * Of these people, who has been let in: a non-student role, or a student
+ * Of these profiles, who has been let in: a non-student role, or a student
  * with an enrollment or an accepted application. Mirrors chat_is_vetted() in
  * 0101. Asked per person, never by loading every enrollment.
  */
-export async function vettedIds(ids: readonly string[]): Promise<Set<string>> {
-  const unique = Array.from(new Set(ids.filter(isUuid)));
-  if (unique.length === 0) return new Set();
-  const admin = createAdminClient();
+async function vettedAmong(rows: readonly { id: string; role: string | null }[]): Promise<Set<string>> {
   const out = new Set<string>();
   const students: string[] = [];
-  for (const part of chunks(unique)) {
-    const rows = (must(await admin.from("profiles").select("id, role").in("id", part), "people") ?? []) as {
-      id: string;
-      role: string | null;
-    }[];
-    for (const r of rows) {
-      if (r.role && r.role !== "student") out.add(r.id);
-      else students.push(r.id);
-    }
+  for (const r of rows) {
+    if (r.role && r.role !== "student") out.add(r.id);
+    else students.push(r.id);
   }
-  for (const part of chunks(students)) {
-    const [enr, apps] = await Promise.all([
-      admin.from("enrollments").select("user_id").in("user_id", part),
-      admin
-        .from("applications")
-        .select("user_id")
-        .in("user_id", part)
-        .in("status", ACCEPTED_STATUSES as unknown as string[]),
-    ]);
-    for (const r of (must(enr, "enrollments") ?? []) as any[]) out.add(r.user_id);
-    for (const r of (must(apps, "applications") ?? []) as any[]) out.add(r.user_id);
-  }
+  if (students.length === 0) return out;
+  const admin = createAdminClient();
+  await Promise.all(
+    chunks(uniq(students)).map(async (part) => {
+      const [enr, apps] = await Promise.all([
+        pageAll<{ user_id: string }>(
+          (from, to) => admin.from("enrollments").select("user_id").in("user_id", part).order("id").range(from, to),
+          "enrollments",
+        ),
+        pageAll<{ user_id: string }>(
+          (from, to) =>
+            admin
+              .from("applications")
+              .select("user_id")
+              .in("user_id", part)
+              .in("status", ACCEPTED_STATUSES as unknown as string[])
+              .order("id")
+              .range(from, to),
+          "applications",
+        ),
+      ]);
+      for (const r of enr) out.add(r.user_id);
+      for (const r of apps) out.add(r.user_id);
+    }),
+  );
   return out;
+}
+
+/** vettedAmong, for ids. */
+export async function vettedIds(ids: readonly string[]): Promise<Set<string>> {
+  const unique = uniq(ids.filter(isUuid).map((id) => id.toLowerCase()));
+  if (unique.length === 0) return new Set();
+  const admin = createAdminClient();
+  const rows = (
+    await Promise.all(
+      chunks(unique).map(
+        async (part) =>
+          (must(await admin.from("profiles").select("id, role").in("id", part), "people") ?? []) as {
+            id: string;
+            role: string | null;
+          }[],
+      ),
+    )
+  ).flat();
+  return vettedAmong(rows);
 }
 
 // ---------------------------------------------------------------------------
@@ -317,56 +376,161 @@ export async function vettedIds(ids: readonly string[]): Promise<Set<string>> {
 /** Everything the rules need about this person, resolved in one parallel batch. */
 export async function getChatViewer(userId: string, caps: Capabilities | null): Promise<ChatViewer> {
   const admin = createAdminClient();
-  const [vetted, enr, teams, mentored, members] = await Promise.all([
+  const [vetted, enrolled, teams, mentored, members] = await Promise.all([
     vettedIds([userId]),
-    admin.from("enrollments").select("cohort_id").eq("user_id", userId),
-    admin.from("team_members").select("team_id").eq("user_id", userId),
-    mentoredTeamIds(userId),
-    admin.from("chat_members").select("channel_id").eq("user_id", userId).limit(2000),
+    pageAll<{ cohort_id: string }>(
+      (from, to) => admin.from("enrollments").select("cohort_id").eq("user_id", userId).order("id").range(from, to),
+      "enrollments",
+    ),
+    pageAll<{ team_id: string }>(
+      (from, to) => admin.from("team_members").select("team_id").eq("user_id", userId).order("id").range(from, to),
+      "teams",
+    ),
+    mentoredScopes(userId),
+    // Staff collect a DM with every applicant who writes in: thousands of
+    // rows, every one of them a conversation they must still be able to open.
+    pageAll<{ channel_id: string }>(
+      (from, to) =>
+        admin.from("chat_members").select("channel_id").eq("user_id", userId).order("channel_id").range(from, to),
+      "channels",
+    ),
   ]);
-  const own = ((must(teams, "teams") ?? []) as any[]).map((r) => r.team_id as string);
   return {
     userId,
     staff: can(caps, "chat.manage"),
     vetted: vetted.has(userId),
-    cohortIds: ((must(enr, "enrollments") ?? []) as any[]).map((r) => r.cohort_id),
-    teamIds: Array.from(new Set([...own, ...mentored])),
-    memberOf: ((must(members, "channels") ?? []) as any[]).map((r) => r.channel_id),
+    cohortIds: uniq([...enrolled.map((r) => r.cohort_id), ...mentored.cohortIds]),
+    teamIds: uniq([...teams.map((r) => r.team_id), ...mentored.teamIds]),
+    memberOf: members.map((r) => r.channel_id),
   };
 }
 
 /**
- * The teams a mentor's assigned students are on. A team's channel opens to
- * those mentors, the way the Discord team-channel sync used to — derived on
- * every read, so assigning or moving someone needs no resync. Mirrors the
- * mentor_assignments clause of chat_can_read() in 0101.
+ * The teams and cohorts a mentor's assigned students are on and enrolled
+ * in. Their channels open to the mentor, the way the Discord sync used to
+ * grant — derived on every read, so assigning or moving someone needs no
+ * resync. Mirrors the mentor_assignments clauses of chat_can_read() in 0101.
  */
-export async function mentoredTeamIds(mentorId: string): Promise<string[]> {
+export async function mentoredScopes(mentorId: string): Promise<{ teamIds: string[]; cohortIds: string[] }> {
   const admin = createAdminClient();
-  const students = ((must(await admin.from("mentor_assignments").select("student_id").eq("mentor_id", mentorId).limit(1000), "mentor assignments") ??
-    []) as any[]).map((r) => r.student_id as string);
+  const students = uniq(
+    (
+      await pageAll<{ student_id: string }>(
+        (from, to) =>
+          admin.from("mentor_assignments").select("student_id").eq("mentor_id", mentorId).order("id").range(from, to),
+        "mentor assignments",
+      )
+    ).map((r) => r.student_id),
+  );
+  const teamIds = new Set<string>();
+  const cohortIds = new Set<string>();
+  await Promise.all(
+    chunks(students).map(async (part) => {
+      const [teams, enrolled] = await Promise.all([
+        pageAll<{ team_id: string }>(
+          (from, to) => admin.from("team_members").select("team_id").in("user_id", part).order("id").range(from, to),
+          "teams",
+        ),
+        pageAll<{ cohort_id: string }>(
+          (from, to) => admin.from("enrollments").select("cohort_id").in("user_id", part).order("id").range(from, to),
+          "enrollments",
+        ),
+      ]);
+      for (const r of teams) teamIds.add(r.team_id);
+      for (const r of enrolled) cohortIds.add(r.cohort_id);
+    }),
+  );
+  return { teamIds: Array.from(teamIds), cohortIds: Array.from(cohortIds) };
+}
+
+/**
+ * Mentors assigned to anyone among these students (or only those of
+ * `among`, when given): the mentor half of a team or cohort channel's
+ * audience.
+ */
+async function mentorsOf(students: readonly string[], among?: readonly string[]): Promise<string[]> {
+  if (students.length === 0 || (among && among.length === 0)) return [];
+  const admin = createAdminClient();
+  const wanted = among ? new Set(among) : null;
   const out = new Set<string>();
-  for (const part of chunks(Array.from(new Set(students)))) {
-    const rows = (must(await admin.from("team_members").select("team_id").in("user_id", part), "teams") ?? []) as any[];
-    for (const r of rows) out.add(r.team_id);
-  }
+  await Promise.all(
+    chunks(uniq(students)).map(async (part) => {
+      const rows = await pageAll<{ mentor_id: string }>(
+        (from, to) => admin.from("mentor_assignments").select("mentor_id").in("student_id", part).order("id").range(from, to),
+        "mentor assignments",
+      );
+      for (const r of rows) if (!wanted || wanted.has(r.mentor_id)) out.add(r.mentor_id);
+    }),
+  );
   return Array.from(out);
 }
 
-/** Mentors assigned to anyone on this team: part of its channel's audience. */
-async function teamMentorIds(teamId: string, among?: readonly string[]): Promise<string[]> {
+async function teamMemberIds(teamId: string): Promise<string[]> {
   const admin = createAdminClient();
-  const students = ((must(await admin.from("team_members").select("user_id").eq("team_id", teamId).limit(1000), "team") ?? []) as any[]).map(
-    (r) => r.user_id as string,
-  );
-  const out = new Set<string>();
-  for (const part of chunks(Array.from(new Set(students)))) {
-    let q = admin.from("mentor_assignments").select("mentor_id").in("student_id", part);
-    if (among) q = q.in("mentor_id", among as string[]);
-    const rows = (must(await q, "mentor assignments") ?? []) as any[];
-    for (const r of rows) out.add(r.mentor_id);
-  }
-  return Array.from(out);
+  return (
+    await pageAll<{ user_id: string }>(
+      (from, to) => admin.from("team_members").select("user_id").eq("team_id", teamId).order("id").range(from, to),
+      "team",
+    )
+  ).map((r) => r.user_id);
+}
+
+async function cohortStudentIds(cohortId: string): Promise<string[]> {
+  const admin = createAdminClient();
+  return (
+    await pageAll<{ user_id: string }>(
+      (from, to) => admin.from("enrollments").select("user_id").eq("cohort_id", cohortId).order("id").range(from, to),
+      "enrollments",
+    )
+  ).map((r) => r.user_id);
+}
+
+/**
+ * The viewer for ONE channel: exactly the facts canReadChannel reads for it
+ * (membership of it, staff, and the one audience clause that applies), in one
+ * to three small queries instead of getChatViewer's whole picture. For the
+ * read paths that touch a single channel — a page of messages, a file, the
+ * read cursor. Never hand it to anything that looks at another channel: its
+ * lists name this channel or nothing.
+ */
+export async function getChannelViewer(userId: string, caps: Capabilities | null, channel: ChannelRow): Promise<ChatViewer> {
+  const admin = createAdminClient();
+  const staff = can(caps, "chat.manage");
+  const membership = admin
+    .from("chat_members")
+    .select("user_id")
+    .eq("channel_id", channel.id)
+    .eq("user_id", userId)
+    .maybeSingle()
+    .then((res) => !!must(res, "membership"));
+  const audience = (async (): Promise<Pick<ChatViewer, "vetted" | "cohortIds" | "teamIds">> => {
+    const none = { vetted: false, cohortIds: [] as string[], teamIds: [] as string[] };
+    if (channel.kind !== "channel" || staff) return none;
+    if (channel.audience === "everyone") return { ...none, vetted: (await vettedIds([userId])).has(userId) };
+    if (channel.audience === "cohort" && channel.cohortId) {
+      const cohortId = channel.cohortId;
+      const own = must(
+        await admin.from("enrollments").select("id").eq("user_id", userId).eq("cohort_id", cohortId).limit(1),
+        "enrollments",
+      ) as unknown[] | null;
+      if ((own ?? []).length > 0) return { ...none, cohortIds: [cohortId] };
+      const scopes = await mentoredScopes(userId);
+      return { ...none, cohortIds: scopes.cohortIds.includes(cohortId) ? [cohortId] : [] };
+    }
+    if (channel.audience === "team" && channel.teamId) {
+      const teamId = channel.teamId;
+      const own = must(
+        await admin.from("team_members").select("id").eq("user_id", userId).eq("team_id", teamId).limit(1),
+        "teams",
+      ) as unknown[] | null;
+      if ((own ?? []).length > 0) return { ...none, teamIds: [teamId] };
+      const scopes = await mentoredScopes(userId);
+      return { ...none, teamIds: scopes.teamIds.includes(teamId) ? [teamId] : [] };
+    }
+    return none;
+  })();
+  const [member, facts] = await Promise.all([membership, audience]);
+  return { userId, staff, ...facts, memberOf: member ? [channel.id] : [] };
 }
 
 // ---------------------------------------------------------------------------
@@ -376,7 +540,7 @@ async function teamMentorIds(teamId: string, among?: readonly string[]): Promise
 export async function getChannelRow(id: string): Promise<ChannelRow | null> {
   if (!isUuid(id)) return null;
   const data = must(
-    await createAdminClient().from("chat_channels").select(CHANNEL_COLS).eq("id", id).maybeSingle(),
+    await createAdminClient().from("chat_channels").select(CHANNEL_COLS).eq("id", id.toLowerCase()).maybeSingle(),
     "the channel",
   );
   return data ? toChannel(data) : null;
@@ -390,15 +554,39 @@ export async function getChannelBySystemKey(key: string): Promise<ChannelRow | n
   return data ? toChannel(data) : null;
 }
 
+/** Every report's parties on these channels, keyed by channel. */
+async function reportPartiesByChannel(channelIds: readonly string[]): Promise<Map<string, { partyIds: string[] }[]>> {
+  const out = new Map<string, { partyIds: string[] }[]>();
+  const admin = createAdminClient();
+  await Promise.all(
+    chunks(uniq(channelIds)).map(async (part) => {
+      const rows = await pageAll<{ channel_id: string; party_ids: string[] | null }>(
+        (from, to) => admin.from("chat_reports").select("channel_id, party_ids").in("channel_id", part).order("id").range(from, to),
+        "reports",
+      );
+      for (const r of rows) {
+        const list = out.get(r.channel_id) ?? [];
+        list.push({ partyIds: Array.isArray(r.party_ids) ? r.party_ids : [] });
+        out.set(r.channel_id, list);
+      }
+    }),
+  );
+  return out;
+}
+
+/** Every report on one channel, as the rules see them. */
+export async function listChannelReportParties(channelId: string): Promise<{ partyIds: string[] }[]> {
+  return (await reportPartiesByChannel([channelId])).get(channelId) ?? [];
+}
+
 /**
- * Is this channel reported, by a report this viewer may see? The staff read
- * gate for DMs and groups — a moderator the report is about gets false.
+ * Is this channel reported, by reports that leave this viewer out? The staff
+ * read gate for DMs and groups (channelReportsOpenTo): a moderator any report
+ * on it names gets false, however many later reports don't.
  */
 export async function isReportedFor(channelId: string, viewer: ChatViewer): Promise<boolean> {
   if (!viewer.staff) return false;
-  const { data, error } = await createAdminClient().from("chat_reports").select("party_ids").eq("channel_id", channelId);
-  if (error) throw new Error(`Couldn't load reports: ${error.message}`);
-  return ((data ?? []) as { party_ids: string[] | null }[]).some((r) => reportOpenTo(r.party_ids ?? [], viewer));
+  return channelReportsOpenTo(await listChannelReportParties(channelId), viewer);
 }
 
 /**
@@ -411,6 +599,10 @@ export async function getChannelForViewer(
 ): Promise<{ channel: ChannelRow; reported: boolean } | null> {
   const channel = await getChannelRow(id);
   if (!channel) return null;
+  return readable(channel, viewer);
+}
+
+async function readable(channel: ChannelRow, viewer: ChatViewer): Promise<{ channel: ChannelRow; reported: boolean } | null> {
   // Only pay for the report lookup when it could change the answer.
   const reported =
     channel.kind !== "channel" && viewer.staff && !viewer.memberOf.includes(channel.id)
@@ -420,9 +612,26 @@ export async function getChannelForViewer(
 }
 
 /**
+ * getChannelForViewer for a read that touches only this channel, with the
+ * viewer resolved just for it (getChannelViewer). Hands that viewer back so
+ * the caller's other checks agree with the one that let it in.
+ */
+export async function openChannelFor(
+  id: string,
+  userId: string,
+  caps: Capabilities | null,
+): Promise<{ channel: ChannelRow; reported: boolean; viewer: ChatViewer } | null> {
+  const channel = await getChannelRow(id);
+  if (!channel) return null;
+  const viewer = await getChannelViewer(userId, caps, channel);
+  const found = await readable(channel, viewer);
+  return found ? { ...found, viewer } : null;
+}
+
+/**
  * Every channel, DM and group the viewer can read (archived ones too — the
- * caller decides what to show). One query, then the shared rule as a filter
- * so the list can never show more than the rule allows.
+ * caller decides what to show). Then the shared rule as a filter, so the list
+ * can never show more than the rule allows.
  */
 export async function listReadableChannels(viewer: ChatViewer): Promise<ChannelRow[]> {
   const admin = createAdminClient();
@@ -433,15 +642,21 @@ export async function listReadableChannels(viewer: ChatViewer): Promise<ChannelR
     if (viewer.cohortIds.length) ors.push(`and(kind.eq.channel,audience.eq.cohort,cohort_id.in.(${viewer.cohortIds.join(",")}))`);
     if (viewer.teamIds.length) ors.push(`and(kind.eq.channel,audience.eq.team,team_id.in.(${viewer.teamIds.join(",")}))`);
   }
-  const results: any[] = [];
-  if (ors.length) {
-    results.push(...(must(await admin.from("chat_channels").select(CHANNEL_COLS).or(ors.join(",")).limit(1000), "channels") ?? []));
-  }
-  for (const part of chunks(viewer.memberOf)) {
-    results.push(...(must(await admin.from("chat_channels").select(CHANNEL_COLS).in("id", part), "channels") ?? []));
-  }
+  const [audience, memberships] = await Promise.all([
+    ors.length
+      ? pageAll<any>(
+          (from, to) => admin.from("chat_channels").select(CHANNEL_COLS).or(ors.join(",")).order("id").range(from, to),
+          "channels",
+        )
+      : Promise.resolve([] as any[]),
+    Promise.all(
+      chunks(viewer.memberOf).map(
+        async (part) => (must(await admin.from("chat_channels").select(CHANNEL_COLS).in("id", part), "channels") ?? []) as any[],
+      ),
+    ),
+  ]);
   const seen = new Set<string>();
-  return results
+  return [...audience, ...memberships.flat()]
     .map(toChannel)
     .filter((c) => {
       if (seen.has(c.id)) return false;
@@ -454,18 +669,30 @@ export async function listReadableChannels(viewer: ChatViewer): Promise<ChannelR
 export async function listMembers(channelIds: readonly string[]): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
   const admin = createAdminClient();
-  for (const part of chunks(Array.from(new Set(channelIds)))) {
-    const rows = (must(await admin.from("chat_members").select("channel_id, user_id").in("channel_id", part), "members") ?? []) as any[];
-    for (const r of rows) {
-      const list = out.get(r.channel_id) ?? [];
-      list.push(r.user_id);
-      out.set(r.channel_id, list);
-    }
-  }
+  await Promise.all(
+    chunks(uniq(channelIds)).map(async (part) => {
+      const rows = await pageAll<{ channel_id: string; user_id: string }>(
+        (from, to) =>
+          admin
+            .from("chat_members")
+            .select("channel_id, user_id")
+            .in("channel_id", part)
+            .order("channel_id")
+            .order("user_id")
+            .range(from, to),
+        "members",
+      );
+      for (const r of rows) {
+        const list = out.get(r.channel_id) ?? [];
+        list.push(r.user_id);
+        out.set(r.channel_id, list);
+      }
+    }),
+  );
   return out;
 }
 
-type ReadRow = {
+export type ReadRow = {
   channel_id: string;
   last_read_at: string;
   seen_at: string | null;
@@ -476,17 +703,20 @@ type ReadRow = {
 export async function getReads(userId: string, channelIds: readonly string[]): Promise<Map<string, ReadRow>> {
   const out = new Map<string, ReadRow>();
   const admin = createAdminClient();
-  for (const part of chunks(channelIds)) {
-    const rows = (must(
-      await admin
-        .from("chat_reads")
-        .select("channel_id, last_read_at, seen_at, notify, hidden_at")
-        .eq("user_id", userId)
-        .in("channel_id", part),
-      "read state",
-    ) ?? []) as ReadRow[];
-    for (const r of rows) out.set(r.channel_id, r);
-  }
+  // One row per channel at most, so a 150-id chunk can't outgrow a page.
+  await Promise.all(
+    chunks(uniq(channelIds)).map(async (part) => {
+      const rows = (must(
+        await admin
+          .from("chat_reads")
+          .select("channel_id, last_read_at, seen_at, notify, hidden_at")
+          .eq("user_id", userId)
+          .in("channel_id", part),
+        "read state",
+      ) ?? []) as ReadRow[];
+      for (const r of rows) out.set(r.channel_id, r);
+    }),
+  );
   return out;
 }
 
@@ -497,19 +727,23 @@ export async function getUnreadCounts(
   const out = new Map<string, { unread: number; mentions: number }>();
   if (channelIds.length === 0) return out;
   const admin = createAdminClient();
-  for (const part of chunks(channelIds, 500)) {
-    const rows = (must(
-      await admin.rpc("chat_unread", { p_uid: userId, p_channel_ids: part }),
-      "unread counts",
-    ) ?? []) as { channel_id: string; unread: number; mentions: number }[];
-    for (const r of rows) out.set(r.channel_id, { unread: r.unread ?? 0, mentions: r.mentions ?? 0 });
-  }
+  // One row per channel, so a 500-id chunk stays under max-rows.
+  await Promise.all(
+    chunks(uniq(channelIds), 500).map(async (part) => {
+      const rows = (must(
+        await admin.rpc("chat_unread", { p_uid: userId, p_channel_ids: part }),
+        "unread counts",
+      ) ?? []) as { channel_id: string; unread: number; mentions: number }[];
+      for (const r of rows) out.set(r.channel_id, { unread: r.unread ?? 0, mentions: r.mentions ?? 0 });
+    }),
+  );
   return out;
 }
 
 export type SidebarData = {
   channels: SidebarItem[];
   conversations: SidebarItem[];
+  /** Everyone the sidebar names, the viewer included. */
   people: Record<string, ChatPerson>;
   /** People the viewer has blocked: their messages collapse in channels and groups. */
   blocked: string[];
@@ -532,7 +766,7 @@ export async function buildSidebar(viewer: ChatViewer): Promise<SidebarData> {
     listBlockedIds(viewer.userId),
   ]);
 
-  const personIds = new Set<string>();
+  const personIds = new Set<string>([viewer.userId]);
   for (const c of live) {
     if (c.kind === "dm") {
       const other = otherInDmKey(c.dmKey, viewer.userId);
@@ -541,6 +775,7 @@ export async function buildSidebar(viewer: ChatViewer): Promise<SidebarData> {
     if (c.kind === "group") for (const id of members.get(c.id) ?? []) personIds.add(id);
   }
   const people = await getPeople(Array.from(personIds));
+  const blockedSet = new Set(blocked);
 
   const channels: SidebarItem[] = [];
   const conversations: SidebarItem[] = [];
@@ -577,9 +812,14 @@ export async function buildSidebar(viewer: ChatViewer): Promise<SidebarData> {
       memberIds,
       lastMessageAt: c.lastMessageAt,
       preview:
-        c.kind === "channel" || !c.lastMessagePreview
+        // A block is silence: the blocked person's words don't show in the
+        // blocker's sidebar either (they collapse in the conversation).
+        c.kind === "channel" || !c.lastMessagePreview || (c.lastSenderId && blockedSet.has(c.lastSenderId))
           ? null
-          : plainText(c.lastMessagePreview, (id) => people.get(id)?.name, () => null, 80),
+          : // Stored as left(body, 140): a full-length one may be cut mid-spoiler.
+            plainText(c.lastMessagePreview, (id) => people.get(id)?.name, () => null, 80, {
+              cut: Array.from(c.lastMessagePreview).length >= 140,
+            }),
       unread: count.unread,
       mentions: c.kind === "channel" ? count.mentions : count.unread,
       notify: read?.notify ?? null,
@@ -615,18 +855,21 @@ export async function countAttention(viewer: ChatViewer): Promise<number> {
 const MEMBER_LIST_MAX = 300;
 
 /**
- * Everyone who can read a channel, as people — the member list, and the
- * mention autocomplete. Capped; for #general at batch0's size it's everyone.
- * Staff are included on every text channel because they can read them all.
+ * Who can read a channel, as people, in name order — the member list, and
+ * the composer's instant @-mention candidates. The first MEMBER_LIST_MAX by
+ * name; past that the composer asks searchChannelPeople as you type. Staff
+ * are included on every text channel because they can read them all.
  */
 export async function listChannelPeople(channel: ChannelRow): Promise<ChatPerson[]> {
-  const ids = await listChannelAudienceIds(channel, MEMBER_LIST_MAX);
+  const ids = await listChannelAudienceIds(channel);
   const people = await getPeople(ids);
-  return Array.from(people.values()).sort((a, b) => a.name.localeCompare(b.name));
+  return Array.from(people.values())
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, MEMBER_LIST_MAX);
 }
 
-/** The ids of everyone who can read a channel (bells for @everyone use it too). */
-export async function listChannelAudienceIds(channel: ChannelRow, limit = 5000): Promise<string[]> {
+/** The ids of everyone who can read a channel, all of them (bells for @everyone use it too). */
+export async function listChannelAudienceIds(channel: ChannelRow): Promise<string[]> {
   const admin = createAdminClient();
   const ids = new Set<string>();
   const explicit = (await listMembers([channel.id])).get(channel.id) ?? [];
@@ -634,37 +877,105 @@ export async function listChannelAudienceIds(channel: ChannelRow, limit = 5000):
   if (channel.kind !== "channel") return Array.from(ids);
 
   const staffSlugs = await staffRoleSlugs();
+  const sources: Promise<string[]>[] = [];
   if (staffSlugs.length) {
-    const staff = (must(await admin.from("profiles").select("id").in("role", staffSlugs).limit(limit), "staff") ?? []) as any[];
-    for (const r of staff) ids.add(r.id);
+    sources.push(
+      pageAll<{ id: string }>(
+        (from, to) => admin.from("profiles").select("id").in("role", staffSlugs).order("id").range(from, to),
+        "staff",
+      ).then((rows) => rows.map((r) => r.id)),
+    );
   }
   switch (channel.audience) {
-    case "cohort": {
-      const rows = (must(await admin.from("enrollments").select("user_id").eq("cohort_id", channel.cohortId!).limit(limit), "enrollments") ?? []) as any[];
-      for (const r of rows) ids.add(r.user_id);
+    case "cohort":
+      if (channel.cohortId) {
+        sources.push(
+          cohortStudentIds(channel.cohortId).then(async (students) => [...students, ...(await mentorsOf(students))]),
+        );
+      }
       break;
-    }
-    case "team": {
-      const rows = (must(await admin.from("team_members").select("user_id").eq("team_id", channel.teamId!).limit(limit), "team") ?? []) as any[];
-      for (const r of rows) ids.add(r.user_id);
-      for (const id of await teamMentorIds(channel.teamId!)) ids.add(id);
+    case "team":
+      if (channel.teamId) {
+        sources.push(teamMemberIds(channel.teamId).then(async (members) => [...members, ...(await mentorsOf(members))]));
+      }
       break;
-    }
-    case "everyone": {
-      const [nonStudents, enrolled, accepted] = await Promise.all([
-        admin.from("profiles").select("id").neq("role", "student").limit(limit),
-        admin.from("enrollments").select("user_id").limit(limit),
-        admin.from("applications").select("user_id").in("status", ACCEPTED_STATUSES as unknown as string[]).limit(limit),
-      ]);
-      for (const r of (must(nonStudents, "people") ?? []) as any[]) ids.add(r.id);
-      for (const r of (must(enrolled, "enrollments") ?? []) as any[]) ids.add(r.user_id);
-      for (const r of (must(accepted, "applications") ?? []) as any[]) ids.add(r.user_id);
+    case "everyone":
+      sources.push(
+        pageAll<{ id: string }>(
+          (from, to) => admin.from("profiles").select("id").neq("role", "student").order("id").range(from, to),
+          "people",
+        ).then((rows) => rows.map((r) => r.id)),
+        pageAll<{ user_id: string }>(
+          (from, to) => admin.from("enrollments").select("user_id").order("id").range(from, to),
+          "enrollments",
+        ).then((rows) => rows.map((r) => r.user_id)),
+        pageAll<{ user_id: string }>(
+          (from, to) =>
+            admin
+              .from("applications")
+              .select("user_id")
+              .in("status", ACCEPTED_STATUSES as unknown as string[])
+              .order("id")
+              .range(from, to),
+          "applications",
+        ).then((rows) => rows.map((r) => r.user_id)),
+      );
       break;
-    }
     default:
       break;
   }
-  return Array.from(ids).slice(0, limit);
+  for (const list of await Promise.all(sources)) for (const id of list) if (id) ids.add(id);
+  return Array.from(ids);
+}
+
+/**
+ * Mention autocomplete past the preloaded list: people whose name matches,
+ * who can read this channel, in name order (names that start with the query
+ * first). Matches names only, never email. A DM or group searches its members.
+ */
+export async function searchChannelPeople(
+  channel: ChannelRow,
+  query: string,
+  limit = PEOPLE_SEARCH_MAX,
+): Promise<ChatPerson[]> {
+  const q = query.trim().replace(/[%,()"\\*_]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+  if (!q) return [];
+  const lower = q.toLowerCase();
+  const rank = (p: ChatPerson) => {
+    const name = p.name.toLowerCase();
+    return name.startsWith(lower) ? 0 : name.split(/\s+/).some((w) => w.startsWith(lower)) ? 1 : 2;
+  };
+  const ordered = (people: ChatPerson[]) =>
+    people.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)).slice(0, limit);
+
+  if (channel.kind !== "channel") {
+    const members = (await listMembers([channel.id])).get(channel.id) ?? [];
+    const people = await getPeople(members);
+    return ordered(Array.from(people.values()).filter((p) => p.name.toLowerCase().includes(lower)));
+  }
+
+  // Name matches a page at a time, kept only when they can read the channel.
+  // Ten pages is plenty for a name: past that the query is too short to mean anyone.
+  const admin = createAdminClient();
+  const found: ChatPerson[] = [];
+  const SCAN = 200;
+  for (let from = 0, pages = 0; found.length < limit * 3 && pages < 10; from += SCAN, pages++) {
+    const rows = (must(
+      await admin
+        .from("profiles")
+        .select("id, full_name, role")
+        .ilike("full_name", `%${q}%`)
+        .order("full_name")
+        .order("id")
+        .range(from, from + SCAN - 1),
+      "people",
+    ) ?? []) as any[];
+    if (rows.length === 0) break;
+    const readers = new Set(await readersAmong(channel, rows.map((r) => r.id)));
+    found.push(...(await toPeople(rows.filter((r) => readers.has(r.id)))));
+    if (rows.length < SCAN) break;
+  }
+  return ordered(found);
 }
 
 // ---------------------------------------------------------------------------
@@ -672,31 +983,39 @@ export async function listChannelAudienceIds(channel: ChannelRow, limit = 5000):
 // ---------------------------------------------------------------------------
 
 async function attachReplies(rows: any[]): Promise<ChatMessage[]> {
-  const replyIds = Array.from(new Set(rows.map((r) => r.reply_to_id).filter(isUuid)));
+  const replyIds = uniq(rows.map((r) => r.reply_to_id).filter(isUuid));
   const replies = new Map<string, ReplyPreview>();
   if (replyIds.length) {
     const admin = createAdminClient();
-    for (const part of chunks(replyIds)) {
-      const found = (must(
-        await admin.from("chat_messages").select("id, sender_id, body, attachments, deleted_at").in("id", part),
-        "replies",
-      ) ?? []) as any[];
-      for (const r of found) {
-        replies.set(r.id, {
-          id: r.id,
-          senderId: r.sender_id ?? null,
-          // Mentions stay as <@id> here; the client resolves names.
-          preview: r.deleted_at ? "" : r.body ? r.body.slice(0, 300) : toAttachments(r.attachments).length ? "[attachment]" : "",
-          deleted: !!r.deleted_at,
-        });
-      }
+    const found = (
+      await Promise.all(
+        chunks(replyIds).map(
+          async (part) =>
+            (must(
+              await admin.from("chat_messages").select("id, sender_id, body, attachments, mentions, deleted_at").in("id", part),
+              "replies",
+            ) ?? []) as any[],
+        ),
+      )
+    ).flat();
+    for (const r of found) {
+      replies.set(r.id, {
+        id: r.id,
+        senderId: r.sender_id ?? null,
+        // Mentions stay as <@id> here; the client resolves names.
+        // Cut where a later parse can't misread it (cutBody): never through a
+        // token, and a spoiler the cut runs into stays closed.
+        preview: r.deleted_at ? "" : r.body ? cutBody(r.body, 300) : toAttachments(r.attachments).length ? "[attachment]" : "",
+        deleted: !!r.deleted_at,
+        mentions: !r.deleted_at && Array.isArray(r.mentions) ? r.mentions : [],
+      });
     }
   }
   return rows.map((r) =>
     toMessage(
       r,
       r.reply_to_id
-        ? (replies.get(r.reply_to_id) ?? { id: r.reply_to_id, senderId: null, preview: "", deleted: true })
+        ? (replies.get(r.reply_to_id) ?? { id: r.reply_to_id, senderId: null, preview: "", deleted: true, mentions: [] })
         : null,
     ),
   );
@@ -704,14 +1023,29 @@ async function attachReplies(rows: any[]): Promise<ChatMessage[]> {
 
 export const PAGE_SIZE = 50;
 
+/** A PostgREST filter value, quoted: timestamps carry the `.` and `:` the filter grammar reserves. */
+function quoted(value: string): string {
+  return `"${value.replace(/["\\]/g, "")}"`;
+}
+
+/** The keyset filter for "strictly before (createdAt, id)" in posting order. */
+function beforeKey(createdAt: string, id: string): string {
+  return `created_at.lt.${quoted(createdAt)},and(created_at.eq.${quoted(createdAt)},id.lt.${id})`;
+}
+
 /**
  * A page of messages in posting order: the newest PAGE_SIZE, or the ones
- * before `before`, or a window around one message (a search hit, a pin).
- * Deleted messages are left out. Only call after getChannelForViewer().
+ * before a cursor, or a window around one message (a search hit, a pin).
+ * Deleted messages are left out. Only call after the channel's read check.
+ *
+ * The cursor is the compound (created_at, id) of the oldest message loaded:
+ * rows written in one transaction share created_at, and a timestamp-only
+ * cursor would skip whichever of them fell past a page's edge. A bare
+ * `before` (no id) still works, as "older than this instant".
  */
 export async function listMessages(
   channelId: string,
-  opts: { before?: string; around?: string; limit?: number } = {},
+  opts: { before?: string; beforeId?: string; around?: string; limit?: number } = {},
 ): Promise<{ messages: ChatMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean }> {
   const admin = createAdminClient();
   const limit = Math.min(Math.max(opts.limit ?? PAGE_SIZE, 1), 100);
@@ -719,14 +1053,23 @@ export async function listMessages(
 
   if (opts.around && isUuid(opts.around)) {
     const target = must(
-      await admin.from("chat_messages").select("created_at").eq("id", opts.around).eq("channel_id", channelId).maybeSingle(),
+      await admin.from("chat_messages").select("id, created_at").eq("id", opts.around).eq("channel_id", channelId).maybeSingle(),
       "the message",
-    ) as { created_at: string } | null;
+    ) as { id: string; created_at: string } | null;
     if (target) {
       const half = Math.floor(limit / 2);
+      const t = quoted(target.created_at);
       const [older, newer] = await Promise.all([
-        base().lte("created_at", target.created_at).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(half + 1),
-        base().gt("created_at", target.created_at).order("created_at", { ascending: true }).limit(half + 1),
+        base()
+          .or(`created_at.lt.${t},and(created_at.eq.${t},id.lte.${target.id})`)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(half + 1),
+        base()
+          .or(`created_at.gt.${t},and(created_at.eq.${t},id.gt.${target.id})`)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .limit(half + 1),
       ]);
       const o = (must(older, "messages") ?? []) as any[];
       const n = (must(newer, "messages") ?? []) as any[];
@@ -736,7 +1079,9 @@ export async function listMessages(
   }
 
   let q = base();
-  if (opts.before) q = q.lt("created_at", opts.before);
+  if (opts.before && Number.isFinite(Date.parse(opts.before))) {
+    q = isUuid(opts.beforeId) ? q.or(beforeKey(opts.before, opts.beforeId.toLowerCase())) : q.lt("created_at", opts.before);
+  }
   const rows = (must(
     await q.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit + 1),
     "messages",
@@ -748,20 +1093,28 @@ export async function listMessages(
 export async function getMessageRow(id: string): Promise<any | null> {
   if (!isUuid(id)) return null;
   return must(
-    await createAdminClient().from("chat_messages").select(MESSAGE_COLS + ", deleted_by, pinned_by").eq("id", id).maybeSingle(),
+    await createAdminClient()
+      .from("chat_messages")
+      .select(MESSAGE_COLS + ", deleted_by, pinned_by")
+      .eq("id", id.toLowerCase())
+      .maybeSingle(),
     "the message",
   );
 }
 
 export async function getMessages(ids: readonly string[]): Promise<ChatMessage[]> {
-  const rows: any[] = [];
   const admin = createAdminClient();
-  for (const part of chunks(ids.filter(isUuid))) {
-    rows.push(...((must(await admin.from("chat_messages").select(MESSAGE_COLS).in("id", part), "messages") ?? []) as any[]));
-  }
+  const rows = (
+    await Promise.all(
+      chunks(uniq(ids.filter(isUuid).map((id) => id.toLowerCase()))).map(
+        async (part) => (must(await admin.from("chat_messages").select(MESSAGE_COLS).in("id", part), "messages") ?? []) as any[],
+      ),
+    )
+  ).flat();
   return attachReplies(rows.filter((r) => !r.deleted_at));
 }
 
+/** A channel's pins, newest first. A channel holds at most 50 (togglePin). */
 export async function listPins(channelId: string): Promise<ChatMessage[]> {
   const rows = (must(
     await createAdminClient()
@@ -777,10 +1130,24 @@ export async function listPins(channelId: string): Promise<ChatMessage[]> {
   return attachReplies(rows);
 }
 
+/** How many pins, without loading them. */
+export async function countPins(channelId: string): Promise<number> {
+  const { count, error } = await createAdminClient()
+    .from("chat_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("channel_id", channelId)
+    .is("deleted_at", null)
+    .not("pinned_at", "is", null);
+  if (error) throw new Error(`Couldn't load pins: ${error.message}`);
+  return count ?? 0;
+}
+
 /**
- * Search the channels the viewer can read (or one of them). Plain substring
+ * Search the channels the viewer can read, or one channel. Plain substring
  * match, newest first: at batch0's size that's instant, and nobody has to
- * learn a query language.
+ * learn a query language. One channel is checked the way opening it is
+ * (getChannelForViewer), so a moderator can search a reported DM they're
+ * reading — the sidebar's list never holds those.
  */
 export async function searchMessages(
   viewer: ChatViewer,
@@ -789,28 +1156,35 @@ export async function searchMessages(
 ): Promise<ChatMessage[]> {
   const q = query.trim().replace(/[%_\\]/g, (c) => `\\${c}`);
   if (q.length < 2) return [];
-  const channels = await listReadableChannels(viewer);
-  const ids = channelId ? channels.filter((c) => c.id === channelId).map((c) => c.id) : channels.map((c) => c.id);
+  let ids: string[];
+  if (channelId) {
+    const found = await getChannelForViewer(channelId, viewer);
+    ids = found ? [found.channel.id] : [];
+  } else {
+    ids = (await listReadableChannels(viewer)).map((c) => c.id);
+  }
   if (ids.length === 0) return [];
   const admin = createAdminClient();
-  const rows: any[] = [];
-  for (const part of chunks(ids)) {
-    rows.push(
-      ...((must(
-        await admin
-          .from("chat_messages")
-          .select(MESSAGE_COLS)
-          .in("channel_id", part)
-          .is("deleted_at", null)
-          .eq("kind", "message")
-          .ilike("body", `%${q}%`)
-          .order("created_at", { ascending: false })
-          .limit(40),
-        "search",
-      ) ?? []) as any[]),
-    );
-  }
-  rows.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  const rows = (
+    await Promise.all(
+      chunks(ids).map(
+        async (part) =>
+          (must(
+            await admin
+              .from("chat_messages")
+              .select(MESSAGE_COLS)
+              .in("channel_id", part)
+              .is("deleted_at", null)
+              .eq("kind", "message")
+              .ilike("body", `%${q}%`)
+              .order("created_at", { ascending: false })
+              .limit(40),
+            "search",
+          ) ?? []) as any[],
+      ),
+    )
+  ).flat();
+  rows.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? 1 : -1));
   return attachReplies(rows.slice(0, 40));
 }
 
@@ -843,31 +1217,41 @@ export async function lastSentAt(channelId: string, userId: string): Promise<str
 //   never cut off by this: someone the team wrote to can always reply.
 // ---------------------------------------------------------------------------
 
+/** Is this recipient let in? Only asked when the answer can matter. */
+async function recipientVetted(actor: ChatViewer, recipient: ChatPerson): Promise<boolean> {
+  if (actor.staff || recipient.isStaff || !actor.vetted) return false;
+  return (await vettedIds([recipient.id])).has(recipient.id);
+}
+
+/**
+ * May the actor reach this person at all (reachVerdict): the directory rule,
+ * without safeguarding. A group checks this per person and safeguarding once,
+ * on the whole membership: a student may start a group with a mentor when a
+ * staff member is in it too.
+ */
+export async function canReach(
+  actor: ChatViewer,
+  recipient: ChatPerson,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  return reachVerdict(actor, { staff: recipient.isStaff, vetted: await recipientVetted(actor, recipient) });
+}
+
+/** May the actor open a DM with this person (dmVerdict: reachable, then safeguarding)? */
 export async function canStartConversation(
   actor: ChatViewer,
   recipient: ChatPerson,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   if (actor.staff || recipient.isStaff) return { ok: true };
-  const me = await getPerson(actor.userId);
-  if (me && !conversationAllowed([asParty(me), asParty(recipient)])) {
-    return { ok: false, reason: SAFEGUARD_REASON };
-  }
-  if (!actor.vetted) {
-    return {
-      ok: false,
-      reason: "For now you can message the batch0 team. Messaging other people opens once you've been accepted.",
-    };
-  }
-  const vetted = await vettedIds([recipient.id]);
-  if (!vetted.has(recipient.id)) return { ok: false, reason: "That person isn't available." };
-  return { ok: true };
+  const [vetted, me] = await Promise.all([recipientVetted(actor, recipient), getPerson(actor.userId)]);
+  return dmVerdict({ ...actor, party: me ? asParty(me) : null }, { ...asParty(recipient), vetted });
 }
 
 /**
- * The directory for a new DM or group: by name, scoped to who the viewer may
- * reach. Never lists anyone on either side of a block (showing someone who
- * blocked you and then failing would announce it), and matches email only
- * for staff (a student typing a guessed address must not get a confirming hit).
+ * The directory for a new DM or group: by name, in name order, scoped to who
+ * the viewer may reach. Never lists anyone on either side of a block (showing
+ * someone who blocked you and then failing would announce it), and matches
+ * email only for staff (a student typing a guessed address must not get a
+ * confirming hit).
  */
 export async function searchDirectory(query: string, viewer: ChatViewer, limit = 20): Promise<ChatPerson[]> {
   const q = query.trim();
@@ -883,35 +1267,31 @@ export async function searchDirectory(query: string, viewer: ChatViewer, limit =
       : req.ilike("full_name", `%${escaped}%`);
   };
   const base = () => admin.from("profiles").select("id, full_name, role");
-  const pageSize = limit + hidden.size + 10;
+  const want = limit + hidden.size + 10;
 
   let rows: any[] = [];
   if (viewer.staff) {
-    rows = must(await byName(base()).order("full_name", { ascending: true }).limit(pageSize), "people") ?? [];
+    rows = must(await byName(base()).order("full_name", { ascending: true }).order("id").limit(want), "people") ?? [];
   } else if (!viewer.vetted) {
     const staff = await staffRoleSlugs();
     rows = staff.length
-      ? (must(await byName(base().in("role", staff)).order("full_name", { ascending: true }).limit(pageSize), "people") ?? [])
+      ? (must(await byName(base().in("role", staff)).order("full_name", { ascending: true }).order("id").limit(want), "people") ?? [])
       : [];
   } else {
-    const nonStudents: any[] =
-      must(await byName(base().neq("role", "student")).order("full_name", { ascending: true }).limit(pageSize), "people") ?? [];
-    const joined = (table: "enrollments" | "applications") => {
-      let req: any = admin
-        .from(table)
-        .select(`profile:profiles!${table}_user_id_fkey!inner(id, full_name, role)`)
-        .eq("profile.role", "student");
-      if (table === "applications") req = req.in("status", ACCEPTED_STATUSES as unknown as string[]);
-      if (escaped) req = req.ilike("profile.full_name", `%${escaped}%`);
-      return req.limit(pageSize * 3);
-    };
-    const [enr, apps] = await Promise.all([joined("enrollments"), joined("applications")]);
-    const students = [...((must(enr, "people") ?? []) as any[]), ...((must(apps, "people") ?? []) as any[])]
-      .map((r) => (Array.isArray(r.profile) ? r.profile[0] : r.profile))
-      .filter(Boolean);
-    rows = [...nonStudents, ...students].sort((a, b) =>
-      String(a.full_name ?? "").localeCompare(String(b.full_name ?? "")),
-    );
+    // Everyone let in, in name order: a page of name matches at a time, kept
+    // when vetted, until there are enough — never an arbitrary slice of
+    // enrollment rows sorted afterwards.
+    const SCAN = 200;
+    for (let from = 0, pages = 0; rows.length < want && pages < 10; from += SCAN, pages++) {
+      const page = (must(
+        await byName(base()).order("full_name", { ascending: true }).order("id").range(from, from + SCAN - 1),
+        "people",
+      ) ?? []) as { id: string; full_name: string | null; role: string | null }[];
+      if (page.length === 0) break;
+      const vetted = await vettedAmong(page);
+      rows.push(...page.filter((r) => vetted.has(r.id)));
+      if (page.length < SCAN) break;
+    }
   }
 
   const seen = new Set<string>();
@@ -944,24 +1324,30 @@ export async function findDm(dmKeyValue: string): Promise<ChannelRow | null> {
 // ---------------------------------------------------------------------------
 
 export async function listBlockedIds(userId: string): Promise<string[]> {
-  const data = must(
-    await createAdminClient().from("chat_blocks").select("blocked_id").eq("blocker_id", userId),
+  const admin = createAdminClient();
+  const rows = await pageAll<{ blocked_id: string }>(
+    (from, to) => admin.from("chat_blocks").select("blocked_id").eq("blocker_id", userId).order("blocked_id").range(from, to),
     "blocks",
   );
-  return (data ?? []).map((r: any) => r.blocked_id as string);
+  return rows.map((r) => r.blocked_id);
 }
 
 /** Everyone on either side of a block with this user. Never surfaced as two lists. */
 export async function listBlockRelatedIds(userId: string): Promise<string[]> {
-  const data = must(
-    await createAdminClient()
-      .from("chat_blocks")
-      .select("blocker_id, blocked_id")
-      .or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`),
+  const admin = createAdminClient();
+  const rows = await pageAll<{ blocker_id: string; blocked_id: string }>(
+    (from, to) =>
+      admin
+        .from("chat_blocks")
+        .select("blocker_id, blocked_id")
+        .or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`)
+        .order("blocker_id")
+        .order("blocked_id")
+        .range(from, to),
     "blocks",
   );
   const ids = new Set<string>();
-  for (const r of (data ?? []) as any[]) ids.add(r.blocker_id === userId ? r.blocked_id : r.blocker_id);
+  for (const r of rows) ids.add(r.blocker_id === userId ? r.blocked_id : r.blocker_id);
   return Array.from(ids);
 }
 
@@ -1028,107 +1414,238 @@ async function hydrateReports(rows: any[]): Promise<ChatReport[]> {
 async function channelKinds(ids: readonly string[]): Promise<Map<string, ChannelKind>> {
   const out = new Map<string, ChannelKind>();
   const admin = createAdminClient();
-  for (const part of chunks(Array.from(new Set(ids)))) {
-    const rows = (must(await admin.from("chat_channels").select("id, kind").in("id", part), "channels") ?? []) as any[];
-    for (const r of rows) out.set(r.id, r.kind);
-  }
+  await Promise.all(
+    chunks(uniq(ids)).map(async (part) => {
+      const rows = (must(await admin.from("chat_channels").select("id, kind").in("id", part), "channels") ?? []) as any[];
+      for (const r of rows) out.set(r.id, r.kind);
+    }),
+  );
   return out;
 }
 
-/** Drop the reports this moderator may not see (reportVisibleTo). */
-async function visibleReports(viewer: ChatViewer, rows: any[]): Promise<ChatReport[]> {
-  const kinds = await channelKinds(rows.map((r) => r.channel_id));
-  const keep = rows.filter((r) => {
-    const kind = kinds.get(r.channel_id);
-    return !!kind && reportVisibleTo({ channelId: r.channel_id, partyIds: r.party_ids ?? [] }, kind, viewer);
+/**
+ * The rows this moderator may see: every report on a channel is judged
+ * together (reportVisibleTo over all of them), so a moderator named by one
+ * report on a conversation sees none of its reports.
+ */
+async function visibleReportRows(viewer: ChatViewer, rows: any[]): Promise<any[]> {
+  if (!viewer.staff || rows.length === 0) return [];
+  const channelIds = uniq(rows.map((r) => r.channel_id).filter(isUuid));
+  const [kinds, parties] = await Promise.all([channelKinds(channelIds), reportPartiesByChannel(channelIds)]);
+  return rows.filter((r) => {
+    const own = [{ partyIds: Array.isArray(r.party_ids) ? (r.party_ids as string[]) : [] }];
+    // A report whose channel is gone stands on its own parties.
+    const all = r.channel_id ? (parties.get(r.channel_id) ?? own) : own;
+    const kind = (r.channel_id && kinds.get(r.channel_id)) || "channel";
+    return reportVisibleTo({ id: r.channel_id ?? "", kind }, all, viewer);
   });
-  return hydrateReports(keep);
 }
 
 /**
  * The queue, minus every report about the moderator looking at it: who
  * reported them, and why, is exactly what the person reported must not learn.
+ * Open reports come back in full; closed ones, the newest `limit`.
  */
-export async function listReports(viewer: ChatViewer, status: ReportStatus | "all" = "open"): Promise<ChatReport[]> {
-  let q = createAdminClient().from("chat_reports").select(REPORT_COLS);
-  if (status !== "all") q = q.eq("status", status);
-  const rows = (must(await q.order("created_at", { ascending: false }).limit(300), "reports") ?? []) as any[];
-  return visibleReports(viewer, rows);
+export async function listReports(
+  viewer: ChatViewer,
+  status: ReportStatus | "all" = "open",
+  opts: { limit?: number } = {},
+): Promise<ChatReport[]> {
+  const admin = createAdminClient();
+  const query = () => {
+    let q = admin.from("chat_reports").select(REPORT_COLS);
+    if (status !== "all") q = q.eq("status", status);
+    return q.order("created_at", { ascending: false }).order("id", { ascending: false });
+  };
+  const rows = opts.limit
+    ? ((must(await query().limit(Math.min(opts.limit, PAGE_ROWS)), "reports") ?? []) as any[])
+    : await pageAll<any>((from, to) => query().range(from, to), "reports");
+  return hydrateReports(await visibleReportRows(viewer, rows));
 }
 
-/** One report, or null when it doesn't exist OR it's about this viewer — the same answer. */
+/** One report, or null when it doesn't exist OR this viewer may not see it — the same answer. */
 export async function getReport(id: string, viewer: ChatViewer): Promise<ChatReport | null> {
   if (!isUuid(id)) return null;
-  const row = must(await createAdminClient().from("chat_reports").select(REPORT_COLS).eq("id", id).maybeSingle(), "the report");
-  return row ? ((await visibleReports(viewer, [row]))[0] ?? null) : null;
+  const row = must(
+    await createAdminClient().from("chat_reports").select(REPORT_COLS).eq("id", id.toLowerCase()).maybeSingle(),
+    "the report",
+  );
+  if (!row) return null;
+  return (await hydrateReports(await visibleReportRows(viewer, [row])))[0] ?? null;
 }
 
 export async function listReportsForChannel(channelId: string, viewer: ChatViewer): Promise<ChatReport[]> {
-  const rows = (must(
-    await createAdminClient().from("chat_reports").select(REPORT_COLS).eq("channel_id", channelId).order("created_at", { ascending: false }),
+  const admin = createAdminClient();
+  const rows = await pageAll<any>(
+    (from, to) =>
+      admin
+        .from("chat_reports")
+        .select(REPORT_COLS)
+        .eq("channel_id", channelId)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to),
     "reports",
-  ) ?? []) as any[];
-  return visibleReports(viewer, rows);
+  );
+  return hydrateReports(await visibleReportRows(viewer, rows));
+}
+
+/** How many reports a channel has, any status. Fails closed: an error throws, never reads as none. */
+export async function countChannelReports(channelId: string): Promise<number> {
+  const { count, error } = await createAdminClient()
+    .from("chat_reports")
+    .select("id", { count: "exact", head: true })
+    .eq("channel_id", channelId);
+  if (error) throw new Error(`Couldn't check for reports: ${error.message}`);
+  return count ?? 0;
 }
 
 export async function countOpenReports(viewer: ChatViewer): Promise<number> {
   try {
-    return (await listReports(viewer, "open")).length;
+    const admin = createAdminClient();
+    const rows = await pageAll<any>(
+      (from, to) => admin.from("chat_reports").select("id, channel_id, party_ids").eq("status", "open").order("id").range(from, to),
+      "reports",
+    );
+    return (await visibleReportRows(viewer, rows)).length;
   } catch (err) {
     if (isMissingSchemaError(err)) return 0;
     throw err;
   }
 }
 
+export type Revision = { body: string; reason: string; createdAt: string; attachments: ChatAttachment[] };
+
 /** What a reported message said, including every version before an edit or delete. */
-export async function listRevisions(messageId: string): Promise<{ body: string; reason: string; createdAt: string; attachments: ChatAttachment[] }[]> {
-  const rows = (must(
-    await createAdminClient()
-      .from("chat_message_revisions")
-      .select("body, reason, created_at, attachments")
-      .eq("message_id", messageId)
-      .order("created_at", { ascending: true }),
-    "revisions",
-  ) ?? []) as any[];
-  return rows.map((r) => ({ body: r.body, reason: r.reason, createdAt: r.created_at, attachments: toAttachments(r.attachments) }));
+export async function listRevisions(messageId: string): Promise<Revision[]> {
+  const rows = (await revisionsFor([messageId])).get(messageId) ?? [];
+  return rows;
 }
 
-/** A moderator's transcript: deleted messages included, with what they said. */
-export async function listTranscript(channelId: string, limit = 300): Promise<(ChatMessage & { deletedAt: string | null; original: string | null })[]> {
+/** Revisions of these messages, oldest first, keyed by message. */
+async function revisionsFor(messageIds: readonly string[]): Promise<Map<string, Revision[]>> {
+  const out = new Map<string, Revision[]>();
   const admin = createAdminClient();
-  const rows = (must(
-    await admin
-      .from("chat_messages")
-      .select(MESSAGE_COLS)
-      .eq("channel_id", channelId)
-      .order("created_at", { ascending: false })
-      .limit(limit),
-    "the transcript",
-  ) ?? []) as any[];
-  const page = rows.reverse();
-  const deletedIds = page.filter((r) => r.deleted_at).map((r) => r.id);
-  const originals = new Map<string, string>();
-  for (const part of chunks(deletedIds)) {
-    const revs = (must(
-      await admin.from("chat_message_revisions").select("message_id, body, created_at").in("message_id", part).order("created_at", { ascending: true }),
-      "revisions",
-    ) ?? []) as any[];
-    for (const r of revs) originals.set(r.message_id, r.body);
-  }
-  const messages = await attachReplies(page);
-  return messages.map((m, i) => ({
-    ...m,
-    deletedAt: page[i].deleted_at ?? null,
-    original: page[i].deleted_at ? (originals.get(m.id) ?? null) : null,
-  }));
+  await Promise.all(
+    chunks(uniq(messageIds)).map(async (part) => {
+      const rows = await pageAll<any>(
+        (from, to) =>
+          admin
+            .from("chat_message_revisions")
+            .select("id, message_id, body, reason, created_at, attachments")
+            .in("message_id", part)
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to),
+        "revisions",
+      );
+      for (const r of rows) {
+        const list = out.get(r.message_id) ?? [];
+        list.push({ body: r.body, reason: r.reason, createdAt: r.created_at, attachments: toAttachments(r.attachments) });
+        out.set(r.message_id, list);
+      }
+    }),
+  );
+  return out;
 }
 
-/** Everyone who should hear about a new report. */
+export type TranscriptMessage = ChatMessage & {
+  deletedAt: string | null;
+  /** Every earlier version (edits) and what it said before a delete, oldest first. */
+  revisions: Revision[];
+};
+
+/**
+ * A moderator's transcript: deleted messages included, with every earlier
+ * version of anything edited or deleted (words and attachments). Around one
+ * message when the report names one — the reported message and its context,
+ * however old — otherwise the newest `limit`.
+ */
+export async function listTranscript(
+  channelId: string,
+  opts: { around?: string | null; limit?: number } = {},
+): Promise<{ messages: TranscriptMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean }> {
+  const admin = createAdminClient();
+  const limit = Math.min(Math.max(opts.limit ?? 200, 2), 500);
+  const base = () => admin.from("chat_messages").select(MESSAGE_COLS).eq("channel_id", channelId);
+  let rows: any[] = [];
+  let hasMoreBefore = false;
+  let hasMoreAfter = false;
+  const target =
+    opts.around && isUuid(opts.around)
+      ? (must(
+          await admin.from("chat_messages").select("id, created_at").eq("id", opts.around).eq("channel_id", channelId).maybeSingle(),
+          "the message",
+        ) as { id: string; created_at: string } | null)
+      : null;
+  if (target) {
+    const half = Math.floor(limit / 2);
+    const t = quoted(target.created_at);
+    const [older, newer] = await Promise.all([
+      base()
+        .or(`created_at.lt.${t},and(created_at.eq.${t},id.lte.${target.id})`)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(half + 1),
+      base()
+        .or(`created_at.gt.${t},and(created_at.eq.${t},id.gt.${target.id})`)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(half + 1),
+    ]);
+    const o = (must(older, "the transcript") ?? []) as any[];
+    const n = (must(newer, "the transcript") ?? []) as any[];
+    rows = [...o.slice(0, half).reverse(), ...n.slice(0, half)];
+    hasMoreBefore = o.length > half;
+    hasMoreAfter = n.length > half;
+  } else {
+    const newest = (must(
+      await base().order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit + 1),
+      "the transcript",
+    ) ?? []) as any[];
+    hasMoreBefore = newest.length > limit;
+    rows = newest.slice(0, limit).reverse();
+  }
+  const changed = rows.filter((r) => r.deleted_at || r.edited_at).map((r) => r.id);
+  const [revisions, messages] = await Promise.all([revisionsFor(changed), attachReplies(rows)]);
+  return {
+    messages: messages.map((m, i) => ({
+      ...m,
+      deletedAt: rows[i].deleted_at ?? null,
+      revisions: revisions.get(m.id) ?? [],
+    })),
+    hasMoreBefore,
+    hasMoreAfter,
+  };
+}
+
+/** Everyone who runs chat: who hears about reports and flags. Fails closed. */
 export async function listModeratorIds(): Promise<string[]> {
   const slugs = await staffRoleSlugs();
   if (slugs.length === 0) return [];
-  const { data } = await createAdminClient().from("profiles").select("id").in("role", slugs).limit(500);
-  return (data ?? []).map((p: any) => p.id as string);
+  const admin = createAdminClient();
+  const rows = await pageAll<{ id: string }>(
+    (from, to) => admin.from("profiles").select("id").in("role", slugs).order("id").range(from, to),
+    "moderators",
+  );
+  return rows.map((r) => r.id);
+}
+
+/** Everyone who ever posted in a channel, deleted messages included: who a conversation report is about. */
+export async function listChannelSenderIds(channelId: string): Promise<string[]> {
+  const admin = createAdminClient();
+  const rows = await pageAll<{ sender_id: string | null }>(
+    (from, to) =>
+      admin
+        .from("chat_messages")
+        .select("sender_id")
+        .eq("channel_id", channelId)
+        .not("sender_id", "is", null)
+        .order("id")
+        .range(from, to),
+    "senders",
+  );
+  return uniq(rows.map((r) => r.sender_id).filter((id): id is string => !!id));
 }
 
 /** Does this user owe a fine? A fined account may only message the team. */
@@ -1146,12 +1663,39 @@ export async function hasPendingFine(userId: string): Promise<boolean> {
   return (data ?? []).length > 0;
 }
 
-/** Every channel, for the admin page (archived included). */
+export type ChatMute = { userId: string; until: string | null; reason: string | null; createdBy: string | null; createdAt: string };
+
+/**
+ * This person's chat mute (chat_mutes, 0101), expired or not — or null.
+ * Fails closed on an error; a database without the table has muted nobody.
+ */
+export async function getMute(userId: string): Promise<ChatMute | null> {
+  const { data, error } = await createAdminClient()
+    .from("chat_mutes")
+    .select("user_id, until, reason, created_by, created_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    if (isMissingSchemaError(error)) return null;
+    throw new Error(`Couldn't check for a chat mute: ${error.message}`);
+  }
+  if (!data) return null;
+  const r = data as any;
+  return { userId: r.user_id, until: r.until ?? null, reason: r.reason ?? null, createdBy: r.created_by ?? null, createdAt: r.created_at };
+}
+
+/** Is this person muted in chat right now? */
+export async function isMuted(userId: string): Promise<boolean> {
+  return muteActive(await getMute(userId), Date.now());
+}
+
+/** Every text channel, for the admin page (archived included). */
 export async function listAllChannels(): Promise<ChannelRow[]> {
-  const rows = (must(
-    await createAdminClient().from("chat_channels").select(CHANNEL_COLS).eq("kind", "channel").order("position").order("name").limit(2000),
+  const admin = createAdminClient();
+  const rows = await pageAll<any>(
+    (from, to) => admin.from("chat_channels").select(CHANNEL_COLS).eq("kind", "channel").order("position").order("name").order("id").range(from, to),
     "channels",
-  ) ?? []) as any[];
+  );
   return rows.map(toChannel);
 }
 
@@ -1162,7 +1706,7 @@ export { DELETED_NAME };
  * ping someone who'll see it, and a typed <@id> for a stranger is just text.
  */
 export async function filterReaders(channel: ChannelRow, ids: readonly string[]): Promise<string[]> {
-  return readersAmong(channel, Array.from(new Set(ids.filter(isUuid))).slice(0, 50));
+  return readersAmong(channel, uniq(ids.filter(isUuid).map((id) => id.toLowerCase())).slice(0, 50));
 }
 
 /**
@@ -1171,7 +1715,7 @@ export async function filterReaders(channel: ChannelRow, ids: readonly string[])
  * each of them, minus the report path (a bell never rides that).
  */
 export async function readersAmong(channel: ChannelRow, ids: readonly string[]): Promise<string[]> {
-  const wanted = Array.from(new Set(ids.filter(isUuid)));
+  const wanted = uniq(ids.filter(isUuid).map((id) => id.toLowerCase()));
   if (wanted.length === 0) return [];
   const admin = createAdminClient();
   const explicit = new Set((await listMembers([channel.id])).get(channel.id) ?? []);
@@ -1179,29 +1723,40 @@ export async function readersAmong(channel: ChannelRow, ids: readonly string[]):
 
   const staffSlugs = new Set(await staffRoleSlugs());
   const ok = new Set<string>();
-  const rest: string[] = [];
-  for (const part of chunks(wanted)) {
-    const profiles = (must(await admin.from("profiles").select("id, role").in("id", part), "people") ?? []) as any[];
-    for (const p of profiles) {
-      if (explicit.has(p.id) || staffSlugs.has(p.role)) ok.add(p.id);
-      else rest.push(p.id);
-    }
+  const rest: { id: string; role: string | null }[] = [];
+  const profiles = (
+    await Promise.all(
+      chunks(wanted).map(async (part) => (must(await admin.from("profiles").select("id, role").in("id", part), "people") ?? []) as any[]),
+    )
+  ).flat();
+  for (const p of profiles) {
+    if (explicit.has(p.id) || staffSlugs.has(p.role)) ok.add(p.id);
+    else rest.push({ id: p.id, role: p.role ?? null });
   }
   if (rest.length) {
+    const restIds = rest.map((r) => r.id);
     if (channel.audience === "everyone") {
-      for (const id of await vettedIds(rest)) ok.add(id);
+      for (const id of await vettedAmong(rest)) ok.add(id);
     } else if (channel.audience === "cohort" && channel.cohortId) {
-      for (const part of chunks(rest)) {
-        const rows = (must(await admin.from("enrollments").select("user_id").eq("cohort_id", channel.cohortId).in("user_id", part), "enrollments") ?? []) as any[];
-        for (const r of rows) ok.add(r.user_id);
-      }
+      const cohortId = channel.cohortId;
+      await Promise.all(
+        chunks(restIds).map(async (part) => {
+          const rows = (must(await admin.from("enrollments").select("user_id").eq("cohort_id", cohortId).in("user_id", part), "enrollments") ?? []) as any[];
+          for (const r of rows) ok.add(r.user_id);
+        }),
+      );
+      const left = restIds.filter((id) => !ok.has(id));
+      if (left.length) for (const id of await mentorsOf(await cohortStudentIds(cohortId), left)) ok.add(id);
     } else if (channel.audience === "team" && channel.teamId) {
-      for (const part of chunks(rest)) {
-        const rows = (must(await admin.from("team_members").select("user_id").eq("team_id", channel.teamId).in("user_id", part), "team") ?? []) as any[];
-        for (const r of rows) ok.add(r.user_id);
-      }
-      const left = rest.filter((id) => !ok.has(id));
-      if (left.length) for (const id of await teamMentorIds(channel.teamId, left)) ok.add(id);
+      const teamId = channel.teamId;
+      await Promise.all(
+        chunks(restIds).map(async (part) => {
+          const rows = (must(await admin.from("team_members").select("user_id").eq("team_id", teamId).in("user_id", part), "team") ?? []) as any[];
+          for (const r of rows) ok.add(r.user_id);
+        }),
+      );
+      const left = restIds.filter((id) => !ok.has(id));
+      if (left.length) for (const id of await mentorsOf(await teamMemberIds(teamId), left)) ok.add(id);
     }
   }
   return wanted.filter((id) => ok.has(id));

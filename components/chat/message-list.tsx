@@ -1,13 +1,15 @@
 "use client";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
+  BellOff,
   Copy,
   CornerUpLeft,
   Ban,
   Flag,
   FileText,
   Info,
+  LifeBuoy,
   Loader2,
   MessageSquare,
   MoreHorizontal,
@@ -19,13 +21,13 @@ import {
   Video,
 } from "lucide-react";
 import { canDeleteMessage, canEditMessage, sortedReactions, type ChatViewer } from "@/lib/chat-access";
-import { decodeMentions, encodeMentions, plainText, type PickedMention } from "@/lib/chat-format";
-import { layoutMessages } from "@/lib/chat-view";
+import { composeMessage, decodeMentions, plainText, rawText, rebaseMentions, type PickedMention } from "@/lib/chat-format";
+import { layoutMessages, localOffset } from "@/lib/chat-view";
 import { attachmentKind, chatFileHref, formatBytes, isInlineImage } from "@/lib/chat-files-rules";
 import { Avatar, RoleTag } from "./avatar";
 import { MessageMarkup, type MarkupContext } from "./markup";
-import { EmojiGrid, MenuItem, Popover } from "./popover";
-import { clockTime, dayLabel, imeComposing, stampLabel } from "./util";
+import { EmojiGrid, MenuItem, MenuSeparator, Popover } from "./popover";
+import { DELETED_NAME, clockTime, dayLabel, enterSends, imeComposing, senderName, stampLabel } from "./util";
 import type { ChannelInfo, ChatPerson, ChatViewerInfo, UiMessage } from "./types";
 
 const NEAR_BOTTOM_PX = 120;
@@ -41,7 +43,14 @@ export type MessageActions = {
   onRetry: (m: UiMessage) => void;
   onDiscard: (id: string) => void;
   onMessagePerson: (userId: string) => void;
+  /** "Ask the team for help" about this message. */
+  onFlag: (m: UiMessage) => void;
+  /** Staff: mute this person in chat. */
+  onMute: (userId: string, name: string) => void;
 };
+
+/** A touch screen with no hover: actions open by tapping a message. */
+const touchOnly = () => typeof window !== "undefined" && window.matchMedia("(hover: none)").matches;
 
 export function MessageList({
   viewer,
@@ -88,15 +97,21 @@ export function MessageList({
   emptyHint: React.ReactNode;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [offset, setOffset] = useState<number | null>(null);
+  // Day dividers and times are in the viewer's timezone, which the server
+  // rendering this can't know: only once mounted.
+  const [mounted, setMounted] = useState(false);
   const [showJump, setShowJump] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
-  // Day dividers are in the viewer's timezone, which the server can't know.
-  useEffect(() => setOffset(new Date().getTimezoneOffset()), []);
+  /** The message whose actions are showing on a touch screen (tap to pick). */
+  const [selected, setSelected] = useState<string | null>(null);
+  /** The message the keyboard is on: the one Tab stop in the list. */
+  const [active, setActive] = useState<string | null>(null);
+  const [announce, setAnnounce] = useState("");
+  useEffect(() => setMounted(true), []);
 
   const rows = useMemo(
-    () => layoutMessages(messages, { viewerId: viewer.id, cursor, offsetMinutes: offset }),
-    [messages, viewer.id, cursor, offset],
+    () => layoutMessages(messages, { viewerId: viewer.id, cursor, offsetMinutes: mounted ? localOffset : null }),
+    [messages, viewer.id, cursor, mounted],
   );
 
   const channelKey = channel?.id ?? "draft";
@@ -104,16 +119,30 @@ export function MessageList({
   const nearBottom = useRef(true);
   const prevCount = useRef(0);
   const prevFirst = useRef<string | null>(null);
+  const prevLast = useRef<string | null>(null);
+  const prevIds = useRef<Set<string>>(new Set());
   const prevHeight = useRef(0);
+  const prevTop = useRef(0);
   const opened = useRef<string | null>(null);
   // Until the reader scrolls themselves, the opening position is re-applied
   // as late content (day dividers, fonts, images) changes the heights.
   const settled = useRef(false);
   const programmatic = useRef(false);
+  const peopleRef = useRef(people);
+  peopleRef.current = people;
+  const markupRef = useRef(markup);
+  markupRef.current = markup;
 
   const isNearBottom = () => {
     const el = scrollRef.current;
     return !el || el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+  };
+
+  const remember = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    prevTop.current = el.scrollTop;
+    prevHeight.current = el.scrollHeight;
   };
 
   const setScroll = (top: number) => {
@@ -121,7 +150,7 @@ export function MessageList({
     if (!el) return;
     programmatic.current = true;
     el.scrollTop = top;
-    prevHeight.current = el.scrollHeight;
+    remember();
   };
 
   /** Open at the bottom — or at the "new" line when the unread run is taller than the screen. */
@@ -139,31 +168,57 @@ export function MessageList({
 
   // Scroll: open at the bottom (or the "new" line / a jump target), hold the
   // reader's place when older messages load above, follow new ones only when
-  // the reader is already at the bottom (or wrote it).
+  // the reader is already at the bottom (or just sent one from here).
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const first = messages[0]?.id ?? null;
+    const last = messages[messages.length - 1] ?? null;
+    const ids = new Set(messages.map((m) => m.id));
     if (opened.current !== channelKey) {
       opened.current = channelKey;
       settled.current = false;
       prevCount.current = messages.length;
       prevFirst.current = first;
+      prevLast.current = last?.id ?? null;
+      prevIds.current = ids;
       setShowJump(false);
+      setSelected(null);
+      setActive(null);
       if (!jumpTo) anchorOpening();
+      else remember();
       return;
     }
-    if (first !== prevFirst.current && messages.length > prevCount.current && prevFirst.current) {
-      // Older messages loaded above: hold the reader's place.
-      setScroll(el.scrollTop + (el.scrollHeight - prevHeight.current));
+    const older = first !== prevFirst.current && messages.length > prevCount.current && !!prevFirst.current;
+    if (older) {
+      // Older messages loaded above: hold the reader's place. Chromium and
+      // Firefox may have done it already (native scroll anchoring); Safari
+      // hasn't. Move only what's left, or the reader lands a page lower.
+      const target = prevTop.current + (el.scrollHeight - prevHeight.current);
+      if (Math.abs(el.scrollTop - target) > 1) setScroll(target);
     } else if (messages.length > prevCount.current) {
-      const last = messages[messages.length - 1];
-      if (nearBottom.current || last?.senderId === viewer.id) setScroll(el.scrollHeight);
+      // A send from this screen follows itself down; a message from anyone
+      // else (this account on another device included) only if the reader
+      // is at the bottom already.
+      const justSent = !!last?.pending && last.id !== prevLast.current;
+      if (nearBottom.current || justSent) setScroll(el.scrollHeight);
       else setShowJump(true);
+      // Screen readers hear what's new, from someone else — not the bulk
+      // swaps (a page loading, a channel opening).
+      const added = messages.filter((m) => !prevIds.current.has(m.id) && !m.pending && !m.failed);
+      const theirs = added.filter((m) => m.kind === "message" && m.senderId !== viewer.id && !(m.senderId && blocked.includes(m.senderId)));
+      if (theirs.length > 0 && added.length <= 5) {
+        const m = theirs[theirs.length - 1];
+        const ctx = markupRef.current;
+        const text = plainText(m.body || "[attachment]", (id) => ctx.personName(id), (id) => ctx.channelName(id), 140);
+        setAnnounce(`${senderName(m, peopleRef.current)}: ${text}`);
+      }
     }
     prevCount.current = messages.length;
     prevFirst.current = first;
-    prevHeight.current = el.scrollHeight;
+    prevLast.current = last?.id ?? null;
+    prevIds.current = ids;
+    remember();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, channelKey]);
 
@@ -185,9 +240,9 @@ export function MessageList({
 
   // Day dividers arrive after hydration: re-anchor if the reader hasn't moved.
   useLayoutEffect(() => {
-    if (offset !== null && !settled.current && !jumpTo) anchorOpening();
+    if (mounted && !settled.current && !jumpTo) anchorOpening();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offset]);
+  }, [mounted]);
 
   // Images and fonts change heights after render: stay pinned to the bottom
   // when that's where the reader is.
@@ -199,6 +254,7 @@ export function MessageList({
       if (!el) return;
       if (!settled.current && !jumpTo) anchorOpening();
       else if (nearBottom.current) setScroll(el.scrollHeight);
+      else remember();
     });
     ro.observe(content);
     return () => ro.disconnect();
@@ -211,7 +267,9 @@ export function MessageList({
     if (el) {
       settled.current = true;
       el.scrollIntoView({ block: "center" });
+      remember();
       setFlash(jumpTo);
+      setActive(jumpTo);
       const t = setTimeout(() => setFlash(null), 2000);
       onJumped();
       return () => clearTimeout(t);
@@ -224,6 +282,7 @@ export function MessageList({
     if (!el) return;
     if (programmatic.current) programmatic.current = false;
     else settled.current = true;
+    remember();
     const near = isNearBottom();
     if (near !== nearBottom.current) {
       nearBottom.current = near;
@@ -241,24 +300,66 @@ export function MessageList({
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   };
 
-  const viewerRules: ChatViewer = {
-    userId: viewer.id,
-    staff: viewer.staff,
-    vetted: viewer.vetted,
-    cohortIds: [],
-    teamIds: [],
-    memberOf: channel && channel.kind !== "channel" && !channel.moderatorView ? [channel.id] : [],
+  // ↑/↓ (and Page Up/Down, Home/End) move between messages; Tab goes into
+  // the one you're on. Escape goes back to the composer.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const row = e.target as HTMLElement;
+    if (!row.matches("[data-mid]")) return;
+    if (e.key === "Escape") {
+      const composer = document.getElementById("chat-composer");
+      if (composer && !(composer as HTMLTextAreaElement).disabled) {
+        e.preventDefault();
+        composer.focus();
+      }
+      return;
+    }
+    const all = Array.from(scrollRef.current?.querySelectorAll<HTMLElement>("[data-mid]") ?? []);
+    const at = all.indexOf(row);
+    if (at === -1) return;
+    const step: Record<string, number> = { ArrowUp: -1, ArrowDown: 1, PageUp: -10, PageDown: 10 };
+    let to: number | null = null;
+    if (step[e.key] !== undefined) to = Math.max(0, Math.min(all.length - 1, at + step[e.key]));
+    else if (e.key === "Home") to = 0;
+    else if (e.key === "End") to = all.length - 1;
+    if (to === null) return;
+    e.preventDefault();
+    all[to].focus({ preventScroll: true });
+    all[to].scrollIntoView({ block: "nearest" });
+    if (to === 0 && (e.key === "ArrowUp" || e.key === "PageUp" || e.key === "Home") && hasMoreBefore && !loadingOlder) onLoadOlder();
   };
+
+  const viewerRules: ChatViewer = useMemo(
+    () => ({
+      userId: viewer.id,
+      staff: viewer.staff,
+      vetted: viewer.vetted,
+      cohortIds: [],
+      teamIds: [],
+      memberOf: channel && channel.kind !== "channel" && !channel.moderatorView ? [channel.id] : [],
+    }),
+    [viewer.id, viewer.staff, viewer.vetted, channel],
+  );
+
+  const onSelect = useCallback((id: string) => setSelected((cur) => (cur === id ? null : id)), []);
+  const tabId = active && messages.some((m) => m.id === active) ? active : (messages[messages.length - 1]?.id ?? null);
 
   return (
     <div className="relative min-h-0 flex-1">
       <div
         ref={scrollRef}
         onScroll={onScroll}
+        onKeyDown={onKeyDown}
+        onFocus={(e) => {
+          const row = (e.target as HTMLElement).closest<HTMLElement>("[data-mid]");
+          if (row?.dataset.mid) setActive(row.dataset.mid);
+        }}
         className="h-full overflow-y-auto overscroll-contain"
+        // Not a live region: opening a channel or loading older messages
+        // swaps in dozens at once. New messages are announced below.
         role="log"
-        aria-live="polite"
-        aria-relevant="additions"
+        aria-live="off"
+        aria-label="Messages"
+        aria-busy={loadingOlder || !mounted}
       >
         <div ref={contentRef} className="flex min-h-full flex-col justify-end pb-3 pt-6">
           {hasMoreBefore ? (
@@ -279,7 +380,7 @@ export function MessageList({
           {rows.map((r) => {
             if (r.t === "day") {
               return (
-                <div key={r.key} className="my-3 flex items-center gap-3 px-4 md:px-6" role="separator">
+                <div key={r.key} className="my-3 flex items-center gap-3 px-4 md:px-6" role="separator" aria-label={dayLabel(r.dayKey)}>
                   <span className="h-px flex-1 bg-line" />
                   <span className="font-mono text-[11px] text-ink-faint">{dayLabel(r.dayKey)}</span>
                   <span className="h-px flex-1 bg-line" />
@@ -288,7 +389,7 @@ export function MessageList({
             }
             if (r.t === "new") {
               return (
-                <div key="new" data-new-line className="my-2 flex items-center gap-3 px-4 md:px-6" role="separator">
+                <div key="new" data-new-line className="my-2 flex items-center gap-3 px-4 md:px-6" role="separator" aria-label="New messages">
                   <span className="h-px flex-1 bg-phosphor" />
                   <span className="rounded bg-phosphor px-1.5 py-px font-mono text-[10px] font-semibold text-on-phosphor">NEW</span>
                 </div>
@@ -311,7 +412,10 @@ export function MessageList({
                 setEditingId={setEditingId}
                 flash={flash === r.m.id}
                 actions={actions}
-                mounted={offset !== null}
+                mounted={mounted}
+                selected={selected === r.m.id}
+                onSelect={onSelect}
+                tabbable={tabId === r.m.id}
               />
             );
           })}
@@ -328,6 +432,9 @@ export function MessageList({
             </div>
           ) : null}
         </div>
+      </div>
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {announce}
       </div>
       {showJump ? (
         <button
@@ -359,6 +466,9 @@ const MessageItem = memo(function MessageItem({
   flash,
   actions,
   mounted,
+  selected,
+  onSelect,
+  tabbable,
 }: {
   m: UiMessage;
   head: boolean;
@@ -379,11 +489,20 @@ const MessageItem = memo(function MessageItem({
    * this can't know: render them only once mounted, or hydration mismatches.
    */
   mounted: boolean;
+  /** Its actions are showing (a tap, on a touch screen). */
+  selected: boolean;
+  onSelect: (id: string) => void;
+  /** The list's one Tab stop. */
+  tabbable: boolean;
 }) {
   const [menu, setMenu] = useState<"emoji" | "more" | null>(null);
   const [reveal, setReveal] = useState(false);
-  const name = m.senderId ? (sender?.name ?? "Deleted account") : "batch0";
-  const mine = m.senderId === viewer.id;
+  /** Focus is somewhere in this message: its actions are in the Tab order. */
+  const [focused, setFocused] = useState(false);
+  const moreRef = useRef<HTMLButtonElement>(null);
+  const emojiRef = useRef<HTMLButtonElement>(null);
+  const name = senderName(m, people);
+  const mine = !!m.senderId && m.senderId === viewer.id;
   const live = !m.pending && !m.failed;
   // A frozen DM or group (a block, a departed account, the safeguarding rule,
   // a fine) takes no edits, reactions or pins either — the server refuses
@@ -391,16 +510,17 @@ const MessageItem = memo(function MessageItem({
   // reactions (#announcements), just not edits.
   const readOnly = !channel || channel.archived || channel.moderatorView || (channel.kind !== "channel" && !channel.compose.ok);
   const mentioned = !mine && (m.mentions.includes(viewer.id) || m.mentionEveryone);
+  const rowFocus = "focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink/30";
 
   if (m.kind === "system") {
     return (
-      <div data-mid={m.id} className="flex items-start gap-2 px-4 py-1 text-xs text-ink-faint md:px-6">
+      <div data-mid={m.id} tabIndex={tabbable ? 0 : -1} role="article" className={`flex items-start gap-2 px-4 py-1 text-xs text-ink-faint md:px-6 ${rowFocus}`}>
         {/pinned a message/.test(m.body) ? (
           <Pin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         ) : (
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         )}
-        <span className="min-w-0">
+        <span className="min-w-0 [overflow-wrap:anywhere]">
           <MessageMarkup body={m.body} ctx={markup} compact />
         </span>
         <span className="shrink-0 font-mono text-[10px]">{mounted ? clockTime(m.createdAt) : ""}</span>
@@ -410,7 +530,7 @@ const MessageItem = memo(function MessageItem({
 
   if (blocked && !reveal) {
     return (
-      <div data-mid={m.id} className="px-4 py-1 md:px-6">
+      <div data-mid={m.id} tabIndex={tabbable ? 0 : -1} role="article" className={`px-4 py-1 md:px-6 ${rowFocus}`}>
         <button
           type="button"
           onClick={() => setReveal(true)}
@@ -428,21 +548,58 @@ const MessageItem = memo(function MessageItem({
     !(channel?.archived && !viewer.staff) &&
     canDeleteMessage({ senderId: m.senderId, kind: m.kind, deletedAt: null }, { id: channel?.id ?? "", kind: channel?.kind ?? "dm" }, rules);
   const reactions = sortedReactions(m.reactions);
+  // A person to message: someone else, with an account.
+  const other = !mine && !!m.senderId && !!sender;
+  const first = name.split(" ")[0];
+  // Shown on hover, focus, a tap (touch) or an open menu. Hidden with
+  // opacity, not display/visibility, so focus can always land on (or come
+  // back to) a button in it — and out of the Tab order until then, so Tab
+  // doesn't walk through every message's toolbar.
+  const showTools = menu !== null || selected || focused;
+
+  const copyText = () => {
+    const text = rawText(m.body, (id) => people[id]?.name ?? markup.personName(id), (id) => markup.channelName(id));
+    void navigator.clipboard?.writeText(text).catch(() => undefined);
+  };
 
   return (
     <div
       data-mid={m.id}
+      tabIndex={tabbable ? 0 : -1}
+      role="article"
+      aria-label={head ? undefined : `${name}, continued`}
+      onClick={(e) => {
+        // Touch: a tap on the message (not on a link or button in it) shows its actions.
+        if (!touchOnly() || (e.target as HTMLElement).closest("a, button, input, textarea, [role='button']")) return;
+        onSelect(m.id);
+      }}
+      onFocus={() => setFocused(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
+      }}
+      onContextMenu={(e) => {
+        // A long press on a touch screen opens the menu (a right click on a
+        // desktop keeps the browser's).
+        if (!live || editing || !touchOnly()) return;
+        e.preventDefault();
+        if (!selected) onSelect(m.id);
+        setMenu("more");
+      }}
       className={`group relative px-4 md:px-6 ${head ? "mt-3 pt-0.5" : ""} ${
         mentioned ? "border-l-2 border-phosphor bg-phosphor/10" : "border-l-2 border-transparent"
-      } ${flash ? "bg-phosphor/20" : ""} ${m.pending ? "opacity-60" : ""} hover:bg-wash/70`}
+      } ${flash || selected ? "bg-phosphor/20" : ""} ${m.pending ? "opacity-60" : ""} hover:bg-wash/70 ${rowFocus}`}
     >
       {head && m.replyTo ? <ReplyQuote reply={m.replyTo} people={people} markup={markup} /> : null}
       <div className="flex gap-3">
         <div className="w-9 shrink-0">
           {head ? (
-            <button type="button" onClick={() => m.senderId && actions.onMessagePerson(m.senderId)} aria-label={`Message ${name}`}>
+            other ? (
+              <button type="button" onClick={() => actions.onMessagePerson(m.senderId!)} aria-label={`Message ${name}`}>
+                <Avatar name={name} online={online} size={36} />
+              </button>
+            ) : (
               <Avatar name={name} online={online} size={36} />
-            </button>
+            )
           ) : (
             <span className="invisible block pt-1 text-right font-mono text-[10px] text-ink-faint group-hover:visible">
               {mounted ? clockTime(m.createdAt) : ""}
@@ -452,7 +609,7 @@ const MessageItem = memo(function MessageItem({
         <div className="min-w-0 flex-1 pb-0.5">
           {head ? (
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <span className="text-sm font-semibold text-ink">{name}</span>
+              <span className="min-w-0 max-w-full text-sm font-semibold text-ink [overflow-wrap:anywhere]">{name}</span>
               <RoleTag person={sender} />
               <time dateTime={m.createdAt} className="font-mono text-[11px] text-ink-faint">
                 {mounted ? stampLabel(m.createdAt) : ""}
@@ -465,12 +622,12 @@ const MessageItem = memo(function MessageItem({
             <EditBox
               m={m}
               people={people}
-              onCancel={() => setEditingId(null)}
-              onSave={async (body) => {
-                const err = await actions.onEdit(m.id, body);
-                if (!err) setEditingId(null);
-                return err;
+              onDone={() => {
+                setEditingId(null);
+                // Back to where the ↑ (or the Edit button) came from.
+                document.getElementById("chat-composer")?.focus({ preventScroll: true });
               }}
+              onSave={(body) => actions.onEdit(m.id, body)}
             />
           ) : (
             <div className="text-[15px] leading-relaxed text-ink">
@@ -493,6 +650,8 @@ const MessageItem = memo(function MessageItem({
                     disabled={!live || readOnly}
                     onClick={() => actions.onReact(m.id, r.emoji)}
                     title={`${who} reacted with ${r.emoji}`}
+                    aria-label={`${r.emoji} ${r.userIds.length}: ${who}`}
+                    aria-pressed={mineToo}
                     className={`inline-flex h-6 items-center gap-1 rounded-md border px-1.5 text-xs ${
                       mineToo ? "border-phosphor bg-phosphor/15 text-ink" : "border-line bg-paper text-ink-soft hover:border-ink/30"
                     }`}
@@ -506,7 +665,7 @@ const MessageItem = memo(function MessageItem({
           ) : null}
 
           {m.failed ? (
-            <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+            <p className="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">
               {m.failed}{" "}
               <button type="button" className="underline" onClick={() => actions.onRetry(m)}>
                 Retry
@@ -522,55 +681,57 @@ const MessageItem = memo(function MessageItem({
 
       {live && !editing ? (
         <div
-          className={`absolute -top-3 right-4 z-10 items-center rounded-md border border-line bg-paper shadow-[0_2px_8px_rgb(0_0_0/0.08)] md:right-6 ${
-            menu ? "flex" : "hidden group-hover:flex group-focus-within:flex"
+          role="group"
+          aria-label={`Actions for this message from ${name}`}
+          className={`absolute -top-3 right-4 z-10 flex items-center rounded-md border border-line bg-paper shadow-[0_2px_8px_rgb(0_0_0/0.08)] md:right-6 ${
+            showTools ? "opacity-100" : "opacity-0 group-hover:opacity-100 [@media(hover:none)]:pointer-events-none"
           }`}
         >
           {!readOnly ? (
-            <ToolbarButton label="Add a reaction" onClick={() => setMenu(menu === "emoji" ? null : "emoji")}>
+            <ToolbarButton ref={emojiRef} label="Add a reaction" tabbable={showTools} expanded={menu === "emoji"} onClick={() => setMenu(menu === "emoji" ? null : "emoji")}>
               <SmilePlus className="h-4 w-4" />
             </ToolbarButton>
           ) : null}
           {!readOnly && channel?.compose.ok ? (
-            <ToolbarButton label="Reply" onClick={() => { setMenu(null); actions.onReply(m); }}>
+            <ToolbarButton label="Reply" tabbable={showTools} onClick={() => { setMenu(null); actions.onReply(m); }}>
               <CornerUpLeft className="h-4 w-4" />
             </ToolbarButton>
           ) : null}
           {canEdit ? (
-            <ToolbarButton label="Edit" onClick={() => { setMenu(null); setEditingId(m.id); }}>
+            <ToolbarButton label="Edit" tabbable={showTools} onClick={() => { setMenu(null); setEditingId(m.id); }}>
               <Pencil className="h-4 w-4" />
             </ToolbarButton>
           ) : null}
-          <ToolbarButton label="More" onClick={() => setMenu(menu === "more" ? null : "more")}>
+          <ToolbarButton ref={moreRef} label="More" tabbable={showTools} menu expanded={menu === "more"} onClick={() => setMenu(menu === "more" ? null : "more")}>
             <MoreHorizontal className="h-4 w-4" />
           </ToolbarButton>
-          <Popover open={menu === "emoji"} onClose={() => setMenu(null)} className="right-0 top-9">
+          <Popover open={menu === "emoji"} onClose={() => setMenu(null)} toggleRef={emojiRef} className="right-0 top-9">
             <EmojiGrid
               onPick={(e) => {
                 setMenu(null);
+                emojiRef.current?.focus({ preventScroll: true });
                 actions.onReact(m.id, e);
               }}
             />
           </Popover>
-          <Popover open={menu === "more"} onClose={() => setMenu(null)} className="right-0 top-9 w-52" >
-            <div role="menu">
+          <Popover open={menu === "more"} onClose={() => setMenu(null)} toggleRef={moreRef} className="right-0 top-9 w-56">
+            <div role="menu" aria-label="Message actions">
               {channel?.canPin && !readOnly ? (
                 <MenuItem icon={m.pinnedAt ? PinOff : Pin} onClick={() => { setMenu(null); actions.onPin(m.id); }}>
                   {m.pinnedAt ? "Unpin" : "Pin message"}
                 </MenuItem>
               ) : null}
-              <MenuItem
-                icon={Copy}
-                onClick={() => {
-                  setMenu(null);
-                  void navigator.clipboard?.writeText(plainText(m.body, (id) => people[id]?.name, (id) => markup.channelName(id), 4000)).catch(() => undefined);
-                }}
-              >
+              <MenuItem icon={Copy} onClick={() => { setMenu(null); copyText(); }}>
                 Copy text
               </MenuItem>
-              {!mine && m.senderId ? (
+              {other ? (
                 <MenuItem icon={MessageSquare} onClick={() => { setMenu(null); actions.onMessagePerson(m.senderId!); }}>
-                  Message {name.split(" ")[0]}
+                  Message {first}
+                </MenuItem>
+              ) : null}
+              {channel?.kind === "channel" && !channel.moderatorView ? (
+                <MenuItem icon={LifeBuoy} onClick={() => { setMenu(null); actions.onFlag(m); }}>
+                  Ask the team for help
                 </MenuItem>
               ) : null}
               {canDelete ? (
@@ -580,11 +741,17 @@ const MessageItem = memo(function MessageItem({
               ) : null}
               {!mine && m.senderId && !channel?.moderatorView ? (
                 <>
+                  <MenuSeparator />
+                  {viewer.staff && !sender?.isStaff ? (
+                    <MenuItem icon={BellOff} danger onClick={() => { setMenu(null); actions.onMute(m.senderId!, name); }}>
+                      Mute in chat
+                    </MenuItem>
+                  ) : null}
                   <MenuItem icon={Flag} danger onClick={() => { setMenu(null); actions.onReport(m); }}>
                     Report message
                   </MenuItem>
                   <MenuItem icon={Ban} danger onClick={() => { setMenu(null); actions.onBlock(m.senderId!); }}>
-                    {blocked ? "Unblock" : "Block"} {name.split(" ")[0]}
+                    {blocked ? "Unblock" : "Block"} {first}
                   </MenuItem>
                 </>
               ) : null}
@@ -596,13 +763,35 @@ const MessageItem = memo(function MessageItem({
   );
 });
 
-function ToolbarButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
+function ToolbarButton({
+  ref,
+  label,
+  onClick,
+  tabbable,
+  menu = false,
+  expanded,
+  children,
+}: {
+  ref?: React.Ref<HTMLButtonElement>;
+  label: string;
+  tabbable: boolean;
+  onClick: () => void;
+  /** Opens a menu (aria-haspopup). */
+  menu?: boolean;
+  /** Its popover is open. */
+  expanded?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onClick}
+      tabIndex={tabbable ? 0 : -1}
       aria-label={label}
       title={label}
+      aria-haspopup={menu ? "menu" : expanded !== undefined ? "true" : undefined}
+      aria-expanded={expanded}
       className="inline-flex h-8 w-8 items-center justify-center text-ink-soft hover:bg-wash hover:text-ink"
     >
       {children}
@@ -619,17 +808,20 @@ function ReplyQuote({
   people: Record<string, ChatPerson>;
   markup: MarkupContext;
 }) {
-  const who = reply.senderId ? (people[reply.senderId]?.name ?? "Someone") : "Someone";
+  const who = reply.senderId ? (people[reply.senderId]?.name ?? "Someone") : DELETED_NAME;
   return (
     <div className="mb-0.5 ml-12 flex min-w-0 items-center gap-1.5 text-xs text-ink-faint">
       <CornerUpLeft className="h-3 w-3 shrink-0 -scale-x-100" />
-      {reply.deleted || !reply.preview ? (
+      {reply.deleted ? (
         <span className="italic">Original message was deleted</span>
+      ) : !reply.preview ? (
+        // The original isn't loaded here yet.
+        <span className="italic">Replying to a message</span>
       ) : (
         <>
-          <span className="shrink-0 font-semibold text-ink-soft">@{who}</span>
-          <span className="truncate">
-            {plainText(reply.preview, (id) => people[id]?.name, (id) => markup.channelName(id), 120)}
+          <span className="min-w-0 max-w-[40%] shrink-0 truncate font-semibold text-ink-soft">@{who}</span>
+          <span className="min-w-0 truncate">
+            {plainText(reply.preview, (id) => people[id]?.name ?? markup.personName(id), (id) => markup.channelName(id), 120, { cut: true })}
           </span>
         </>
       )}
@@ -639,20 +831,20 @@ function ReplyQuote({
 
 function Attachments({ m }: { m: UiMessage }) {
   return (
-    <div className="mt-1.5 flex flex-wrap gap-2">
+    <div className="mt-1.5 flex min-w-0 flex-wrap gap-2">
       {m.attachments.map((a, i) => {
         // While sending, the file isn't readable through the route yet.
         if (m.pending || m.failed) {
           return (
-            <span key={a.path} className="inline-flex items-center gap-2 rounded-md border border-line px-2.5 py-1.5 text-xs text-ink-soft">
-              <FileText className="h-4 w-4" />
-              {a.name}
+            <span key={a.path} className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-md border border-line px-2.5 py-1.5 text-xs text-ink-soft">
+              <FileText className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 truncate">{a.name}</span>
             </span>
           );
         }
         if (isInlineImage(a)) {
           return (
-            <a key={a.path} href={chatFileHref(m.id, i)} target="_blank" rel="noopener noreferrer" className="block">
+            <a key={a.path} href={chatFileHref(m.id, i)} target="_blank" rel="noopener noreferrer" className="block max-w-full">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={chatFileHref(m.id, i)}
@@ -669,7 +861,7 @@ function Attachments({ m }: { m: UiMessage }) {
           <a
             key={a.path}
             href={chatFileHref(m.id, i, { download: true })}
-            className="inline-flex max-w-full items-center gap-2.5 rounded-md border border-line bg-paper px-3 py-2 text-sm hover:border-ink/30"
+            className="inline-flex min-w-0 max-w-full items-center gap-2.5 rounded-md border border-line bg-paper px-3 py-2 text-sm hover:border-ink/30"
           >
             <Icon className="h-5 w-5 shrink-0 text-ink-faint" />
             <span className="min-w-0">
@@ -686,17 +878,19 @@ function Attachments({ m }: { m: UiMessage }) {
 function EditBox({
   m,
   people,
-  onCancel,
+  onDone,
   onSave,
 }: {
   m: UiMessage;
   people: Record<string, ChatPerson>;
-  onCancel: () => void;
+  /** Saved or cancelled: close the box. */
+  onDone: () => void;
+  /** Returns why it didn't save, or null. */
   onSave: (body: string) => Promise<string | null>;
 }) {
   const decoded = useMemo(() => decodeMentions(m.body, (id) => people[id]?.name), [m.body, people]);
   const [text, setText] = useState(decoded.text);
-  const [picked] = useState<PickedMention[]>(decoded.picked);
+  const [picked, setPicked] = useState<PickedMention[]>(decoded.picked);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -715,33 +909,48 @@ function EditBox({
   const save = async () => {
     if (saving) return;
     setSaving(true);
-    setError(await onSave(encodeMentions(text, picked)));
-    setSaving(false);
+    setError(null);
+    let err: string | null;
+    try {
+      err = await onSave(composeMessage(text, picked));
+    } catch {
+      err = "Couldn't save that edit.";
+    } finally {
+      setSaving(false);
+    }
+    if (err) setError(err);
+    else onDone();
   };
   return (
     <div className="mt-1">
       <textarea
         ref={ref}
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        aria-label="Edit message"
+        onChange={(e) => {
+          const next = e.target.value;
+          setPicked((p) => rebaseMentions(text, next, p, e.target.selectionEnd ?? undefined));
+          setText(next);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.preventDefault();
-            onCancel();
-          } else if (e.key === "Enter" && !e.shiftKey && !imeComposing(e)) {
+            onDone();
+          } else if (e.key === "Enter" && !e.shiftKey && !imeComposing(e) && enterSends()) {
             e.preventDefault();
             void save();
           }
         }}
+        enterKeyHint={enterSends() ? "send" : "enter"}
         rows={1}
-        className="w-full resize-none rounded-md border border-line bg-paper px-3 py-2 text-[15px] text-ink focus:border-ink/40 focus:outline-none"
+        className="w-full resize-none rounded-md border border-line bg-paper px-3 py-2 text-base text-ink focus:border-ink/40 focus:outline-none md:text-[15px]"
       />
       <p className="mt-1 text-[11px] text-ink-faint">
-        Escape to <button type="button" className="link-ink" onClick={onCancel}>cancel</button> · Enter to{" "}
+        Escape to <button type="button" className="link-ink" onClick={onDone}>cancel</button> · {enterSends() ? "Enter to " : ""}
         <button type="button" className="link-ink" onClick={() => void save()}>save</button>
         {saving ? " · saving…" : ""}
       </p>
-      {error ? <p className="mt-1 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
+      {error ? <p className="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">{error}</p> : null}
     </div>
   );
 }

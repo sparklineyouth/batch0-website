@@ -3,20 +3,27 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
+import { LocalTime } from "@/components/ui/local-time";
 import { resultError } from "@/components/chat/util";
 import { deleteMessage } from "@/app/chat/actions";
-import { resolveReport } from "@/app/chat/manage-actions";
+import { mutePerson, resolveReport, unmutePerson } from "@/app/chat/manage-actions";
+
+/** Someone the report page can mute: the reported sender, or a member of a reported conversation. */
+export type MuteTarget = { userId: string; name: string; muted: boolean; until: string | null };
 
 export function ReportControls({
   reportId,
   status,
   messageId,
   chatHref,
+  mutes,
 }: {
   reportId: string;
   status: "open" | "actioned" | "dismissed";
   messageId: string | null;
-  chatHref: string;
+  /** Null when the channel is gone. */
+  chatHref: string | null;
+  mutes: MuteTarget[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -32,6 +39,7 @@ export function ReportControls({
     router.refresh();
     return res.ok;
   };
+  const reason = "From a chat report";
   return (
     <div>
       <div className="flex flex-wrap gap-2">
@@ -54,13 +62,44 @@ export function ReportControls({
             Reopen
           </Button>
         )}
-        <ButtonLink href={chatHref} variant="ghost" size="sm">
-          Open in chat
-        </ButtonLink>
+        {chatHref ? (
+          <ButtonLink href={chatHref} variant="ghost" size="sm">
+            Open in chat
+          </ButtonLink>
+        ) : null}
       </div>
+      {mutes.length > 0 ? (
+        <ul className="mt-3 space-y-2">
+          {mutes.map((m) => (
+            <li key={m.userId} className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-ink">{m.name}</span>
+              {m.muted ? (
+                <>
+                  <span className="text-xs text-ink-faint">
+                    muted {m.until ? <>until <LocalTime value={m.until} mode="datetime-short" /></> : "until lifted"}
+                  </span>
+                  <Button size="sm" variant="secondary" disabled={busy} onClick={() => run(() => unmutePerson(m.userId))}>
+                    Unmute
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button size="sm" variant="secondary" disabled={busy} onClick={() => run(() => mutePerson(m.userId, 24 * 60, reason))}>
+                    Mute 24h
+                  </Button>
+                  <Button size="sm" variant="secondary" disabled={busy} onClick={() => run(() => mutePerson(m.userId, null, reason))}>
+                    Mute until lifted
+                  </Button>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <p className="mt-2 text-[11px] text-ink-faint">
-        Removing hides the message for everyone and is logged; what it said stays here. To block someone from chat
-        entirely, change their role or remove their enrollment from People.
+        Removing hides the message for everyone and is logged; what it said stays here. Muting stops someone posting,
+        reacting or starting conversations anywhere in chat — they can still read, and still message the batch0 team —
+        without changing their role or enrollment.
       </p>
       {error ? <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
       <ConfirmDialog

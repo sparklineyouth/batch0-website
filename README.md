@@ -60,10 +60,11 @@ npm run build
 npm start
 ```
 
-`npm test` runs every `lib/*.test.ts`, including the PGlite migration tests;
-the `test:*-db` commands use their own in-memory PGlite databases. CI
+`npm test` runs every `lib/*.test.ts` and `components/chat/*.test.ts`,
+including the PGlite migration tests; the `test:*-db` commands use their own
+in-memory PGlite databases. CI
 (`.github/workflows/ci.yml`) runs all of the above except the build. On
-2026-10-15 that was 1,239 unit tests and 54 database tests, all passing. The
+2026-10-15 that was 1,364 unit tests and 54 database tests, all passing. The
 production build compiles and type-checks the app, then checks that the
 expected blog and marketing routes remain prerendered.
 

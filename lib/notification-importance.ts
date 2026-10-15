@@ -458,6 +458,14 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     group: "Staff queues",
     default: "important",
   },
+  // A message's "Ask the team for help" (app/chat/actions.ts flagForTeam):
+  // what Discord's Flag as Blocker was. Someone is stuck and said so.
+  {
+    type: "chat_flagged",
+    label: "Someone asked the team for help in chat",
+    group: "Staff queues",
+    default: "important",
+  },
 ];
 
 /**

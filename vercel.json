@@ -29,6 +29,10 @@
       "schedule": "0 13 * * *"
     },
     {
+      "path": "/api/cron/chat-housekeeping",
+      "schedule": "30 13 * * *"
+    },
+    {
       "path": "/api/cron/assignment-reminders",
       "schedule": "0 * * * *"
     }

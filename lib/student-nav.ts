@@ -17,9 +17,13 @@ export const STUDENT_NAV_MAX = 12;
 
 export const STUDENT_NAV_LAYOUT = [
   {
+    // The unlabeled group can't be collapsed (components/sidebar-nav.tsx), so
+    // Chat sits here as it does for every other role: in a collapsed group its
+    // unread badge would be unmounted with it.
     label: "",
     items: [
       { href: "/dashboard", label: "Home" },
+      { href: "/chat", label: "Chat" },
       { href: "/dashboard/application", label: "Application" },
       { href: "/dashboard/kickoff", label: "Kickoff" },
     ],
@@ -37,10 +41,7 @@ export const STUDENT_NAV_LAYOUT = [
   },
   {
     label: "Cohort",
-    items: [
-      { href: "/dashboard/announcements", label: "Announcements" },
-      { href: "/chat", label: "Chat" },
-    ],
+    items: [{ href: "/dashboard/announcements", label: "Announcements" }],
   },
   {
     label: "Account",

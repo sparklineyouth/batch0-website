@@ -1,12 +1,22 @@
 "use client";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+
+const FOCUSABLE =
+  'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
+/** Open modals, innermost last: only the top one answers Escape and Tab. */
+const stack: string[] = [];
 
 /**
  * A plain modal for chat's forms: portal, dimmed backdrop, Escape and the X
  * close it, Tab stays inside, focus returns to the opener. Same behavior as
  * components/ui/dialog.tsx's ConfirmDialog, with room for a form.
+ *
+ * Focus starts on the field marked data-autofocus, else the first field, else
+ * the dialog itself (so Tab can't wander into the page behind it). A dialog
+ * opened on top of another one owns the keyboard until it closes.
  */
 export function Modal({
   open,
@@ -23,6 +33,7 @@ export function Modal({
   wide?: boolean;
   busy?: boolean;
 }) {
+  const id = useId();
   const panel = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -32,25 +43,28 @@ export function Modal({
   useEffect(() => {
     if (!open) return;
     const opener = document.activeElement as HTMLElement | null;
+    stack.push(id);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busyRef.current) {
+      if (stack[stack.length - 1] !== id) return;
+      if (e.key === "Escape") {
         e.stopPropagation();
-        closeRef.current();
+        if (!busyRef.current) closeRef.current();
         return;
       }
-      if (e.key !== "Tab" || !panel.current) return;
-      const items = panel.current.querySelectorAll<HTMLElement>(
-        'a, button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
-      );
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
+      const root = panel.current;
+      if (e.key !== "Tab" || !root) return;
+      const items = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (items.length === 0) {
         e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
+        return;
+      }
+      const at = items.indexOf(document.activeElement as HTMLElement);
+      if (e.shiftKey && at <= 0) {
         e.preventDefault();
-        first.focus();
+        items[items.length - 1].focus();
+      } else if (!e.shiftKey && (at === -1 || at === items.length - 1)) {
+        e.preventDefault();
+        items[0].focus();
       }
     };
     document.addEventListener("keydown", onKey);
@@ -58,18 +72,21 @@ export function Modal({
       // A selector list matches in document order, and the close button comes
       // first — so ask for the marked field before falling back.
       const root = panel.current;
-      (root?.querySelector<HTMLElement>("[data-autofocus]") ?? root?.querySelector<HTMLElement>("input, textarea, select"))?.focus();
+      if (!root || root.contains(document.activeElement)) return;
+      (root.querySelector<HTMLElement>("[data-autofocus]") ?? root.querySelector<HTMLElement>("input, textarea, select") ?? root).focus();
     }, 0);
     return () => {
       clearTimeout(t);
       document.removeEventListener("keydown", onKey);
-      opener?.focus?.();
+      const i = stack.lastIndexOf(id);
+      if (i !== -1) stack.splice(i, 1);
+      if (opener?.isConnected) opener.focus?.({ preventScroll: true });
     };
-  }, [open]);
+  }, [open, id]);
 
   if (!open || typeof window === "undefined") return null;
   return createPortal(
-    <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[100] flex items-start justify-center px-4 pt-[12vh]">
+    <div role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} className="fixed inset-0 z-[100] flex items-start justify-center px-4 pt-[12vh]">
       <button
         type="button"
         tabIndex={-1}
@@ -79,10 +96,13 @@ export function Modal({
       />
       <div
         ref={panel}
-        className={`relative max-h-[76vh] w-full overflow-y-auto rounded-md border border-line bg-paper p-5 shadow-[0_30px_80px_-20px_rgba(20,20,20,0.25)] ${wide ? "max-w-xl" : "max-w-md"}`}
+        tabIndex={-1}
+        className={`relative max-h-[76vh] w-full overflow-y-auto rounded-md border border-line bg-paper p-5 shadow-[0_30px_80px_-20px_rgba(20,20,20,0.25)] focus:outline-none ${wide ? "max-w-xl" : "max-w-md"}`}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
-          <h2 className="font-display text-2xl leading-none text-ink">{title}</h2>
+          <h2 id={`${id}-title`} className="min-w-0 break-words font-display text-2xl leading-none text-ink">
+            {title}
+          </h2>
           <button type="button" aria-label="Close" disabled={busy} onClick={onClose} className="rounded p-1 text-ink-faint hover:bg-wash hover:text-ink">
             <X className="h-4 w-4" />
           </button>

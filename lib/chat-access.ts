@@ -47,11 +47,15 @@ export type ChatViewer = {
  *
  *   - an explicit member, always;
  *   - for a text channel: staff, or the audience (everyone = vetted people,
- *     cohort = enrolled in it, team = on it; staff and members audiences add
- *     nobody beyond staff and explicit members);
- *   - for a DM or group: staff only once someone in it has reported it. With
- *     no report there is no staff read path — a promise the UI makes out loud,
- *     which is why `reported` is a required argument.
+ *     cohort = enrolled in it or mentoring someone who is, team = on it or
+ *     mentoring someone who is; staff and members audiences add nobody beyond
+ *     staff and explicit members). The mentor clauses live in the viewer:
+ *     getChatViewer() folds a mentor's mentees' cohorts and teams into
+ *     cohortIds and teamIds;
+ *   - for a DM or group: staff only once someone in it has reported it, and
+ *     only by reports that leave this moderator out (channelReportsOpenTo).
+ *     With no report there is no staff read path — a promise the UI makes out
+ *     loud, which is why `reported` is a required argument.
  */
 export function canReadChannel(c: ChannelScope, viewer: ChatViewer, reported: boolean): boolean {
   if (!viewer.userId) return false;
@@ -72,29 +76,88 @@ export function canReadChannel(c: ChannelScope, viewer: ChatViewer, reported: bo
   return viewer.staff && reported;
 }
 
-/**
- * May this moderator see a report — and, for a DM or group, read the
- * conversation because of it? Never a party to it: everyone who was in the
- * DM or group when it was reported, and whoever sent the reported message.
- * They'd learn who reported them, and why. Mirrors the `party_ids` check in
- * chat_can_read(), so `reported` above means "reported, by a report this
- * viewer may see".
- */
+/** Does this one report leave the moderator out? A building block: the gate is channelReportsOpenTo. */
 export function reportOpenTo(partyIds: readonly string[], viewer: Pick<ChatViewer, "userId" | "staff">): boolean {
   return !!viewer.userId && viewer.staff && !partyIds.includes(viewer.userId);
 }
 
 /**
- * The queue's rule: reportOpenTo, and never someone in the DM or group right
- * now either — the snapshot can't know who joined after the report.
+ * May this moderator work a channel's reports — see them, resolve them, be
+ * belled about them — and, for a DM or group, read the conversation because
+ * of them? Only when the channel has a report and NO report on it names them
+ * as a party (chat_reports.party_ids). Judged over every report on the
+ * channel together, not report by report: a moderator someone reported and
+ * who then left the group must not come back in through the next report,
+ * which can no longer see them as a member. Mirrors chat_can_read() in 0101:
+ * `exists (report on c) and not exists (report on c naming uid)`.
+ */
+export function channelReportsOpenTo(
+  reports: readonly { partyIds: readonly string[] }[],
+  viewer: Pick<ChatViewer, "userId" | "staff">,
+): boolean {
+  if (reports.length === 0) return false;
+  return reports.every((r) => reportOpenTo(r.partyIds, viewer));
+}
+
+/**
+ * The queue's rule for one channel's reports: channelReportsOpenTo, and never
+ * someone in the DM or group right now either — no snapshot can know who
+ * joined after the last report.
  */
 export function reportVisibleTo(
-  report: { channelId: string; partyIds: readonly string[] },
-  kind: ChannelKind,
+  channel: { id: string; kind: ChannelKind },
+  channelReports: readonly { partyIds: readonly string[] }[],
   viewer: ChatViewer,
 ): boolean {
-  if (!reportOpenTo(report.partyIds, viewer)) return false;
-  return kind === "channel" || !viewer.memberOf.includes(report.channelId);
+  if (!channelReportsOpenTo(channelReports, viewer)) return false;
+  return channel.kind === "channel" || !viewer.memberOf.includes(channel.id);
+}
+
+/**
+ * Who a new report is about, frozen when it's filed (chat_reports.party_ids):
+ *
+ *   - a DM or group: everyone in it now, and everyone who ever posted in it
+ *     (someone who said it and then left is still who it's about);
+ *   - the reported message's sender;
+ *   - every party to an earlier report on the same channel, so the set only
+ *     ever grows.
+ *
+ * A text channel's report is about one message, not the people in the room:
+ * staff read every channel anyway, and naming everyone who ever posted in
+ * #general would hide its reports from every moderator who ever said hello.
+ */
+export function reportPartyIds(input: {
+  kind: ChannelKind;
+  members: readonly string[];
+  senders: readonly (string | null)[];
+  messageSenderId: string | null;
+  earlier: readonly { partyIds: readonly string[] }[];
+}): string[] {
+  const out = new Set<string>();
+  if (input.kind !== "channel") {
+    for (const id of input.members) if (id) out.add(id);
+    for (const id of input.senders) if (id) out.add(id);
+  }
+  if (input.messageSenderId) out.add(input.messageSenderId);
+  for (const r of input.earlier) for (const id of r.partyIds) if (id) out.add(id);
+  return Array.from(out);
+}
+
+/**
+ * Who hears about a new report. `eligible` is every moderator the channel's
+ * reports stay open to (none of them a party); the reporter isn't belled
+ * about their own report. With nobody eligible the report would reach no
+ * one — every moderator is in it — so it has to `escalate` outside chat.
+ */
+export function reportRouting(
+  moderatorIds: readonly string[],
+  channelReports: readonly { partyIds: readonly string[] }[],
+  reporterId: string,
+): { notify: string[]; escalate: boolean } {
+  const eligible = Array.from(new Set(moderatorIds)).filter((id) =>
+    channelReportsOpenTo(channelReports, { userId: id, staff: true }),
+  );
+  return { notify: eligible.filter((id) => id !== reporterId), escalate: eligible.length === 0 };
 }
 
 /** Is the viewer a party to this DM or group (not a moderator looking in)? */
@@ -107,24 +170,50 @@ export type Verdict = { ok: true } | { ok: false; reason: string };
 const OK: Verdict = { ok: true };
 const no = (reason: string): Verdict => ({ ok: false, reason });
 
+/** A chat mute (chat_mutes): no posting, reacting, pinning or starting conversations. */
+export const MUTED_REASON = "You can't post in chat right now.";
+
+/** A pending fine locks everything but a DM with the team. */
+export const FINE_REASON = "Settle your pending fine first. You can still message the batch0 team about it.";
+
+/**
+ * Is a chat_mutes row in force? `until` null means until a moderator lifts
+ * it. Staff are never muted: they run chat, and could lift it themselves.
+ */
+export function muteActive(mute: { until: string | null } | null | undefined, nowMs: number): boolean {
+  if (!mute) return false;
+  if (mute.until === null) return true;
+  const until = Date.parse(mute.until);
+  return Number.isFinite(until) && until > nowMs;
+}
+
 /**
  * Who may post. Reading isn't enough:
  *   - an archived channel is history, read-only for everyone;
  *   - a staff-posting channel (#announcements) is read-only for everyone else;
  *   - a moderator reading a reported DM is not a party to it;
  *   - a DM freezes for both sides once either has blocked the other, and goes
- *     read-only when the other account is gone.
+ *     read-only when the other account is gone;
+ *   - a muted or fined account can't post (the caller works out the one
+ *     exception both share, a DM with the team, and passes false there).
  */
 export function canPost(
   c: ChannelScope,
   viewer: ChatViewer,
-  ctx: { reported?: boolean; blocked?: boolean; otherPresent?: boolean; safeguarded?: boolean } = {},
+  ctx: {
+    reported?: boolean;
+    blocked?: boolean;
+    otherPresent?: boolean;
+    safeguarded?: boolean;
+    muted?: boolean;
+    fined?: boolean;
+  } = {},
 ): Verdict {
   if (!canReadChannel(c, viewer, !!ctx.reported)) return no("That channel isn't available.");
   if (c.archivedAt) return no("This channel is archived. It's read-only now.");
   if (c.kind === "channel") {
     if (c.posting === "staff" && !viewer.staff) return no("Only the batch0 team posts here.");
-    return OK;
+    return personalLock(viewer, ctx);
   }
   if (!isParticipant(c, viewer)) return no("You're reading this as a moderator. You can't post in it.");
   // A conversation that predates the rule (an old DM carried over by 0101)
@@ -135,6 +224,13 @@ export function canPost(
     // Deliberately doesn't say who blocked whom.
     if (ctx.blocked) return no("You can't send messages in this conversation.");
   }
+  return personalLock(viewer, ctx);
+}
+
+function personalLock(viewer: ChatViewer, ctx: { muted?: boolean; fined?: boolean }): Verdict {
+  if (viewer.staff) return OK;
+  if (ctx.muted) return no(MUTED_REASON);
+  if (ctx.fined) return no(FINE_REASON);
   return OK;
 }
 
@@ -190,21 +286,26 @@ export function canDeleteMessage(
 // ---------------------------------------------------------------------------
 
 /**
- * The key that makes a DM between two people one row: the two ids, sorted.
- * Which one clicked first must not matter, or the unique index would let the
- * same pair exist twice.
+ * The key that makes a DM between two people one row: the two ids, lowercased
+ * and sorted. Which one clicked first must not matter, and neither may the
+ * case a uuid arrived in (isUuid accepts both, Postgres stores lowercase), or
+ * the unique index would let the same pair — or one person alone — exist.
  */
 export function dmKey(x: string, y: string): string {
-  if (!x || !y || x === y) throw new Error("A DM needs two different people.");
-  return x < y ? `${x}:${y}` : `${y}:${x}`;
+  const a = (x ?? "").toLowerCase();
+  const b = (y ?? "").toLowerCase();
+  if (!a || !b || a === b) throw new Error("A DM needs two different people.");
+  return a < b ? `${a}:${b}` : `${b}:${a}`;
 }
 
 /** The other person in a DM key, or null if the viewer isn't in it. */
 export function otherInDmKey(key: string | null, userId: string): string | null {
   if (!key || key.startsWith("legacy:")) return null;
-  const [a, b] = key.split(":");
-  if (a === userId) return b ?? null;
-  if (b === userId) return a ?? null;
+  const me = (userId ?? "").toLowerCase();
+  const [a, b] = key.toLowerCase().split(":");
+  if (!me) return null;
+  if (a === me) return b || null;
+  if (b === me) return a || null;
   return null;
 }
 
@@ -212,9 +313,10 @@ export function otherInDmKey(key: string | null, userId: string): string | null 
 export const GROUP_MAX_MEMBERS = 10;
 
 /**
- * May this viewer start a group with `others` other people? A group needs at
- * least two others (one is a DM), fits GROUP_MAX_MEMBERS with the viewer, and
- * is for people who've been let in — a fresh signup can still DM the team.
+ * May this viewer pick `others` other people for a new conversation? One
+ * other person is a DM (createGroup opens that instead); two or more make a
+ * group, which fits GROUP_MAX_MEMBERS with the viewer and is for people who've
+ * been let in — a fresh signup can still DM the team.
  */
 export function canStartGroup(viewer: ChatViewer, others: number): Verdict {
   if (others < 1) return no("Pick at least one person.");
@@ -243,8 +345,13 @@ export type Party = {
   staff: boolean;
 };
 
+/**
+ * Said to everyone the rule stops, so it can't send anyone somewhere they
+ * can't go: an investor or an intern reads no team or cohort channel, and
+ * the team is the one door open to all of them.
+ */
 export const SAFEGUARD_REASON =
-  "Students and mentors or investors talk in team and cohort channels, where the batch0 team can see the conversation — not in private messages.";
+  "Students and adults outside the batch0 team don't message each other privately. Mentors and students talk in team and cohort channels, where the batch0 team can see the conversation. For anything else, message the batch0 team.";
 
 /** May these people share a private conversation (a DM, or a group)? */
 export function conversationAllowed(parties: readonly Party[]): boolean {
@@ -252,6 +359,41 @@ export function conversationAllowed(parties: readonly Party[]): boolean {
   const hasStudent = parties.some((p) => p.student);
   const hasAdult = parties.some((p) => !p.student);
   return !(hasStudent && hasAdult);
+}
+
+export const ONLY_THE_TEAM_REASON =
+  "For now you can message the batch0 team. Messaging other people opens once you've been accepted.";
+
+/**
+ * May the actor reach this person at all — the directory rule (0089's):
+ * staff reach and are reachable by everyone; vetted people reach each other;
+ * a fresh signup reaches staff only. No safeguarding here: a group checks
+ * this per person and conversationAllowed once on the whole membership.
+ */
+export function reachVerdict(
+  actor: Pick<ChatViewer, "staff" | "vetted">,
+  recipient: { staff: boolean; vetted: boolean },
+): Verdict {
+  if (actor.staff || recipient.staff) return OK;
+  if (!actor.vetted) return no(ONLY_THE_TEAM_REASON);
+  if (!recipient.vetted) return no("That person isn't available.");
+  return OK;
+}
+
+/**
+ * May the actor open a DM with this person? Reachable first — so a fresh
+ * signup learns nothing about a non-staff account, not even that the
+ * safeguarding rule would apply to it — then the safeguarding rule for the
+ * pair.
+ */
+export function dmVerdict(
+  actor: Pick<ChatViewer, "staff" | "vetted"> & { party: Party | null },
+  recipient: Party & { vetted: boolean },
+): Verdict {
+  const reach = reachVerdict(actor, recipient);
+  if (!reach.ok || actor.staff || recipient.staff) return reach;
+  if (actor.party && !conversationAllowed([actor.party, recipient])) return no(SAFEGUARD_REASON);
+  return OK;
 }
 
 /** What a group is called when nobody named it: the other people, by name. */
@@ -327,6 +469,39 @@ export function wantsBell(
 }
 
 /**
+ * A bell's title. Never the words, and never a group's name or members: an
+ * admin can read every notification row, so a title naming the group would
+ * be a staff read path into an unreported conversation (and an unnamed
+ * group's "name" is its members, the recipient included).
+ */
+export function bellTitle(
+  kind: ChannelKind,
+  input: { sender: string; channelName: string | null; mentioned: boolean; everyone: boolean },
+): string {
+  if (kind === "dm") return `${input.sender} messaged you`;
+  if (kind === "group") return `${input.sender} in a group chat`;
+  const where = `#${input.channelName ?? "channel"}`;
+  if (input.everyone) return `${input.sender} pinged everyone in ${where}`;
+  if (input.mentioned) return `${input.sender} mentioned you in ${where}`;
+  return `${input.sender} posted in ${where}`;
+}
+
+/**
+ * How far back a text channel someone has never opened counts as unread —
+ * chat_unread()'s window in 0101, so joining a cohort doesn't open on "99+".
+ */
+export const UNREAD_LOOKBACK_MS = 14 * 24 * 60 * 60_000;
+
+/**
+ * Where the "new" line goes when there's no read cursor yet: a text channel
+ * counts from UNREAD_LOOKBACK_MS back (what the sidebar badge counted), a DM
+ * or group from the start.
+ */
+export function defaultReadCursor(kind: ChannelKind, nowMs: number): string {
+  return new Date(kind === "channel" ? nowMs - UNREAD_LOOKBACK_MS : 0).toISOString();
+}
+
+/**
  * How recently a recipient must have had the channel open to count as being
  * in it right now. They're looking at it, and the live view shows the
  * message, so no bell.
@@ -399,6 +574,24 @@ export function normalizeChannelName(input: string): string {
 }
 
 export const CHANNEL_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/;
+
+/**
+ * A post from outside the composer (an announcement cross-post), fitted to
+ * MESSAGE_MAX: trimmed, and when it's longer, cut at the last word break
+ * that leaves room for "…" and the link to the full text — never a post that
+ * just stops mid-sentence.
+ */
+export function fitPostBody(raw: string, link?: string): string {
+  const body = raw.trim();
+  if (body.length <= MESSAGE_MAX) return body;
+  const tail = link ? `…\n\nRead the rest: ${link}` : "…";
+  const room = MESSAGE_MAX - tail.length;
+  const cut = body.slice(0, room);
+  const space = Math.max(cut.lastIndexOf(" "), cut.lastIndexOf("\n"));
+  // A word break near the end; otherwise (one enormous word) a hard cut.
+  const head = (space > room * 0.8 ? cut.slice(0, space) : cut).trimEnd();
+  return `${head}${tail}`;
+}
 
 /**
  * The reaction palette. A fixed set rather than any string: it keeps the
@@ -490,3 +683,16 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export function isUuid(id: unknown): id is string {
   return typeof id === "string" && UUID_RE.test(id);
 }
+
+/**
+ * A uuid from outside, in the one case Postgres stores it in: lowercase, or
+ * null for anything that isn't one. Ids are compared as strings all over (DM
+ * keys, member lists, people maps), so an uppercase copy of a real id would
+ * otherwise be a different person.
+ */
+export function asUuid(id: unknown): string | null {
+  return isUuid(id) ? id.toLowerCase() : null;
+}
+
+/** Mention autocomplete beyond the preloaded list: how many people one search returns. */
+export const PEOPLE_SEARCH_MAX = 8;

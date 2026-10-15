@@ -51,14 +51,41 @@ export default function PrivacyPage() {
         <li>
           <strong>batch0 Chat:</strong> the messages, files, reactions and
           pins you post in channels, direct messages and group messages, and
-          which conversations you&rsquo;ve read. A channel can be read by the
-          people it&rsquo;s for (everyone accepted, your cohort, or your team)
-          and by the batch0 team. A direct or group message can be read only
-          by the people in it, until one of them reports it; reporting hands
-          that conversation to the batch0 team so they can act on it. When you
-          edit or delete a message, we keep the earlier version so a report
-          can still be reviewed. Students and mentors or investors talk in
-          team and cohort channels, not in private messages.
+          which conversations you&rsquo;ve read. Who can read a channel:
+          <ul>
+            <li>
+              #announcements, #general, #wins and #help: every accepted or
+              enrolled student, and every mentor, investor and other account
+              that isn&rsquo;t a student. Anyone who can read them can see
+              who else can, by name.
+            </li>
+            <li>
+              Your cohort&rsquo;s channel: your cohort&rsquo;s enrolled
+              students, and the mentors assigned to any of them.
+            </li>
+            <li>
+              Your team&rsquo;s channel: your team, and the mentors assigned
+              to anyone on it.
+            </li>
+            <li>
+              The batch0 team reads every channel, and can add people to any
+              channel.
+            </li>
+          </ul>
+          A direct or group message can be read only by the people in it,
+          until one of them reports a message; reporting hands that
+          conversation to the batch0 team so they can act on it. Students can
+          message each other, and the batch0 team, privately. Mentors,
+          investors and other adults outside the batch0 team can&rsquo;t
+          message students privately: they talk with students only in
+          channels the batch0 team can read, or in a group that includes
+          someone from the batch0 team. When you edit or delete a
+          message, we keep the earlier version so a report can still be
+          reviewed. When an account is deleted, we blank the messages it
+          posted and delete their earlier versions and files, except a
+          message someone reported, or any message in a direct or group
+          conversation someone reported: those we keep, with their earlier
+          versions and files, as evidence of what was reported.
         </li>
         <li>
           <strong>Retired features:</strong> we still hold what was posted or
@@ -130,8 +157,9 @@ export default function PrivacyPage() {
           only.
         </li>
         <li>
-          <strong>Mentors and investors</strong> only see what you choose to
-          publish (e.g. a public team profile).
+          <strong>Mentors and investors</strong> see what you choose to
+          publish (e.g. a public team profile), and what is posted in the
+          batch0 Chat channels they can read, listed above.
         </li>
       </ul>
 

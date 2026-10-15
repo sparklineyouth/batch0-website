@@ -137,7 +137,7 @@ function payloadFor(view: string): ChannelPayload | null {
     pinnedAt: m.pinned ? ago(50) : null,
   }));
   if (view === "draft") {
-    return { ...base, channel: null, draftTo: people[SAM], draftCompose: { ok: false, reason: "Students and mentors or investors talk in team and cohort channels, where the batch0 team can see the conversation — not in private messages." }, messages: [], cursor: new Date(0).toISOString(), pins: 0 };
+    return { ...base, channel: null, draftTo: people[SAM], draftCompose: { ok: false, reason: "Students and adults outside the batch0 team don't message each other privately. Mentors and students talk in team and cohort channels, where the batch0 team can see the conversation. For anything else, message the batch0 team." }, messages: [], cursor: new Date(0).toISOString(), pins: 0 };
   }
   if (view === "readonly") {
     return {

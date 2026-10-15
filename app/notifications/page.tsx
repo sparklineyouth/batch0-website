@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArrowLeft, Bell, SlidersHorizontal } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser, getProfile, roleHome } from "@/lib/auth";
@@ -8,6 +9,7 @@ import {
   splitByImportance,
   type ImportanceOverrides,
 } from "@/lib/notification-importance";
+import { isUuid } from "@/lib/chat-access";
 import { MarkAllRead } from "./mark-all-read";
 import { NotificationItem } from "./notification-item";
 import { ImportanceSettings } from "./importance-settings";
@@ -22,9 +24,14 @@ function tabFrom(raw: string | undefined): Tab {
 }
 
 export default async function NotificationsPage(props: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; c?: string }>;
 }) {
   const searchParams = await props.searchParams;
+  // An old "messaged you" bell (/messages?c=<conversation>). Before Chat,
+  // /messages answered with a permanent redirect to /notifications, and
+  // browsers cache those, so next.config.js's newer /messages → /chat redirect
+  // never reaches them. The conversation has the same id in Chat (0101).
+  if (isUuid(searchParams.c)) redirect(`/chat?c=${searchParams.c}`);
   const tab = tabFrom(searchParams.tab);
   const user = await requireUser();
   const supabase = await createClient();
