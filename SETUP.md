@@ -20,7 +20,22 @@ npm install
 
 ## 2. Run the database migrations
 
-Open the Supabase SQL Editor for your project:
+The quick way: put the database connection string in `.env.local` as
+`SUPABASE_DB_URL` (Supabase → Connect → "Session pooler", with your database
+password filled in), then run
+
+```bash
+npm run db:migrate              # shows what would run, changes nothing
+npm run db:migrate -- --apply   # backs up, then runs every pending file in order
+```
+
+It works out which files the database still needs (recorded by the Supabase
+CLI, a passing verify query, or a later file having run), backs up what the
+pending files remove or rewrite into `backups/` (gitignored), runs each file
+in one transaction with its verify query checked before COMMIT, and records
+them so `supabase migration list` agrees. Details: `scripts/db-migrate.mts`.
+
+Or by hand: open the Supabase SQL Editor for your project:
 
 https://supabase.com/dashboard/project/taiqnjpojenqkbuuwxeo/sql/new
 

@@ -1,6 +1,14 @@
 # Migrations 0093–0101 (October 2026)
 
-Run each file in the Supabase SQL editor: paste the whole file and run it.
+**Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
+files below that the database is missing, in order, each in one transaction
+checked against its verify query, backing up first. It holds 0101 back until
+the Chat code is live in production (0101 drops columns the previous code
+reads), runs everything before it, and exits with code 3 so you know to run it
+again after the deploy. The verify queries at the end of this page are the
+ones it uses (`lib/migration-plan.ts`; a test keeps the two identical).
+
+By hand: run each file in the Supabase SQL editor: paste the whole file and run it.
 **The order matters more than usual**, because the deploy removes the old
 check-ins, in-app files, discussions and the old recorder at once:
 

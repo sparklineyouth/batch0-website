@@ -80,7 +80,9 @@ environment settings; do not upload a developer's `.env.local` as configuration.
 Production uses `batch0.org` and `app.batch0.org`, with matching authentication
 redirects and webhook endpoints. See `.env.local.example` for available settings.
 
-Migrations are run by hand in the Supabase SQL editor after the code deploys.
+Migrations run after the code deploys: `npm run db:migrate -- --apply` runs
+every pending file in order (backup first, one transaction per file, verified;
+see SETUP.md), or paste them into the Supabase SQL editor by hand.
 The October 2026 release adds 0093–0101: 0095 and 0096 go in before the
 deploy and the rest right after it; see `docs/migrations-2026-10.md` for the
 order, why, and a verify query per file. The app runs without them. `/admin`

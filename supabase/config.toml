@@ -15,7 +15,9 @@
 #
 # `/supabase` is listed in .vercelignore, so this costs the deploy nothing.
 #
-# Applying a migration:
+# Applying migrations: prefer `npm run db:migrate` (scripts/db-migrate.mts),
+# which tells live-but-unrecorded files apart from pending ones by their
+# verify queries, backs up first and records what it runs. The CLI way:
 #   supabase db push --dry-run   # confirm the list is ONLY what you expect
 #   supabase db push
 #
