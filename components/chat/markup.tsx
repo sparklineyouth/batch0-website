@@ -28,12 +28,32 @@ export type MarkupContext = {
   onChannel?: (id: string) => void;
 };
 
-export function MessageMarkup({ body, ctx, compact = false }: { body: string; ctx: MarkupContext; compact?: boolean }) {
+/** What the inline renderers pass down: the context, and whether its controls are in the Tab order. */
+type Env = { ctx: MarkupContext; tab: number | undefined };
+
+/**
+ * `tabbable` false takes its links, chips and spoilers out of the Tab order
+ * (tabIndex -1; a click or tap still works): the message list is one Tab
+ * stop, and a message's own controls join the order only while focus is in
+ * that message.
+ */
+export function MessageMarkup({
+  body,
+  ctx,
+  compact = false,
+  tabbable = true,
+}: {
+  body: string;
+  ctx: MarkupContext;
+  compact?: boolean;
+  tabbable?: boolean;
+}) {
   // Parsed once per body, not on every render of the row around it.
   const blocks = useMemo(() => (!compact && isJumboEmoji(body) ? null : parseBody(body)), [body, compact]);
   if (!blocks) {
     return <p className="text-4xl leading-tight">{body.trim()}</p>;
   }
+  const env: Env = { ctx, tab: tabbable ? undefined : -1 };
   return (
     <>
       {blocks.map((b, i) => {
@@ -50,13 +70,13 @@ export function MessageMarkup({ body, ctx, compact = false }: { body: string; ct
         if (b.t === "quote") {
           return (
             <blockquote key={i} className={`my-0.5 border-l-2 border-line pl-3 text-ink-soft ${WRAP}`}>
-              <InlineNodes nodes={b.c} ctx={ctx} />
+              <InlineNodes nodes={b.c} env={env} />
             </blockquote>
           );
         }
         return (
           <p key={i} className={WRAP}>
-            <InlineNodes nodes={b.c} ctx={ctx} />
+            <InlineNodes nodes={b.c} env={env} />
           </p>
         );
       })}
@@ -64,11 +84,12 @@ export function MessageMarkup({ body, ctx, compact = false }: { body: string; ct
   );
 }
 
-function InlineNodes({ nodes, ctx }: { nodes: Inline[]; ctx: MarkupContext }): ReactNode {
-  return nodes.map((n, i) => <Fragment key={i}>{renderInline(n, ctx)}</Fragment>);
+function InlineNodes({ nodes, env }: { nodes: Inline[]; env: Env }): ReactNode {
+  return nodes.map((n, i) => <Fragment key={i}>{renderInline(n, env)}</Fragment>);
 }
 
-function renderInline(n: Inline, ctx: MarkupContext): ReactNode {
+function renderInline(n: Inline, env: Env): ReactNode {
+  const { ctx, tab } = env;
   switch (n.t) {
     case "text":
       return n.v;
@@ -79,23 +100,23 @@ function renderInline(n: Inline, ctx: MarkupContext): ReactNode {
     case "bold":
       return (
         <strong className="font-semibold text-ink">
-          <InlineNodes nodes={n.c} ctx={ctx} />
+          <InlineNodes nodes={n.c} env={env} />
         </strong>
       );
     case "italic":
       return (
         <em>
-          <InlineNodes nodes={n.c} ctx={ctx} />
+          <InlineNodes nodes={n.c} env={env} />
         </em>
       );
     case "strike":
       return (
         <s>
-          <InlineNodes nodes={n.c} ctx={ctx} />
+          <InlineNodes nodes={n.c} env={env} />
         </s>
       );
     case "spoiler":
-      return <Spoiler nodes={n.c} ctx={ctx} />;
+      return <Spoiler nodes={n.c} env={env} />;
     case "link": {
       // A link into batch0 itself (a staff-feed line, a shared lesson) stays
       // in this tab; anything else opens a new one with no referrer.
@@ -103,11 +124,11 @@ function renderInline(n: Inline, ctx: MarkupContext): ReactNode {
       // hydration agree.
       const internal = !!SITE && (n.href === SITE || n.href.startsWith(`${SITE}/`));
       return internal ? (
-        <a href={n.href} className="link-ink break-all">
+        <a href={n.href} tabIndex={tab} className="link-ink break-all">
           {n.v}
         </a>
       ) : (
-        <a href={n.href} target="_blank" rel="noopener noreferrer nofollow ugc" className="link-ink break-all">
+        <a href={n.href} target="_blank" rel="noopener noreferrer nofollow ugc" tabIndex={tab} className="link-ink break-all">
           {n.v}
         </a>
       );
@@ -121,6 +142,7 @@ function renderInline(n: Inline, ctx: MarkupContext): ReactNode {
       return (
         <button
           type="button"
+          tabIndex={tab}
           onClick={() => ctx.onMention?.(n.id)}
           className={`${CHIP} ${self ? "bg-phosphor text-on-phosphor" : "bg-phosphor/20 text-ink hover:bg-phosphor/35"}`}
         >
@@ -133,6 +155,7 @@ function renderInline(n: Inline, ctx: MarkupContext): ReactNode {
       return name ? (
         <button
           type="button"
+          tabIndex={tab}
           onClick={() => ctx.onChannel?.(n.id)}
           className={`${CHIP} bg-phosphor/20 text-ink hover:bg-phosphor/35`}
         >
@@ -185,19 +208,19 @@ function hiddenText(nodes: Inline[], ctx: MarkupContext): string {
  * hidden mention can't be read off its colour. A span, not a <button>,
  * because it sits in running text and a revealed spoiler may hold buttons.
  */
-function Spoiler({ nodes, ctx }: { nodes: Inline[]; ctx: MarkupContext }) {
+function Spoiler({ nodes, env }: { nodes: Inline[]; env: Env }) {
   const [shown, setShown] = useState(false);
   if (shown) {
     return (
       <span className="rounded bg-wash px-0.5">
-        <InlineNodes nodes={nodes} ctx={ctx} />
+        <InlineNodes nodes={nodes} env={env} />
       </span>
     );
   }
   return (
     <span
       role="button"
-      tabIndex={0}
+      tabIndex={env.tab ?? 0}
       aria-label="Spoiler. Activate to reveal."
       onClick={(e) => {
         e.stopPropagation();
@@ -210,7 +233,7 @@ function Spoiler({ nodes, ctx }: { nodes: Inline[]; ctx: MarkupContext }) {
       }}
       className="cursor-pointer select-none rounded bg-ink px-0.5 text-transparent [text-shadow:none] hover:bg-ink/80"
     >
-      {hiddenText(nodes, ctx)}
+      {hiddenText(nodes, env.ctx)}
     </span>
   );
 }

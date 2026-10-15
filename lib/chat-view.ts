@@ -5,7 +5,7 @@
 // live event into the list. Import-free so `node --test` runs it.
 // ---------------------------------------------------------------------------
 
-import { isAfter } from "./chat-access.ts";
+import { countsAsMessage, isAfter } from "./chat-access.ts";
 
 /** What the layout needs from a message. */
 export type Placeable = {
@@ -55,11 +55,13 @@ export function dayKey(iso: string, offset: Offset): string {
  * sender changes, the gap exceeds GROUP_WINDOW_MS, the message is a reply
  * (its quote needs the header), a day boundary passes, or the "new" line
  * falls between them. The "new" line goes before the first message from
- * someone else that's newer than the viewer's cursor.
+ * someone else that's newer than the viewer's cursor — what the sidebar
+ * counted as unread, so in #staff (`systemKey` "staff") its feed lines too
+ * (countsAsMessage, the SQL's chat_counts_as_message).
  */
 export function layoutMessages<M extends Placeable>(
   messages: readonly M[],
-  opts: { viewerId: string; cursor: string | null; offsetMinutes: Offset | null },
+  opts: { viewerId: string; cursor: string | null; offsetMinutes: Offset | null; systemKey?: string | null },
 ): Row<M>[] {
   const rows: Row<M>[] = [];
   let prev: M | null = null;
@@ -76,7 +78,7 @@ export function layoutMessages<M extends Placeable>(
     if (
       !newPlaced &&
       !m.pending &&
-      m.kind === "message" &&
+      countsAsMessage(m.kind, opts.systemKey ?? null) &&
       m.senderId !== opts.viewerId &&
       isAfter(m.createdAt, opts.cursor!)
     ) {

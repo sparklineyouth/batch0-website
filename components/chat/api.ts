@@ -99,6 +99,25 @@ let inFlight = 0;
 let settling = false;
 let queued: { url: string; push: boolean } | null = null;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+/** The path the chat was mounted on, while it is (holdChatUrl); null once it's gone. */
+let chatPath: string | null = null;
+
+/**
+ * The chat is on screen: its URL writes may go through. Call on mount, and
+ * the returned function on unmount. A write that comes due after a link out
+ * of chat (a channel answering late, a queued flush) is dropped: the address
+ * bar belongs to the next page by then, and a /chat URL there would make
+ * reload and Back land in chat.
+ */
+export function holdChatUrl(): () => void {
+  chatPath = window.location.pathname;
+  return () => {
+    chatPath = null;
+    queued = null;
+    if (flushTimer) clearTimeout(flushTimer);
+    flushTimer = null;
+  };
+}
 
 /** Count a server action as in flight until it settles. Returns it untouched. */
 export function tracked<T>(p: Promise<T>): Promise<T> {
@@ -116,8 +135,11 @@ export function tracked<T>(p: Promise<T>): Promise<T> {
 }
 
 function write(url: string, push: boolean) {
-  if (typeof window === "undefined") return;
-  const here = window.location.pathname + window.location.search;
+  if (typeof window === "undefined" || !chatPath) return;
+  // Still the chat's page (where it was mounted, or a /chat URL it wrote)?
+  const path = window.location.pathname;
+  if (path !== chatPath && path !== new URL(url, window.location.href).pathname) return;
+  const here = path + window.location.search;
   if (push) window.history.pushState(null, "", url);
   else if (here !== url) window.history.replaceState(null, "", url);
 }

@@ -50,6 +50,7 @@ export function Composer({
   canMentionEveryone,
   draftKey,
   selfId,
+  onPeople,
 }: {
   channelId: string | null;
   placeholder: string;
@@ -70,6 +71,11 @@ export function Composer({
   draftKey: string;
   /** The viewer, who never mentions themselves. */
   selfId: string;
+  /**
+   * Someone picked from the "@" menu who isn't in `people` yet (the server's
+   * search found them): the message names them, sending and sent.
+   */
+  onPeople?: (more: Record<string, ChatPerson>) => void;
 }) {
   const [text, setText] = useState("");
   const [picked, setPicked] = useState<PickedMention[]>([]);
@@ -216,8 +222,9 @@ export function Composer({
     setText(next);
   };
 
-  const choose = (opt: { id: string; name: string }) => {
+  const choose = (opt: { id: string; name: string; person?: ChatPerson }) => {
     if (!mention) return;
+    if (opt.person && !people[opt.person.id]) onPeople?.({ [opt.person.id]: opt.person });
     const insert = `@${opt.name} `;
     const before = text.slice(0, mention.start);
     const after = text.slice(mention.start + 1 + mention.query.length);

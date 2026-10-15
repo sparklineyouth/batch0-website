@@ -109,9 +109,11 @@ export function MessageList({
   const [announce, setAnnounce] = useState("");
   useEffect(() => setMounted(true), []);
 
+  // #staff's feed lines count as unread on the server, so the "new" line counts them too.
+  const systemKey = channel?.systemKey ?? null;
   const rows = useMemo(
-    () => layoutMessages(messages, { viewerId: viewer.id, cursor, offsetMinutes: mounted ? localOffset : null }),
-    [messages, viewer.id, cursor, mounted],
+    () => layoutMessages(messages, { viewerId: viewer.id, cursor, offsetMinutes: mounted ? localOffset : null, systemKey }),
+    [messages, viewer.id, cursor, mounted, systemKey],
   );
 
   const channelKey = channel?.id ?? "draft";
@@ -505,23 +507,38 @@ const MessageItem = memo(function MessageItem({
   const mine = !!m.senderId && m.senderId === viewer.id;
   const live = !m.pending && !m.failed;
   // A frozen DM or group (a block, a departed account, the safeguarding rule,
-  // a fine) takes no edits, reactions or pins either — the server refuses
-  // them, so don't offer them. A text channel you can't post in still takes
-  // reactions (#announcements), just not edits.
+  // a fine) takes no edits or pins either — the server refuses them, so don't
+  // offer them. Reactions follow canReact: a text channel you can't post in
+  // still takes them (#announcements), unless you're muted or fined.
   const readOnly = !channel || channel.archived || channel.moderatorView || (channel.kind !== "channel" && !channel.compose.ok);
+  const canReact = !!channel?.canReact;
   const mentioned = !mine && (m.mentions.includes(viewer.id) || m.mentionEveryone);
   const rowFocus = "focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink/30";
+  // Shown on hover, focus, a tap (touch) or an open menu. Hidden with
+  // opacity, not display/visibility, so focus can always land on (or come
+  // back to) a button in it — and out of the Tab order until then, so Tab
+  // doesn't walk through every message's toolbar. Everything else in the
+  // message (its avatar, links, chips, files, reactions) joins the Tab order
+  // on the same terms: the list is one Tab stop, ↑/↓ move between messages.
+  const showTools = menu !== null || selected || focused;
+  const tab = showTools ? 0 : -1;
+  const focusWithin = {
+    onFocus: () => setFocused(true),
+    onBlur: (e: React.FocusEvent<HTMLDivElement>) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
+    },
+  };
 
   if (m.kind === "system") {
     return (
-      <div data-mid={m.id} tabIndex={tabbable ? 0 : -1} role="article" className={`flex items-start gap-2 px-4 py-1 text-xs text-ink-faint md:px-6 ${rowFocus}`}>
+      <div data-mid={m.id} tabIndex={tabbable ? 0 : -1} role="article" {...focusWithin} className={`flex items-start gap-2 px-4 py-1 text-xs text-ink-faint md:px-6 ${rowFocus}`}>
         {/pinned a message/.test(m.body) ? (
           <Pin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         ) : (
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         )}
         <span className="min-w-0 [overflow-wrap:anywhere]">
-          <MessageMarkup body={m.body} ctx={markup} compact />
+          <MessageMarkup body={m.body} ctx={markup} compact tabbable={showTools} />
         </span>
         <span className="shrink-0 font-mono text-[10px]">{mounted ? clockTime(m.createdAt) : ""}</span>
       </div>
@@ -530,9 +547,10 @@ const MessageItem = memo(function MessageItem({
 
   if (blocked && !reveal) {
     return (
-      <div data-mid={m.id} tabIndex={tabbable ? 0 : -1} role="article" className={`px-4 py-1 md:px-6 ${rowFocus}`}>
+      <div data-mid={m.id} tabIndex={tabbable ? 0 : -1} role="article" {...focusWithin} className={`px-4 py-1 md:px-6 ${rowFocus}`}>
         <button
           type="button"
+          tabIndex={tab}
           onClick={() => setReveal(true)}
           className="ml-12 text-xs text-ink-faint underline-offset-2 hover:underline"
         >
@@ -551,11 +569,6 @@ const MessageItem = memo(function MessageItem({
   // A person to message: someone else, with an account.
   const other = !mine && !!m.senderId && !!sender;
   const first = name.split(" ")[0];
-  // Shown on hover, focus, a tap (touch) or an open menu. Hidden with
-  // opacity, not display/visibility, so focus can always land on (or come
-  // back to) a button in it — and out of the Tab order until then, so Tab
-  // doesn't walk through every message's toolbar.
-  const showTools = menu !== null || selected || focused;
 
   const copyText = () => {
     const text = rawText(m.body, (id) => people[id]?.name ?? markup.personName(id), (id) => markup.channelName(id));
@@ -573,10 +586,7 @@ const MessageItem = memo(function MessageItem({
         if (!touchOnly() || (e.target as HTMLElement).closest("a, button, input, textarea, [role='button']")) return;
         onSelect(m.id);
       }}
-      onFocus={() => setFocused(true)}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
-      }}
+      {...focusWithin}
       onContextMenu={(e) => {
         // A long press on a touch screen opens the menu (a right click on a
         // desktop keeps the browser's).
@@ -594,7 +604,7 @@ const MessageItem = memo(function MessageItem({
         <div className="w-9 shrink-0">
           {head ? (
             other ? (
-              <button type="button" onClick={() => actions.onMessagePerson(m.senderId!)} aria-label={`Message ${name}`}>
+              <button type="button" tabIndex={tab} onClick={() => actions.onMessagePerson(m.senderId!)} aria-label={`Message ${name}`}>
                 <Avatar name={name} online={online} size={36} />
               </button>
             ) : (
@@ -631,12 +641,12 @@ const MessageItem = memo(function MessageItem({
             />
           ) : (
             <div className="text-[15px] leading-relaxed text-ink">
-              {m.body ? <MessageMarkup body={m.body} ctx={markup} /> : null}
+              {m.body ? <MessageMarkup body={m.body} ctx={markup} tabbable={showTools} /> : null}
               {m.editedAt ? <span className="ml-1 text-[10px] text-ink-faint">(edited)</span> : null}
             </div>
           )}
 
-          {m.attachments.length > 0 ? <Attachments m={m} /> : null}
+          {m.attachments.length > 0 ? <Attachments m={m} tab={tab} /> : null}
 
           {reactions.length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-1">
@@ -647,7 +657,8 @@ const MessageItem = memo(function MessageItem({
                   <button
                     key={r.emoji}
                     type="button"
-                    disabled={!live || readOnly}
+                    tabIndex={tab}
+                    disabled={!live || !canReact}
                     onClick={() => actions.onReact(m.id, r.emoji)}
                     title={`${who} reacted with ${r.emoji}`}
                     aria-label={`${r.emoji} ${r.userIds.length}: ${who}`}
@@ -667,11 +678,11 @@ const MessageItem = memo(function MessageItem({
           {m.failed ? (
             <p className="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">
               {m.failed}{" "}
-              <button type="button" className="underline" onClick={() => actions.onRetry(m)}>
+              <button type="button" tabIndex={tab} className="underline" onClick={() => actions.onRetry(m)}>
                 Retry
               </button>{" "}
               ·{" "}
-              <button type="button" className="underline" onClick={() => actions.onDiscard(m.id)}>
+              <button type="button" tabIndex={tab} className="underline" onClick={() => actions.onDiscard(m.id)}>
                 Discard
               </button>
             </p>
@@ -687,7 +698,7 @@ const MessageItem = memo(function MessageItem({
             showTools ? "opacity-100" : "opacity-0 group-hover:opacity-100 [@media(hover:none)]:pointer-events-none"
           }`}
         >
-          {!readOnly ? (
+          {canReact ? (
             <ToolbarButton ref={emojiRef} label="Add a reaction" tabbable={showTools} expanded={menu === "emoji"} onClick={() => setMenu(menu === "emoji" ? null : "emoji")}>
               <SmilePlus className="h-4 w-4" />
             </ToolbarButton>
@@ -714,7 +725,7 @@ const MessageItem = memo(function MessageItem({
               }}
             />
           </Popover>
-          <Popover open={menu === "more"} onClose={() => setMenu(null)} toggleRef={moreRef} className="right-0 top-9 w-56">
+          <Popover open={menu === "more"} onClose={() => setMenu(null)} toggleRef={moreRef} className="right-0 top-9 w-64">
             <div role="menu" aria-label="Message actions">
               {channel?.canPin && !readOnly ? (
                 <MenuItem icon={m.pinnedAt ? PinOff : Pin} onClick={() => { setMenu(null); actions.onPin(m.id); }}>
@@ -829,7 +840,8 @@ function ReplyQuote({
   );
 }
 
-function Attachments({ m }: { m: UiMessage }) {
+/** `tab`: -1 keeps the links out of the Tab order until focus is in the message. */
+function Attachments({ m, tab }: { m: UiMessage; tab: number }) {
   return (
     <div className="mt-1.5 flex min-w-0 flex-wrap gap-2">
       {m.attachments.map((a, i) => {
@@ -844,7 +856,7 @@ function Attachments({ m }: { m: UiMessage }) {
         }
         if (isInlineImage(a)) {
           return (
-            <a key={a.path} href={chatFileHref(m.id, i)} target="_blank" rel="noopener noreferrer" className="block max-w-full">
+            <a key={a.path} href={chatFileHref(m.id, i)} target="_blank" rel="noopener noreferrer" tabIndex={tab} className="block max-w-full">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={chatFileHref(m.id, i)}
@@ -861,6 +873,7 @@ function Attachments({ m }: { m: UiMessage }) {
           <a
             key={a.path}
             href={chatFileHref(m.id, i, { download: true })}
+            tabIndex={tab}
             className="inline-flex min-w-0 max-w-full items-center gap-2.5 rounded-md border border-line bg-paper px-3 py-2 text-sm hover:border-ink/30"
           >
             <Icon className="h-5 w-5 shrink-0 text-ink-faint" />

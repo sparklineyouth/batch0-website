@@ -74,6 +74,7 @@ export function ChannelView({
   blocked,
   onBlocksChanged,
   wasDeleted,
+  onPeople,
 }: {
   viewer: ChatViewerInfo;
   payload: ChannelPayload | null;
@@ -116,6 +117,8 @@ export function ChannelView({
   onBlocksChanged: () => void;
   /** Was this message deleted while the page has been open? */
   wasDeleted: (id: string) => boolean;
+  /** People the client learned of here (the composer's server search): names for every message. */
+  onPeople: (more: Record<string, ChatPerson>) => void;
 }) {
   const channel = payload?.channel ?? null;
   const [replyTo, setReplyTo] = useState<UiMessage | null>(null);
@@ -268,7 +271,15 @@ export function ChannelView({
   };
 
   const candidates = useMemo(() => members.filter((m) => m.id !== viewer.id), [members, viewer.id]);
-  const typingNames = typingIds.map((id) => people[id]?.name ?? members.find((m) => m.id === id)?.name ?? "Someone");
+  // A typing broadcast carries whatever id its sender put in it. In a DM or
+  // group only a member's counts (ChatApp's typingAccept); in a text channel,
+  // only someone this screen already knows here — a name it holds, or the
+  // channel's readers list — so nobody shows up as a stranger "typing…".
+  // Still a hint, not proof: a reader can claim another reader's id.
+  const typingNames = typingIds.flatMap((id) => {
+    const name = people[id]?.name ?? members.find((m) => m.id === id)?.name;
+    return name ? [name] : [];
+  });
 
   if (!payload) {
     // Nothing open: loading one (its name, a spinner, no composer to type
@@ -499,6 +510,7 @@ export function ChannelView({
           canMentionEveryone={!!channel?.canMentionEveryone}
           draftKey={key}
           selfId={viewer.id}
+          onPeople={onPeople}
         />
       )}
 

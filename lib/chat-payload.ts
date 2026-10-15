@@ -75,6 +75,12 @@ export type ChannelInfo = {
   /** DM/group: explicit members. */
   memberIds: string[];
   compose: Verdict;
+  /**
+   * May react (toggleReaction's rule): a text channel's readers — even where
+   * only staff post — unless muted or fined; in a DM or group, whoever may
+   * post. Never in an archived channel or a moderator's view.
+   */
+  canReact: boolean;
   canManage: boolean;
   canPin: boolean;
   canMentionEveryone: boolean;
@@ -277,6 +283,15 @@ async function describe(
   }
   const read = reads.get(channel.id) ?? null;
   const pref = (read?.notify ?? null) as NotifyPref | null;
+  const compose = canPost(channel, viewer, {
+    reported,
+    blocked: frozen,
+    otherPresent,
+    safeguarded: !allowed,
+    muted: locks.muted,
+    fined: locks.fined,
+  });
+  const moderatorView = channel.kind !== "channel" && !participant;
   return {
     read,
     info: {
@@ -294,18 +309,15 @@ async function describe(
       cohortId: channel.cohortId,
       otherId: participant && otherPresent ? otherId : null,
       memberIds: members,
-      compose: canPost(channel, viewer, {
-        reported,
-        blocked: frozen,
-        otherPresent,
-        safeguarded: !allowed,
-        muted: locks.muted,
-        fined: locks.fined,
-      }),
+      compose,
+      canReact:
+        !channel.archivedAt &&
+        !moderatorView &&
+        (channel.kind === "channel" ? !locks.muted && !locks.fined : compose.ok),
       canManage: canManageChannel(channel, viewer),
       canPin: canPin(channel, viewer),
       canMentionEveryone: canMentionEveryone(channel, viewer),
-      moderatorView: channel.kind !== "channel" && !participant,
+      moderatorView,
       blockedByYou: !!otherId && blocked.includes(otherId),
       notify: effectiveNotify(channel.kind, pref),
       notifyIsDefault: pref === null,

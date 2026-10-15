@@ -161,7 +161,8 @@ signed-in users get read policies only.
   team* flags/hour, 40 uploaded files/hour (files, not calls).
 - **Mutes:** staff can mute someone from the report page or a message's menu
   (`mutePerson`, `chat_mutes`): for an hour, a day, a week or until lifted.
-  A muted account can't post, react, pin, or start or change a conversation,
+  A muted account can't post, react (`ChannelInfo.canReact` hides reactions
+  for it, as for a fined one), pin, or start or change a conversation,
   except a DM with the team to ask about it, and the composer says "You
   can't post in chat right now." Staff are never muted. A mute also holds
   for an announcement's chat copy: the announcement itself still goes out,
@@ -246,7 +247,14 @@ count, no bell and no record depends on presence or typing.
 A resync covers what Realtime can't deliver: on reconnect, when the tab comes
 back, and every 30 seconds while visible, with the sidebar. The nav badge
 reads `/chat/api/attention`: one shared poll a minute while visible, however
-many badges are mounted, and again on a new chat bell.
+many badges are mounted, again on a new chat bell, and always on the first
+badge to mount on a page (coming back from `/chat`, the count is fresh).
+
+Reading: the read cursor moves only while the window has focus and you're at
+the bottom of the conversation. The once-a-minute "still here" stamp that
+holds back bells for the conversation you have open is sent whenever the tab
+is visible, focused or not, so a conversation open on a second screen
+doesn't ring.
 
 ## Attachments
 
@@ -317,8 +325,10 @@ Keyboard: Enter sends, Shift+Enter adds a newline (on a phone, Enter is a
 newline and the Send button sends), ↑ edits your last message, Esc cancels a
 reply, Ctrl/⌘+K opens the quick switcher. The message list is one Tab stop:
 ↑/↓, Page Up/Down, Home and End move between messages, Tab goes into one for
-its actions, Esc goes back to the composer. On a touch screen, tap a message
-for its actions; a long press opens More.
+its actions, Esc goes back to the composer. A message's links, mentions,
+files, reactions and avatar join the Tab order only while focus is inside
+that message. On a touch screen, tap a message for its actions; a long press
+opens More.
 
 ## Code map
 

@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyUpdate, quotePreview, sameMessage, toUiMessage, withoutMessage } from "./live-rows.ts";
+import { applyUpdate, bumpSidebarRow, quotePreview, sameMessage, toUiMessage, withoutMessage } from "./live-rows.ts";
 import type { LiveRow } from "./use-chat-live";
-import type { UiMessage } from "./types";
+import type { SidebarData, SidebarItem, UiMessage } from "./types";
 
 const T = "2026-10-15T10:00:00.000Z";
 
@@ -96,4 +96,143 @@ test("sameMessage: a structurally equal copy is the same; a changed one, or an u
   assert.ok(!sameMessage(a, { ...a, reactions: {} }));
   assert.ok(!sameMessage(a, { ...a, editedAt: T }));
   assert.ok(!sameMessage({ ...a, failed: "Slow mode" }, a));
+});
+
+// ---------------------------------------------------------------------------
+// bumpSidebarRow: a live INSERT on the sidebar
+// ---------------------------------------------------------------------------
+
+const ME = "me";
+const OTHER = "other";
+const BLOCKED = "blocked";
+
+function sideItem(id: string, over: Partial<SidebarItem> = {}): SidebarItem {
+  return {
+    id,
+    kind: "channel",
+    label: id,
+    topic: null,
+    audience: "everyone",
+    posting: "everyone",
+    systemKey: null,
+    teamId: null,
+    cohortId: null,
+    otherId: null,
+    memberIds: [],
+    lastMessageAt: null,
+    preview: null,
+    unread: 0,
+    mentions: 0,
+    notify: null,
+    position: 0,
+    ...over,
+  };
+}
+
+function sidebar(): SidebarData {
+  return {
+    channels: [sideItem("wins"), sideItem("staff", { systemKey: "staff", audience: "staff" })],
+    conversations: [
+      sideItem("dm-old", { kind: "dm", audience: "members", lastMessageAt: "2026-10-15T09:00:00.000Z" }),
+      sideItem("dm-quiet", { kind: "dm", audience: "members", notify: "mentions", lastMessageAt: "2026-10-15T09:30:00.000Z" }),
+      sideItem("group", { kind: "group", audience: "members", lastMessageAt: "2026-10-15T09:45:00.000Z" }),
+    ],
+    people: {},
+    blocked: [BLOCKED],
+  };
+}
+
+let seq = 0;
+function insert(channelId: string, over: Partial<LiveRow> = {}): LiveRow {
+  seq++;
+  return {
+    id: `m${seq}`,
+    channel_id: channelId,
+    sender_id: OTHER,
+    kind: "message",
+    reply_to_id: null,
+    body: `hello ${seq}`,
+    mentions: [],
+    mention_everyone: false,
+    created_at: new Date(Date.parse("2026-10-15T10:00:00.000Z") + seq * 1000).toISOString(),
+    ...over,
+  };
+}
+
+const opts = { viewerId: ME, reading: false, personName: (id: string) => (id === ME ? "Me" : null) };
+const find = (s: SidebarData, id: string) => [...s.channels, ...s.conversations].find((i) => i.id === id)!;
+
+/** What ChatApp's onInsert does with the answer: refetch the sidebar only when the row isn't in it. */
+function feed(start: SidebarData, rows: LiveRow[], reading = false) {
+  let s = start;
+  let sidebarGets = 0;
+  for (const row of rows) {
+    const out = bumpSidebarRow(s, row, { ...opts, reading });
+    if (out.missing) sidebarGets++;
+    s = out.sidebar;
+  }
+  return { s, sidebarGets };
+}
+
+test("bumpSidebarRow: N live messages in a channel that's in the sidebar refetch it 0 times", () => {
+  const rows = Array.from({ length: 5 }, () => insert("wins"));
+  const { s, sidebarGets } = feed(sidebar(), rows);
+  assert.equal(sidebarGets, 0);
+  assert.equal(find(s, "wins").unread, 5);
+  assert.equal(find(s, "wins").mentions, 0, "a channel's number is its mentions");
+  assert.equal(find(s, "wins").lastMessageAt, rows[4].created_at);
+  // Read right now: recency moves, nothing to count.
+  const read = feed(sidebar(), [insert("wins")], true);
+  assert.equal(read.sidebarGets, 0);
+  assert.equal(find(read.s, "wins").unread, 0);
+});
+
+test("bumpSidebarRow: a conversation not in the sidebar asks for a refetch, and changes nothing", () => {
+  const s = sidebar();
+  const out = bumpSidebarRow(s, insert("closed-dm"), opts);
+  assert.equal(out.missing, true);
+  assert.equal(out.sidebar, s);
+});
+
+test("bumpSidebarRow: what counts mirrors chat_unread — your own, a blocked sender's and (outside #staff) system lines don't", () => {
+  const { s } = feed(sidebar(), [
+    insert("wins", { sender_id: ME }),
+    insert("wins", { sender_id: BLOCKED }),
+    insert("wins", { kind: "system", sender_id: null }),
+  ]);
+  assert.equal(find(s, "wins").unread, 0);
+  assert.equal(find(s, "wins").mentions, 0);
+});
+
+test("bumpSidebarRow: #staff's feed lines count, and move its recency (countsAsMessage)", () => {
+  const line = insert("staff", { kind: "system", sender_id: null, body: "New application: Maya Chen" });
+  const { s } = feed(sidebar(), [line, insert("staff", { kind: "system", sender_id: null })]);
+  assert.equal(find(s, "staff").unread, 2);
+  assert.equal(find(s, "staff").lastMessageAt !== null, true);
+  const general = feed(sidebar(), [insert("wins", { kind: "system", sender_id: null })]).s;
+  assert.equal(find(general, "wins").lastMessageAt, null, "a system line elsewhere isn't the newest message");
+});
+
+test("bumpSidebarRow: the number on a row follows sidebarMentions (DM: unread; 'Only @mentions': mentions)", () => {
+  const plain = feed(sidebar(), [insert("dm-old"), insert("dm-quiet"), insert("group"), insert("wins")]).s;
+  assert.deepEqual([find(plain, "dm-old").mentions, find(plain, "dm-quiet").mentions, find(plain, "group").mentions], [1, 0, 1]);
+  assert.deepEqual([find(plain, "dm-quiet").unread, find(plain, "wins").mentions], [1, 0]);
+  const pinged = feed(sidebar(), [
+    insert("dm-quiet", { mentions: [ME] }),
+    insert("wins", { mentions: [ME] }),
+    insert("group", { mention_everyone: true }),
+  ]).s;
+  assert.deepEqual([find(pinged, "dm-quiet").mentions, find(pinged, "wins").mentions, find(pinged, "group").mentions], [1, 1, 1]);
+});
+
+test("bumpSidebarRow: a DM's preview and its place in the list follow the new message", () => {
+  const { s } = feed(sidebar(), [insert("dm-old", { body: "", attachments: [{}] })]);
+  assert.equal(s.conversations[0].id, "dm-old");
+  assert.equal(find(s, "dm-old").preview, "[attachment]");
+  const MAYA = "22222222-2222-4222-8222-222222222222";
+  const named = bumpSidebarRow(sidebar(), insert("dm-old", { body: `hi <@${MAYA}>` }), {
+    ...opts,
+    personName: (id) => (id === MAYA ? "Maya Chen" : null),
+  }).sidebar;
+  assert.equal(find(named, "dm-old").preview, "hi @Maya Chen");
 });

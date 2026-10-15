@@ -1,9 +1,9 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { compareConversations, isAfter, toggleReaction as applyToggle } from "@/lib/chat-access";
+import { isAfter, toggleReaction as applyToggle } from "@/lib/chat-access";
 import { plainText } from "@/lib/chat-format";
-import { mentionsViewer, mergeMessages, reconcilePage } from "@/lib/chat-view";
+import { mergeMessages, reconcilePage } from "@/lib/chat-view";
 import type { ChannelTarget } from "@/lib/chat-payload";
 import {
   deleteMessage,
@@ -20,10 +20,10 @@ import { ChannelView } from "./channel-view";
 import { SidePanel } from "./side-panels";
 import { NewConversationDialog, QuickSwitcher } from "./dialogs";
 import { useMessageFeed, usePing, usePresence, useTyping, pingDelay, type LiveRow } from "./use-chat-live";
-import { ChatReadError, NOT_AVAILABLE, READ_FAILED, chatApi, dropQueuedPush, serverSaidNo, tracked, writeChatUrl } from "./api";
+import { ChatReadError, NOT_AVAILABLE, READ_FAILED, chatApi, dropQueuedPush, holdChatUrl, serverSaidNo, tracked, writeChatUrl } from "./api";
 import type { ChatPerson, ChannelPayload, ChatViewerInfo, Panel, SidebarData, SidebarItem, UiMessage } from "./types";
 import { OFFLINE, resultError } from "./util";
-import { applyUpdate, has, localOnly, sameMessage, toQuote, toUiMessage, withoutMessage } from "./live-rows";
+import { applyUpdate, bumpSidebarRow, has, localOnly, sameMessage, toQuote, toUiMessage, withoutMessage } from "./live-rows";
 
 /**
  * batch0 Chat, the client. Owns the sidebar, the open channel, a small cache
@@ -32,8 +32,9 @@ import { applyUpdate, has, localOnly, sameMessage, toQuote, toUiMessage, without
  * app/chat/api/*, which re-check everything; nothing here is a security
  * boundary.
  *
- * `messages` and `payload` live in state for rendering, but their refs are
- * the source of truth and are written synchronously by the setters below:
+ * `messages`, `payload` and `sidebar` live in state for rendering, but their
+ * refs are the source of truth and are written synchronously by the setters
+ * below:
  * Realtime callbacks and action continuations run between renders, and a ref
  * that only caught up at the next render let an old channel's message land in
  * the new one.
@@ -68,7 +69,7 @@ export function ChatApp({
   initialError: string | null;
 }) {
   const params = useSearchParams();
-  const [sidebar, setSidebar] = useState(initialSidebar);
+  const [sidebar, setSidebarState] = useState(initialSidebar);
   const [payload, setPayloadState] = useState<ChannelPayload | null>(initialPayload);
   const [messages, setMessagesState] = useState<UiMessage[]>(initialPayload?.messages ?? []);
   const [people, setPeople] = useState<Record<string, ChatPerson>>(() => ({
@@ -112,13 +113,23 @@ export function ChatApp({
     messagesRef.current = value;
     setMessagesState(value);
   }, []);
+  // A live insert asks "is this conversation in the sidebar?" right after
+  // other updates were queued; React would run a queued updater too late to
+  // answer, and every message refetched the whole sidebar.
+  const sidebarRef = useRef(initialSidebar);
+  const setSidebar = useCallback((next: SidebarData | ((s: SidebarData) => SidebarData)) => {
+    const value = typeof next === "function" ? next(sidebarRef.current) : next;
+    if (value === sidebarRef.current) return;
+    sidebarRef.current = value;
+    setSidebarState(value);
+  }, []);
+  /** False once ChatApp has gone (a link out of chat): late answers mustn't touch the address bar. */
+  const alive = useRef(true);
 
   const hasMoreBeforeRef = useRef(hasMoreBefore);
   hasMoreBeforeRef.current = hasMoreBefore;
   const peopleRef = useRef(people);
   peopleRef.current = people;
-  const sidebarRef = useRef(sidebar);
-  sidebarRef.current = sidebar;
   const mobilePaneRef = useRef(mobilePane);
   mobilePaneRef.current = mobilePane;
   const wideRef = useRef(wide);
@@ -231,7 +242,7 @@ export function ChatApp({
       const conversations = fix(s.conversations);
       return channels === s.channels && conversations === s.conversations ? s : { ...s, channels, conversations };
     });
-  }, []);
+  }, [setSidebar]);
 
   const sendMark = useCallback((id: string, upTo: string | undefined) => {
     lastMark.current = { id, at: Date.now() };
@@ -260,14 +271,17 @@ export function ChatApp({
       const id = p?.channel?.id;
       if (!id || !p?.channel || p.channel.moderatorView) return;
       if (!onScreen()) return;
-      if (!force && !document.hasFocus()) return;
+      // Focus gates the cursor, not "still here": a conversation left open on
+      // a second screen is still being watched, so no bell for it.
+      const focused = document.hasFocus();
       let newest: string | undefined;
       for (const m of messagesRef.current) {
         if (localOnly(m)) continue;
         if (!newest || isAfter(m.createdAt, newest)) newest = m.createdAt;
       }
       const read = readUpTo.current.get(id);
-      const advance = !!newest && (force || (nearBottomRef.current && !hasMoreAfterRef.current)) && (!read || isAfter(newest, read));
+      const advance =
+        !!newest && (force || (focused && nearBottomRef.current && !hasMoreAfterRef.current)) && (!read || isAfter(newest, read));
       const sameChannel = lastMark.current.id === id;
       if (!sameChannel) flushMark();
       if (advance && newest) {
@@ -332,7 +346,7 @@ export function ChatApp({
       /* keep what we have; the next tick retries */
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addPeople]);
+  }, [addPeople, setSidebar]);
 
   // A bell: refetch the sidebar, a moment later (one @everyone bells every
   // online account at once), and once for a burst.
@@ -365,6 +379,8 @@ export function ChatApp({
    */
   const adopt = useCallback(
     (p: ChannelPayload, since: number) => {
+      // Answered after a link out of chat: that page owns the address bar now.
+      if (!alive.current) return;
       const cur = payloadRef.current;
       const id = p.channel?.id ?? null;
       const same =
@@ -702,7 +718,7 @@ export function ChatApp({
     const since = Date.now();
     try {
       const page = await chatApi.messages(id);
-      if (channelIdRef.current !== id || seq !== presentSeq.current) return;
+      if (!alive.current || channelIdRef.current !== id || seq !== presentSeq.current) return;
       addPeople(page.people);
       setMessages((prev) => mergeMessages(prev.filter(localOnly), freshen(page.messages as UiMessage[], since, prev), { deleted: deleted.current }));
       setHasMoreBefore(page.hasMoreBefore);
@@ -717,6 +733,20 @@ export function ChatApp({
       if (channelIdRef.current === id) setError("Couldn't load the latest messages. Try again.");
     }
   }, [addPeople, freshen, resync, setMessages, setPayload]);
+
+  // Mounted: the address bar is the chat's. Gone (a link out of chat, with a
+  // channel still loading): every answer still on its way is for nobody, and
+  // mustn't rewrite the next page's URL with a /chat one.
+  useEffect(() => {
+    alive.current = true;
+    const release = holdChatUrl();
+    return () => {
+      alive.current = false;
+      openSeq.current++;
+      presentSeq.current++;
+      release();
+    };
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Live
@@ -738,38 +768,21 @@ export function ChatApp({
     [addPeople, freshen, setMessages],
   );
 
-  /** Patch the open conversation's sidebar row: recency, preview, badge. */
+  /**
+   * Patch the open conversation's sidebar row: recency, preview, badge.
+   * True when it isn't in the sidebar at all (refetch it then; only then).
+   */
   const bumpSidebar = useCallback(
-    (row: LiveRow, counts: boolean) => {
-      let missing = true;
-      setSidebar((s) => {
-        const bump = (items: SidebarItem[], isConversation: boolean) =>
-          items.map((i) => {
-            if (i.id !== row.channel_id) return i;
-            missing = false;
-            const mention = mentionsViewer(
-              { mentions: row.mentions ?? [], mentionEveryone: !!row.mention_everyone, senderId: row.sender_id },
-              viewer.id,
-            );
-            return {
-              ...i,
-              lastMessageAt: row.kind === "message" ? row.created_at : i.lastMessageAt,
-              preview:
-                isConversation && row.kind === "message"
-                  ? plainText(row.body || "[attachment]", (id) => peopleRef.current[id]?.name, () => null, 80)
-                  : i.preview,
-              unread: counts ? Math.min(i.unread + 1, 100) : i.unread,
-              mentions: counts && (isConversation || mention) ? Math.min(i.mentions + 1, 100) : i.mentions,
-            };
-          });
-        const conversations = bump(s.conversations, true).sort((a, b) =>
-          compareConversations({ ...a, name: a.label }, { ...b, name: b.label }),
-        );
-        return { ...s, channels: bump(s.channels, false), conversations };
+    (row: LiveRow, reading: boolean) => {
+      const { sidebar: next, missing } = bumpSidebarRow(sidebarRef.current, row, {
+        viewerId: viewer.id,
+        reading,
+        personName: (id) => peopleRef.current[id]?.name,
       });
+      setSidebar(next);
       return missing;
     },
-    [viewer.id],
+    [setSidebar, viewer.id],
   );
 
   const onInsert = useCallback(
@@ -813,11 +826,8 @@ export function ChatApp({
         if (cached) cached.messages = mergeMessages(cached.messages, [toUiMessage(row, cached.messages)]);
       }
       const reading = isOpen && onScreen() && document.hasFocus() && nearBottomRef.current;
-      // A blocked sender's messages count for nothing, as on the server.
-      const fromBlocked = !!row.sender_id && sidebarRef.current.blocked.includes(row.sender_id);
-      const missing = bumpSidebar(row, row.kind === "message" && fromOther && !fromBlocked && !reading);
       // A closed DM coming back, or one we've never seen: fetch the sidebar.
-      if (missing) void refreshSidebar();
+      if (bumpSidebar(row, reading)) void refreshSidebar();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [bumpSidebar, hydrate, markSeen, refreshSidebar, setMessages, viewer.id],
@@ -871,7 +881,7 @@ export function ChatApp({
         }
       }
     },
-    [refreshSidebar, setMessages, setPinned, touch],
+    [refreshSidebar, setMessages, setPinned, setSidebar, touch],
   );
 
   const connectedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1009,6 +1019,9 @@ export function ChatApp({
       const { message, channelId: cid } = res.data;
       lastSentAt.current.set(cid, Date.now());
       applyWhereItIs(tempId, (prev) => mergeMessages(prev.filter((m) => m.id !== tempId), [message as UiMessage]));
+      // It names someone this tab has no name for (picked some other way than
+      // the "@" menu): fetch the message with its people, or it says "@unknown".
+      if (message.mentions.some((id) => !peopleRef.current[id])) void hydrate(cid, [message.id]);
       if (!p.channel) {
         // A draft's first message created the DM: become that channel — but
         // only if the person is still on the draft (or already on the DM).
@@ -1031,7 +1044,7 @@ export function ChatApp({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [adopt, applyWhereItIs, jumpToPresent, refreshSidebar, setMessages, stopTyping, viewer.id],
+    [adopt, applyWhereItIs, hydrate, jumpToPresent, refreshSidebar, setMessages, stopTyping, viewer.id],
   );
 
   const send = useCallback(
@@ -1151,8 +1164,13 @@ export function ChatApp({
         channels: s.channels.map((c) => ({ ...c, unread: 0, mentions: 0 })),
         conversations: s.conversations.map((c) => ({ ...c, unread: 0, mentions: 0 })),
       }));
+      return;
     }
-  }, []);
+    // It may have got halfway (everything read, the bells still up): show
+    // what the server has now, not what this tab assumed.
+    setError(resultError(res, "Couldn't mark everything read. Try again."));
+    void refreshSidebar();
+  }, [refreshSidebar, setSidebar]);
 
   // Names for #channel chips. Same names, same map: a sidebar poll that
   // changes nothing mustn't re-render every message.
@@ -1260,6 +1278,7 @@ export function ChatApp({
           onBlocksChanged={refreshSidebar}
           onLeft={onLeft}
           wasDeleted={wasDeleted}
+          onPeople={addPeople}
         />
       </div>
 

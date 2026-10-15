@@ -92,6 +92,24 @@ test("the new line skips your own messages and system lines", () => {
   assert.deepEqual(rows.map((r) => (r.t === "msg" ? r.m.id : r.t)), ["1", "2", "new", "3"]);
 });
 
+test("#staff: its feed lines count as unread on the server, so the new line goes before the first unread one", () => {
+  const feed = [
+    msg("1", null, "2026-10-15T10:00:00Z", { kind: "system" }),
+    msg("2", null, "2026-10-15T10:01:00Z", { kind: "system" }),
+    msg("3", null, "2026-10-15T10:02:00Z", { kind: "system" }),
+  ];
+  const cursor = "2026-10-15T10:00:30Z";
+  const ids = (rows: ReturnType<typeof layoutMessages>) => rows.map((r) => (r.t === "msg" ? r.m.id : r.t));
+  // The reviewer's case: '2 unread' in the sidebar, and a divider to match.
+  assert.deepEqual(ids(layoutMessages(feed, { viewerId: ME, cursor, offsetMinutes: null, systemKey: "staff" })), ["1", "new", "2", "3"]);
+  // Anywhere else a system line is never unread (pins, joins, renames).
+  assert.deepEqual(ids(layoutMessages(feed, { viewerId: ME, cursor, offsetMinutes: null, systemKey: "general" })), ["1", "2", "3"]);
+  assert.deepEqual(ids(layoutMessages(feed, { viewerId: ME, cursor, offsetMinutes: null })), ["1", "2", "3"]);
+  // A feed line read already stays above it; your own message never gets one.
+  const mixed = [...feed.slice(0, 1), msg("4", ME, "2026-10-15T10:01:30Z"), ...feed.slice(2)];
+  assert.deepEqual(ids(layoutMessages(mixed, { viewerId: ME, cursor, offsetMinutes: null, systemKey: "staff" })), ["1", "4", "new", "3"]);
+});
+
 test("no cursor, no new line; no offset, no day dividers", () => {
   const rows = layoutMessages([msg("1", YOU, "2026-10-15T10:00:00Z")], { viewerId: ME, cursor: null, offsetMinutes: null });
   assert.deepEqual(rows.map((r) => r.t), ["msg"]);

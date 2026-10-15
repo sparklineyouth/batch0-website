@@ -111,6 +111,8 @@ function payloadFor(view: string): ChannelPayload | null {
     otherId: null,
     memberIds: [],
     compose: { ok: true as const },
+    // #announcements' readers react too (only posting is staff-only).
+    canReact: true,
     canManage: false,
     canPin: false,
     canMentionEveryone: false,

@@ -16,7 +16,10 @@ import { listenForPings, pingDelay } from "./use-chat-live";
  *
  * Every mounted badge shares one store: the desktop sidebar's, and the phone
  * drawer's each time it opens. One fetch, one poll, one bell subscription,
- * and a count younger than MIN_GAP_MS is reused rather than refetched.
+ * and a count younger than MIN_GAP_MS is reused rather than refetched — but
+ * only by a badge joining one already mounted. The first badge on a page
+ * always asks: the person may have just come back from /chat (which mounts
+ * none), where reading changed the count without any bell to say so.
  */
 
 const POLL_MS = 60_000;
@@ -81,7 +84,7 @@ function mount() {
     }, POLL_MS);
     document.addEventListener("visibilitychange", onVisible);
   }
-  refresh();
+  refresh(mounts === 1);
   syncPing();
 }
 
