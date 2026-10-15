@@ -19,3 +19,6 @@
 mcp/
 content/course-launch/
 content/promotion/
+
+# npm run db:migrate backups: database rows, personal data included.
+/backups

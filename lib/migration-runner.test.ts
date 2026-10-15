@@ -2,7 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
 import { parseMigrationFile, planMigrations, type MigrationFile } from "./migration-plan.ts";
-import { applyMigration, historyColumns, MigrationError, migrationName, readState, recordVersion, type Db } from "./migration-runner.ts";
+import {
+  applyMigration,
+  applyWithRetry,
+  ensureHistory,
+  historyColumns,
+  isLockTimeout,
+  MigrationError,
+  migrationName,
+  readState,
+  recordVersion,
+  type Db,
+} from "./migration-runner.ts";
 
 /**
  * The runner against a real (embedded) Postgres: one transaction per file,
@@ -94,13 +105,14 @@ test("reading state: history, tables, and verify queries that hit missing object
   assert.equal(s.checks.get("0101"), false);
   assert.equal(s.checks.get("0093"), false);
   assert.equal(s.checks.get("0100"), true, "nobody holds ai_usage.view");
+  // ...which proves nothing: an absence check never counts on its own.
   assert.deepEqual(
     planMigrations(files, s).map((p) => [p.version, p.status]),
     [
       ["0001", "applied"],
       ["0093", "pending"],
       ["0095", "pending"],
-      ["0100", "unrecorded"],
+      ["0100", "pending"],
       ["0101", "pending"],
     ],
   );
@@ -128,4 +140,50 @@ test("recording twice is harmless", async () => {
   await recordVersion(db, m("0005", ""), cols);
   await recordVersion(db, m("0005", ""), cols);
   assert.equal((await recorded(pg)).length, 1);
+});
+
+test("CONCURRENTLY runs statement by statement, outside a transaction", async () => {
+  const { pg, db } = await setup();
+  await applyMigration(db, m("0006", "create table public.e (id int);\ncreate index concurrently e_id on public.e (id);"), { history: await historyColumns(db) });
+  assert.equal((await pg.query<{ n: number }>("select count(*)::int as n from pg_indexes where indexname = 'e_id'")).rows[0].n, 1);
+  assert.deepEqual((await recorded(pg)).map((r) => r.version), ["0006"]);
+});
+
+test("record: false leaves the version unrecorded (the first of two files sharing it)", async () => {
+  const { pg, db } = await setup();
+  await applyMigration(db, m("0071", "create table public.f (id int);", "a"), { history: await historyColumns(db), record: false });
+  assert.equal(await tableExists(pg, "f"), true);
+  assert.deepEqual(await recorded(pg), []);
+});
+
+test("a project that never had the CLI's history table gets one, in the CLI's shape", async () => {
+  const { pg, db } = await setup(false);
+  const cols = await ensureHistory(db);
+  assert.deepEqual([...cols].sort(), ["name", "statements", "version"]);
+  await ensureHistory(db); // idempotent
+  await recordVersion(db, m("0001", "", "init"), cols);
+  assert.deepEqual(await recorded(pg), [{ version: "0001", name: "init" }]);
+});
+
+test("only a lock timeout is retried, and only so many times", async () => {
+  const lockErr = Object.assign(new Error("canceling statement due to lock timeout"), { code: "55P03" });
+  assert.equal(isLockTimeout(new MigrationError("x.sql", "x", true, lockErr)), true);
+  assert.equal(isLockTimeout(new MigrationError("x.sql", "x", true, new Error("syntax"))), false);
+  let calls = 0;
+  const flaky: Db = {
+    async query(sql) {
+      if (/select 1 as boom/.test(sql)) {
+        calls++;
+        throw lockErr;
+      }
+      return { rows: [] };
+    },
+  };
+  const retries: number[] = [];
+  await assert.rejects(
+    applyWithRetry(flaky, m("0007", "select 1 as boom;"), { history: null, waits: [1, 1], onRetry: (n) => retries.push(n) }),
+    /rolled back.*lock timeout/,
+  );
+  assert.equal(calls, 3);
+  assert.deepEqual(retries, [1, 2]);
 });

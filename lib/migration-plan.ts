@@ -29,7 +29,7 @@ export type MigrationFile = {
   sql: string;
 };
 
-export type MigrationStatus = "applied" | "unrecorded" | "pending";
+export type MigrationStatus = "applied" | "unrecorded" | "pending" | "gap";
 
 export type PlannedMigration = MigrationFile & { status: MigrationStatus; why: string };
 
@@ -118,40 +118,142 @@ export function sortMigrations<T extends Pick<MigrationFile, "num" | "file">>(fi
   return [...files].sort((a, b) => a.num - b.num || a.file.localeCompare(b.file));
 }
 
-/** SQL with comments blanked out, so a word in a comment never counts. Strings are kept. */
-export function stripSqlComments(sql: string): string {
-  let out = "";
+type Piece = { kind: "code" | "string" | "comment"; text: string; nested: boolean };
+
+/**
+ * Split SQL into code, string literals and comments: '…' (with ''), E'…'
+ * (with backslash escapes too), "identifiers", line and block comments, and dollar quotes.
+ * A dollar-quoted body after DO or AS is code (a DO block or a function
+ * body) and is lexed again, marked nested; anywhere else ($t$…$t$ in a
+ * replace()) it's a string.
+ */
+export function lexSql(sql: string, nested = false): Piece[] {
+  const out: Piece[] = [];
+  let code = "";
+  // The code seen most recently, across comments: what decides whether a
+  // dollar quote opens a body (`do $$`, `as $fn$`) or a string.
+  let recent = "";
+  const flush = () => {
+    if (code) {
+      out.push({ kind: "code", text: code, nested });
+      recent = (recent + code).slice(-64);
+    }
+    code = "";
+  };
   let i = 0;
   while (i < sql.length) {
     const c = sql[i];
     const next = sql[i + 1];
-    if (c === "'") {
-      // A string literal, '' escapes included.
+    if (c === "-" && next === "-") {
+      flush();
+      let j = i;
+      while (j < sql.length && sql[j] !== "\n") j++;
+      out.push({ kind: "comment", text: sql.slice(i, j), nested });
+      i = j;
+    } else if (c === "/" && next === "*") {
+      flush();
+      const end = sql.indexOf("*/", i + 2);
+      const j = end === -1 ? sql.length : end + 2;
+      out.push({ kind: "comment", text: sql.slice(i, j), nested });
+      i = j;
+    } else if (c === "'") {
+      flush();
+      recent = "";
+      const escapes = /[eE]$/.test(sql.slice(Math.max(0, i - 1), i)) && !/\w/.test(sql[i - 2] ?? "");
       let j = i + 1;
       while (j < sql.length) {
-        if (sql[j] === "'" && sql[j + 1] === "'") j += 2;
+        if (escapes && sql[j] === "\\") j += 2;
+        else if (sql[j] === "'" && sql[j + 1] === "'") j += 2;
         else if (sql[j] === "'") break;
         else j++;
       }
-      out += sql.slice(i, j + 1);
+      out.push({ kind: "string", text: sql.slice(i, j + 1), nested });
       i = j + 1;
-    } else if (c === "-" && next === "-") {
-      while (i < sql.length && sql[i] !== "\n") i++;
-    } else if (c === "/" && next === "*") {
-      const end = sql.indexOf("*/", i + 2);
-      i = end === -1 ? sql.length : end + 2;
-      out += " ";
+    } else if (c === '"') {
+      let j = i + 1;
+      while (j < sql.length) {
+        if (sql[j] === '"' && sql[j + 1] === '"') j += 2;
+        else if (sql[j] === '"') break;
+        else j++;
+      }
+      code += sql.slice(i, j + 1);
+      i = j + 1;
+    } else if (c === "$" && !/\w/.test(sql[i - 1] ?? "")) {
+      const tag = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i));
+      if (!tag) {
+        code += c;
+        i++;
+        continue;
+      }
+      const delim = tag[0];
+      const close = sql.indexOf(delim, i + delim.length);
+      const bodyEnd = close === -1 ? sql.length : close;
+      const body = sql.slice(i + delim.length, bodyEnd);
+      const isCode = /\b(?:do|as)\s*$/i.test((recent + code).slice(-64));
+      if (isCode) {
+        code += delim;
+        flush();
+        out.push(...lexSql(body, true));
+        code += close === -1 ? "" : delim;
+      } else {
+        flush();
+        out.push({ kind: "string", text: sql.slice(i, close === -1 ? sql.length : close + delim.length), nested });
+      }
+      i = close === -1 ? sql.length : close + delim.length;
     } else {
-      out += c;
+      code += c;
       i++;
     }
   }
+  flush();
+  return out;
+}
+
+/** SQL with comments removed (strings kept), so a word in a comment never counts. */
+export function stripSqlComments(sql: string): string {
+  return lexSql(sql)
+    .map((p) => (p.kind === "comment" ? " " : p.text))
+    .join("");
+}
+
+/** Only the code: comments and string literals blanked, so neither can look like a statement. */
+function codeOnly(sql: string, topLevelOnly = false): string {
+  return lexSql(sql)
+    .map((p) => (p.kind === "code" && (!topLevelOnly || !p.nested) ? p.text : " "))
+    .join("");
+}
+
+/**
+ * The file's top-level statements, for running one at a time (Postgres runs
+ * a multi-statement string as one implicit transaction, which CONCURRENTLY
+ * refuses). Semicolons inside strings, comments and DO/function bodies don't split.
+ */
+export function splitStatements(sql: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  for (const p of lexSql(sql)) {
+    if (p.kind !== "code" || p.nested) {
+      cur += p.text;
+      continue;
+    }
+    let rest = p.text;
+    let k = rest.indexOf(";");
+    while (k !== -1) {
+      cur += rest.slice(0, k + 1);
+      if (cur.trim().replace(/;$/, "").trim()) out.push(cur.trim());
+      cur = "";
+      rest = rest.slice(k + 1);
+      k = rest.indexOf(";");
+    }
+    cur += rest;
+  }
+  if (stripSqlComments(cur).trim()) out.push(cur.trim());
   return out;
 }
 
 /** Tables in `public` this migration creates (not temp tables). */
 export function createdTables(sql: string): string[] {
-  const body = stripSqlComments(sql);
+  const body = codeOnly(sql);
   const re = /\bcreate\s+(?:unlogged\s+)?table\s+(?:if\s+not\s+exists\s+)?(?:(?:"?(\w+)"?)\.)?"?(\w+)"?/gi;
   const out = new Set<string>();
   for (const m of body.matchAll(re)) {
@@ -161,32 +263,46 @@ export function createdTables(sql: string): string[] {
   return Array.from(out);
 }
 
+/** Tables in `public` this migration drops. */
+export function droppedTables(sql: string): string[] {
+  const body = codeOnly(sql);
+  const out = new Set<string>();
+  for (const m of body.matchAll(/\bdrop\s+table\s+(?:if\s+exists\s+)?([^;]+)/gi)) {
+    for (const part of m[1].split(",")) {
+      const n = /^\s*(?:"?(\w+)"?\.)?"?(\w+)"?/.exec(part);
+      if (n && (n[1] ?? "public").toLowerCase() === "public") out.add(n[2].toLowerCase());
+    }
+  }
+  return Array.from(out);
+}
+
 /**
  * How to run a file: "wrap" it in one transaction (the default — all or
  * nothing), run it as written when it manages its own ("own": a top-level
- * BEGIN … COMMIT), or outside any transaction ("none": CONCURRENTLY, which
- * Postgres refuses inside one).
+ * BEGIN … COMMIT), or statement by statement outside any transaction
+ * ("none": CONCURRENTLY, which Postgres refuses inside one). Only code
+ * counts: the word in a lesson's text or a comment changes nothing.
  */
 export function transactionMode(sql: string): "wrap" | "own" | "none" {
-  const body = stripSqlComments(sql);
-  if (/\bconcurrently\b/i.test(body)) return "none";
-  if (/^\s*(?:begin|start\s+transaction)\s*;/im.test(body) && /^\s*commit\s*;/im.test(body)) return "own";
+  const top = codeOnly(sql, true);
+  if (/\bconcurrently\b/i.test(top)) return "none";
+  if (/(?:^|;)\s*(?:begin|start\s+transaction)\s*;/i.test(top) && /(?:^|;)\s*commit\s*;/i.test(top)) return "own";
   return "wrap";
 }
 
 /**
  * What a migration removes or rewrites, so it can be snapshotted first:
  * tables it drops, tables it drops columns from, and tables it updates or
- * deletes from. Only `public`, only statements written out (not dynamic SQL).
+ * deletes from — top level or inside DO blocks. Only `public`; dynamic SQL
+ * built from strings isn't seen.
  */
 export function touchedTables(sql: string): string[] {
-  const body = stripSqlComments(sql);
-  const out = new Set<string>();
+  const body = codeOnly(sql);
+  const out = new Set<string>(droppedTables(sql));
   const add = (schema: string | undefined, name: string) => {
     if ((schema ?? "public").toLowerCase() === "public") out.add(name.toLowerCase());
   };
   const name = String.raw`(?:"?(\w+)"?\.)?"?(\w+)"?`;
-  for (const m of body.matchAll(new RegExp(String.raw`\bdrop\s+table\s+(?:if\s+exists\s+)?${name}`, "gi"))) add(m[1], m[2]);
   for (const m of body.matchAll(new RegExp(String.raw`\balter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?${name}[^;]*?\bdrop\s+column\b`, "gi"))) add(m[1], m[2]);
   for (const m of body.matchAll(new RegExp(String.raw`\bupdate\s+(?:only\s+)?${name}\s+(?:as\s+)?(?:\w+\s+)?set\b`, "gi"))) add(m[1], m[2]);
   for (const m of body.matchAll(new RegExp(String.raw`\bdelete\s+from\s+(?:only\s+)?${name}`, "gi"))) add(m[1], m[2]);
@@ -202,40 +318,100 @@ export type DbState = {
   existingTables: ReadonlySet<string>;
 };
 
+/**
+ * Checks that test for an absence ("no write policy left", "no role holds
+ * this key"). A pass can't prove the file ran — a database that never had
+ * the thing passes too — so it's never evidence for anything else, and the
+ * file itself counts as live only when a later file proves it ran. These
+ * files are idempotent, so running one again is safe.
+ */
+export const ABSENCE_CHECKS: ReadonlySet<string> = new Set(["0097", "0099", "0100"]);
+
+/**
+ * Decide, file by file, from that file's OWN evidence:
+ *
+ *   recorded        in supabase_migrations (for a version two files share,
+ *                   a file that creates tables also needs them to exist)
+ *   positive check  its verify query passes (or fails: pending)
+ *   own tables      every table it creates exists (that no later file drops)
+ *
+ * A file with no evidence of its own either way (it creates no tables, or a
+ * later file dropped them, or its check is an absence check) counts as live
+ * only if some later file has positive evidence; else it's pending.
+ *
+ * A file whose own evidence says "missing" while a later file's says
+ * "applied" is a GAP: the history skipped it. The runner stops on gaps
+ * instead of guessing — running an old, non-idempotent file late can do
+ * damage, and recording it unrun would hide the hole forever.
+ */
 export function planMigrations(files: readonly MigrationFile[], state: DbState): PlannedMigration[] {
   const sorted = sortMigrations(files);
   const hasCheck = (v: string) => Object.prototype.hasOwnProperty.call(MIGRATION_CHECKS, v);
   const missingFor = (v: string) => (CHECK_REQUIRES[v] ?? []).filter((t) => !state.existingTables.has(t));
   const checkPasses = (v: string) => state.checks.get(v) === true && missingFor(v).length === 0;
+  const versionCount = new Map<string, number>();
+  for (const f of sorted) versionCount.set(f.version, (versionCount.get(f.version) ?? 0) + 1);
 
-  // The newest migration with positive evidence that it ran.
-  let evidence = -1;
-  for (const f of sorted) {
-    const recorded = !!state.recorded?.has(f.version);
-    let ran = recorded;
-    if (!ran && hasCheck(f.version)) ran = checkPasses(f.version);
-    else if (!ran) {
-      const tables = createdTables(f.sql);
-      ran = tables.length > 0 && tables.every((t) => state.existingTables.has(t));
-    }
-    if (ran) evidence = Math.max(evidence, f.num);
+  // Tables each file creates that no later file drops: those must still exist if it ran.
+  const droppedAfter: Set<string>[] = sorted.map(() => new Set());
+  for (let i = sorted.length - 2; i >= 0; i--) {
+    droppedAfter[i] = new Set([...droppedAfter[i + 1], ...droppedTables(sorted[i + 1].sql)]);
   }
+  const ownTables = sorted.map((f, i) => createdTables(f.sql).filter((t) => !droppedAfter[i].has(t)));
 
-  return sorted.map((f) => {
-    if (state.recorded?.has(f.version)) return { ...f, status: "applied" as const, why: "recorded in supabase_migrations" };
+  /** true: it ran; false: it didn't; null: this file can't tell. */
+  const own = (f: MigrationFile, i: number): boolean | null => {
+    const tables = ownTables[i];
+    const tablesSay = tables.length ? tables.every((t) => state.existingTables.has(t)) : null;
+    if (state.recorded?.has(f.version)) {
+      // A shared version proves only that one of its files ran.
+      if ((versionCount.get(f.version) ?? 0) > 1 && tablesSay === false) return false;
+      return true;
+    }
     if (hasCheck(f.version)) {
-      if (checkPasses(f.version)) return { ...f, status: "unrecorded" as const, why: "its verify query passes" };
-      const missing = missingFor(f.version);
-      return state.checks.get(f.version) === true && missing.length
-        ? { ...f, status: "pending" as const, why: `its verify query can't tell yet (${missing.join(", ")} missing)` }
-        : { ...f, status: "pending" as const, why: "its verify query fails" };
+      if (ABSENCE_CHECKS.has(f.version)) return null;
+      return checkPasses(f.version);
     }
-    if (f.num <= evidence) {
-      const tables = createdTables(f.sql);
-      const own = tables.length > 0 && tables.every((t) => state.existingTables.has(t));
-      return { ...f, status: "unrecorded" as const, why: own ? "every table it creates exists" : "a later migration has run" };
+    return tablesSay;
+  };
+  const evidence = sorted.map((f, i) => own(f, i));
+  const laterRan: boolean[] = sorted.map(() => false);
+  for (let i = sorted.length - 2; i >= 0; i--) laterRan[i] = laterRan[i + 1] || evidence[i + 1] === true;
+
+  return sorted.map((f, i) => {
+    const e = evidence[i];
+    if (state.recorded?.has(f.version) && e !== false) return { ...f, status: "applied" as const, why: "recorded in supabase_migrations" };
+    if (e === true) {
+      return hasCheck(f.version)
+        ? { ...f, status: "unrecorded" as const, why: "its verify query passes" }
+        : { ...f, status: "unrecorded" as const, why: "every table it creates exists" };
     }
-    return { ...f, status: "pending" as const, why: "nothing shows it has run" };
+    if (e === null) {
+      if (laterRan[i]) {
+        const why = ABSENCE_CHECKS.has(f.version) && checkPasses(f.version) ? "its verify query passes and a later file ran" : "a later migration has run";
+        return { ...f, status: "unrecorded" as const, why };
+      }
+      if (ABSENCE_CHECKS.has(f.version)) {
+        const missing = missingFor(f.version);
+        return {
+          ...f,
+          status: "pending" as const,
+          why: missing.length ? `its verify query can't tell yet (${missing.join(", ")} missing)` : "its verify query can't prove it ran (safe to run again)",
+        };
+      }
+      return { ...f, status: "pending" as const, why: "nothing shows it has run" };
+    }
+    // Its own evidence says it hasn't run.
+    const missingTables = ownTables[i].filter((t) => !state.existingTables.has(t));
+    const why = hasCheck(f.version)
+      ? "its verify query fails"
+      : state.recorded?.has(f.version)
+        ? `recorded, but its tables are missing (${missingTables.join(", ")}) — version ${f.version} is shared`
+        : `its tables are missing (${missingTables.join(", ")})`;
+    // Out of order: a later file ran. The October files (verify queries) are
+    // idempotent and documented to run out of order, so they're plain pending.
+    if (laterRan[i] && !hasCheck(f.version)) return { ...f, status: "gap" as const, why: `${why}, though later files ran` };
+    return { ...f, status: "pending" as const, why };
   });
 }
 
@@ -273,7 +449,9 @@ export function sessionConnectionString(url: string): { url: string; changed: bo
   } catch {
     return { url, changed: false };
   }
-  if (/pooler\.supabase\.com$/i.test(parsed.hostname) && parsed.port === "6543") {
+  // Supavisor (*.pooler.supabase.com) and the dedicated PgBouncer
+  // (db.<ref>.supabase.co) both pool in transaction mode on 6543.
+  if (/\.supabase\.(?:com|co)$/i.test(parsed.hostname) && parsed.port === "6543") {
     parsed.port = "5432";
     return { url: parsed.toString(), changed: true };
   }

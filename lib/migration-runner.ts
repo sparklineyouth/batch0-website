@@ -7,6 +7,7 @@
 import {
   MIGRATION_CHECKS,
   MISSING_OBJECT_CODES,
+  splitStatements,
   transactionMode,
   type DbState,
   type MigrationFile,
@@ -18,6 +19,21 @@ export type Db = {
 };
 
 const HISTORY = "supabase_migrations.schema_migrations";
+
+/**
+ * Create the Supabase CLI's history table when it's missing (a project that
+ * was only ever migrated in the SQL editor), with the CLI's own shape, so
+ * what this run records is what `supabase migration list` reads.
+ */
+export async function ensureHistory(db: Db): Promise<Set<string>> {
+  await db.query(`
+    create schema if not exists supabase_migrations;
+    create table if not exists ${HISTORY} (version text not null primary key);
+    alter table ${HISTORY} add column if not exists statements text[];
+    alter table ${HISTORY} add column if not exists name text;
+  `);
+  return (await historyColumns(db)) ?? new Set(["version"]);
+}
 
 /** Columns of the Supabase CLI's history table, or null when there is none. */
 export async function historyColumns(db: Db): Promise<Set<string> | null> {
@@ -100,31 +116,46 @@ export class MigrationError extends Error {
   }
 }
 
+/** Postgres gave up waiting for a lock (lock_timeout): worth trying again shortly. */
+export function isLockTimeout(err: unknown): boolean {
+  const e = (err instanceof MigrationError ? (err.cause as { code?: string } | undefined) : (err as { code?: string })) ?? {};
+  return e.code === "55P03";
+}
+
 /**
  * Run one file. By default inside one transaction with its verify query (when
  * it has one) checked before COMMIT: any error or a failing check rolls the
  * whole file back and nothing of it stays. A file that runs its own
- * transaction, or uses CONCURRENTLY, runs as written; then a failure can
- * leave part of it applied, and the error says so.
+ * transaction runs as written; one that uses CONCURRENTLY runs statement by
+ * statement. Either way a failure can leave part of it applied, and the
+ * error says so.
+ *
+ * `record` is false for a file whose version another file still to run in
+ * this pass shares (0071): recording the version early would make the
+ * second file look done.
+ *
+ * The lock wait is short on purpose: while a migration waits for a lock on a
+ * busy table (profiles), every request that needs that table queues behind
+ * it. Better to give up after a few seconds and try again (runWithRetry).
  */
 export async function applyMigration(
   db: Db,
   m: MigrationFile,
-  opts: { history: Set<string> | null; statementTimeout?: string; lockTimeout?: string },
+  opts: { history: Set<string> | null; record?: boolean; statementTimeout?: string; lockTimeout?: string },
 ): Promise<void> {
   const check = MIGRATION_CHECKS[m.version];
+  const record = opts.record ?? true;
   const mode = transactionMode(m.sql);
+  const timeouts = `set statement_timeout = '${opts.statementTimeout ?? "15min"}'; set lock_timeout = '${opts.lockTimeout ?? "4s"}'`;
   if (mode === "wrap") {
     await db.query("begin");
     try {
-      await db.query(
-        `set local statement_timeout = '${opts.statementTimeout ?? "15min"}'; set local lock_timeout = '${opts.lockTimeout ?? "20s"}'`,
-      );
+      await db.query(timeouts.replace(/set /g, "set local "));
       await db.query(m.sql);
       if (check && !(await runCheck(db, check, { inTransaction: true }))) {
         throw new MigrationError(m.file, `${m.file} ran, but its verify query still fails`, true);
       }
-      await recordVersion(db, m, opts.history);
+      if (record) await recordVersion(db, m, opts.history);
       await db.query("commit");
     } catch (err) {
       await db.query("rollback").catch(() => undefined);
@@ -134,7 +165,9 @@ export async function applyMigration(
     return;
   }
   try {
-    await db.query(m.sql);
+    await db.query(timeouts);
+    if (mode === "own") await db.query(m.sql);
+    else for (const statement of splitStatements(m.sql)) await db.query(statement);
   } catch (err) {
     throw new MigrationError(
       m.file,
@@ -142,11 +175,35 @@ export async function applyMigration(
       false,
       err,
     );
+  } finally {
+    await db.query("reset statement_timeout; reset lock_timeout").catch(() => undefined);
   }
   if (check && !(await runCheck(db, check))) {
     throw new MigrationError(m.file, `${m.file} ran, but its verify query still fails`, false);
   }
-  await recordVersion(db, m, opts.history);
+  if (record) await recordVersion(db, m, opts.history);
+}
+
+/**
+ * applyMigration, again after a lock timeout (rolled back, so nothing
+ * applied): 3 tries, waiting 5s then 15s between them. Anything else fails at once.
+ */
+export async function applyWithRetry(
+  db: Db,
+  m: MigrationFile,
+  opts: Parameters<typeof applyMigration>[2] & { waits?: number[]; onRetry?: (attempt: number, waitMs: number) => void },
+): Promise<void> {
+  const waits = opts.waits ?? [5_000, 15_000];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await applyMigration(db, m, opts);
+    } catch (err) {
+      const retriable = err instanceof MigrationError && err.rolledBack && isLockTimeout(err);
+      if (!retriable || attempt >= waits.length) throw err;
+      opts.onRetry?.(attempt + 1, waits[attempt]);
+      await new Promise((r) => setTimeout(r, waits[attempt]));
+    }
+  }
 }
 
 export function describeError(err: unknown): string {

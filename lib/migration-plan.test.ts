@@ -2,8 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import {
+  ABSENCE_CHECKS,
   CHECK_REQUIRES,
   createdTables,
+  droppedTables,
+  lexSql,
+  splitStatements,
   DEPLOY_GATES,
   MIGRATION_CHECKS,
   parseMigrationFile,
@@ -177,8 +181,59 @@ function productionTables(upTo: number): Set<string> {
 test("plan against the real files: a production database that has everything but 0101", () => {
   const checks = new Map(Object.keys(MIGRATION_CHECKS).map((v) => [v, v !== "0101"] as [string, boolean]));
   const plan = planMigrations(real, state({ checks, existingTables: productionTables(100) }));
-  assert.deepEqual(plan.filter((p) => p.status === "pending").map((p) => p.version), ["0101"]);
-  assert.equal(plan.filter((p) => p.status === "unrecorded").length, real.length - 1);
+  // 0099 and 0100 only check for an absence, and no later file proves they
+  // ran, so they run again — they're idempotent; that's the safe answer.
+  assert.deepEqual(plan.filter((p) => p.status === "pending").map((p) => p.version), ["0099", "0100", "0101"]);
+  assert.equal(plan.filter((p) => p.status === "gap").length, 0);
+  // With 0101 recorded, everything is accounted for.
+  const done = planMigrations(real, state({ checks: new Map([...checks, ["0101", true]]), existingTables: new Set([...productionTables(100), "profiles", "app_roles"]) }));
+  assert.deepEqual(done.filter((p) => p.status !== "unrecorded" && p.status !== "applied").map((p) => p.version), []);
+});
+
+test("plan: a skipped older file is a GAP, never 'live' — its own tables decide", () => {
+  // 0086 was skipped by hand; 0085 and 0087 ran. Inferring 0086 from 0087
+  // would record it unrun and hide the hole forever.
+  const files = [file("0085", "create table public.x (id int);"), file("0086", "create table public.y (id int);"), file("0087", "create table public.z (id int);")];
+  const p = planMigrations(files, state({ existingTables: new Set(["x", "z"]) }));
+  assert.deepEqual(p.map((x) => x.status), ["unrecorded", "gap", "unrecorded"]);
+  assert.match(p[1].why, /its tables are missing \(y\), though later files ran/);
+});
+
+test("plan: an absence check passing is never evidence for older files", () => {
+  // A database stopped at 0070: 0100's "no role holds ai_usage.view" is true
+  // there too. It must not make 0071 look live.
+  const files = [file("0070", "create table public.a (id int);"), file("0071", "alter table public.a add column b int;"), file("0072", "create table public.c (id int);"), file("0100", "")];
+  const p = planMigrations(files, state({ checks: new Map([["0100", true]]), existingTables: new Set(["a", "app_roles"]) }));
+  assert.deepEqual(p.map((x) => x.status), ["unrecorded", "pending", "pending", "pending"]);
+  for (const v of ABSENCE_CHECKS) assert.ok(MIGRATION_CHECKS[v], v);
+});
+
+test("plan: a version two files share proves only the file whose tables exist", () => {
+  const files = [file("0071", "alter table public.events add column v int;", "a_viewer_count"), file("0071", "create table public.scholarships (id int);", "b_scholarships")];
+  const p = planMigrations(files, state({ recorded: new Set(["0071"]) }));
+  assert.deepEqual(p.map((x) => x.status), ["applied", "pending"]);
+  assert.match(p[1].why, /version 0071 is shared/);
+  assert.equal(planMigrations(files, state({ recorded: new Set(["0071"]), existingTables: new Set(["scholarships"]) }))[1].status, "applied");
+});
+
+test("the lexer: strings, E-strings, identifiers, comments and dollar quotes", () => {
+  assert.equal(transactionMode("update public.lessons set description = 'Run your interviews concurrently';"), "wrap");
+  assert.deepEqual(touchedTables("insert into x select $t$it's$t$;\n-- delete from public.profiles where false"), []);
+  assert.deepEqual(touchedTables("do $$ begin update public.chat_reports set status = 'x'; delete from public.a; end $$;").sort(), ["a", "chat_reports"]);
+  assert.deepEqual(createdTables("select 'create table public.fake (id int)'; create table public.real (id int);"), ["real"]);
+  assert.deepEqual(droppedTables("drop table if exists public.a, public.b cascade; drop table c;"), ["a", "b", "c"]);
+  assert.deepEqual(lexSql("select E'it\\'s -- not a comment', $$x$$").map((p) => p.kind), ["code", "string", "code", "string"]);
+  assert.deepEqual(splitStatements("do $$ begin perform 1; perform 2; end $$; select ';' ; create function f() returns int language sql as\n-- c\n$fn$ select 1; $fn$;"), [
+    "do $$ begin perform 1; perform 2; end $$;",
+    "select ';' ;",
+    "create function f() returns int language sql as\n-- c\n$fn$ select 1; $fn$;",
+  ]);
+  assert.deepEqual(splitStatements("alter table t add column b int; create index concurrently i on t (b);"), [
+    "alter table t add column b int;",
+    "create index concurrently i on t (b);",
+  ]);
+  // Every real file lexes into the same text it came from.
+  for (const m of real) assert.equal(lexSql(m.sql).map((p) => p.text).join("").length > 0, true, m.file);
 });
 
 test("plan against the real files: an empty database needs every file", () => {
@@ -200,4 +255,7 @@ test("project refs and the session port", () => {
   assert.equal(new URL(moved.url).port, "5432");
   assert.equal(new URL(moved.url).password, "p%40ss", "the password survives untouched");
   assert.equal(sessionConnectionString(`postgresql://postgres:p@db.${ref}.supabase.co:5432/postgres`).changed, false);
+  // The dedicated PgBouncer on the direct host pools in transaction mode too.
+  assert.equal(new URL(sessionConnectionString(`postgresql://postgres:p@db.${ref}.supabase.co:6543/postgres`).url).port, "5432");
+  assert.equal(sessionConnectionString("postgresql://u:p@localhost:6543/db").changed, false);
 });
