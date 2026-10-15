@@ -1,5 +1,5 @@
 "use client";
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { isJumboEmoji, parseBody, type Inline } from "@/lib/chat-format";
 
 /**
@@ -11,6 +11,15 @@ import { isJumboEmoji, parseBody, type Inline } from "@/lib/chat-format";
 
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
 
+/**
+ * Inline chips sit in running text: no 36px touch-target floor (globals.css
+ * gives every button one on coarse pointers), or each would push its line apart.
+ */
+const CHIP = "min-h-0 rounded px-0.5 font-medium";
+
+/** Long unbroken tokens (a hash, a path) wrap instead of scrolling the list sideways. */
+const WRAP = "whitespace-pre-wrap break-words [overflow-wrap:anywhere]";
+
 export type MarkupContext = {
   viewerId: string;
   personName: (id: string) => string | null;
@@ -20,10 +29,11 @@ export type MarkupContext = {
 };
 
 export function MessageMarkup({ body, ctx, compact = false }: { body: string; ctx: MarkupContext; compact?: boolean }) {
-  if (!compact && isJumboEmoji(body)) {
+  // Parsed once per body, not on every render of the row around it.
+  const blocks = useMemo(() => (!compact && isJumboEmoji(body) ? null : parseBody(body)), [body, compact]);
+  if (!blocks) {
     return <p className="text-4xl leading-tight">{body.trim()}</p>;
   }
-  const blocks = parseBody(body);
   return (
     <>
       {blocks.map((b, i) => {
@@ -39,13 +49,13 @@ export function MessageMarkup({ body, ctx, compact = false }: { body: string; ct
         }
         if (b.t === "quote") {
           return (
-            <blockquote key={i} className="my-0.5 border-l-2 border-line pl-3 text-ink-soft">
+            <blockquote key={i} className={`my-0.5 border-l-2 border-line pl-3 text-ink-soft ${WRAP}`}>
               <InlineNodes nodes={b.c} ctx={ctx} />
             </blockquote>
           );
         }
         return (
-          <p key={i} className="whitespace-pre-wrap break-words">
+          <p key={i} className={WRAP}>
             <InlineNodes nodes={b.c} ctx={ctx} />
           </p>
         );
@@ -103,17 +113,18 @@ function renderInline(n: Inline, ctx: MarkupContext): ReactNode {
       );
     }
     case "mention": {
+      // Only people the server vetted for this message are named; any other
+      // <@id> someone typed is "@unknown", and nothing to click.
       const name = ctx.personName(n.id);
+      if (!name) return <span className={`${CHIP} bg-wash text-ink-faint`}>@unknown</span>;
       const self = n.id === ctx.viewerId;
       return (
         <button
           type="button"
           onClick={() => ctx.onMention?.(n.id)}
-          className={`rounded px-0.5 font-medium ${
-            self ? "bg-phosphor text-on-phosphor" : "bg-phosphor/20 text-ink hover:bg-phosphor/35"
-          }`}
+          className={`${CHIP} ${self ? "bg-phosphor text-on-phosphor" : "bg-phosphor/20 text-ink hover:bg-phosphor/35"}`}
         >
-          @{name ?? "unknown"}
+          @{name}
         </button>
       );
     }
@@ -123,7 +134,7 @@ function renderInline(n: Inline, ctx: MarkupContext): ReactNode {
         <button
           type="button"
           onClick={() => ctx.onChannel?.(n.id)}
-          className="rounded bg-phosphor/20 px-0.5 font-medium text-ink hover:bg-phosphor/35"
+          className={`${CHIP} bg-phosphor/20 text-ink hover:bg-phosphor/35`}
         >
           #{name}
         </button>
@@ -136,6 +147,44 @@ function renderInline(n: Inline, ctx: MarkupContext): ReactNode {
   }
 }
 
+/**
+ * What a hidden spoiler holds, as one flat string: the bar keeps the length
+ * of what it hides, but nothing inside it is a link, a chip or a colour.
+ */
+function hiddenText(nodes: Inline[], ctx: MarkupContext): string {
+  let out = "";
+  for (const n of nodes) {
+    switch (n.t) {
+      case "text":
+      case "code":
+      case "link":
+        out += n.v;
+        break;
+      case "br":
+        out += " ";
+        break;
+      case "mention":
+        out += `@${ctx.personName(n.id) ?? "unknown"}`;
+        break;
+      case "channel":
+        out += `#${ctx.channelName(n.id) ?? "private-channel"}`;
+        break;
+      case "everyone":
+        out += `@${n.v}`;
+        break;
+      default:
+        out += hiddenText(n.c, ctx);
+    }
+  }
+  return out;
+}
+
+/**
+ * A spoiler. Hidden, it is inert text on a dark bar: a click (or Enter or
+ * Space) only reveals it, so a hidden link can't be followed unseen and a
+ * hidden mention can't be read off its colour. A span, not a <button>,
+ * because it sits in running text and a revealed spoiler may hold buttons.
+ */
 function Spoiler({ nodes, ctx }: { nodes: Inline[]; ctx: MarkupContext }) {
   const [shown, setShown] = useState(false);
   if (shown) {
@@ -146,13 +195,22 @@ function Spoiler({ nodes, ctx }: { nodes: Inline[]; ctx: MarkupContext }) {
     );
   }
   return (
-    <button
-      type="button"
-      onClick={() => setShown(true)}
-      aria-label="Spoiler. Click to reveal."
-      className="rounded bg-ink px-0.5 text-transparent [text-shadow:none] hover:bg-ink/80"
+    <span
+      role="button"
+      tabIndex={0}
+      aria-label="Spoiler. Activate to reveal."
+      onClick={(e) => {
+        e.stopPropagation();
+        setShown(true);
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        setShown(true);
+      }}
+      className="cursor-pointer select-none rounded bg-ink px-0.5 text-transparent [text-shadow:none] hover:bg-ink/80"
     >
-      <InlineNodes nodes={nodes} ctx={ctx} />
-    </button>
+      {hiddenText(nodes, ctx)}
+    </span>
   );
 }

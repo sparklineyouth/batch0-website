@@ -26,14 +26,28 @@ export type Row<M extends Placeable> =
 export const GROUP_WINDOW_MS = 7 * 60_000;
 
 /**
- * A calendar day in the viewer's timezone, as YYYY-MM-DD. `offsetMinutes`
- * is Date#getTimezoneOffset() (minutes BEHIND UTC), passed in so tests are
- * timezone-proof and the server render can skip dividers.
+ * The viewer's offset from UTC in minutes, as Date#getTimezoneOffset gives
+ * it (minutes BEHIND UTC): one number, or the offset at each instant, which
+ * is what a zone with daylight saving needs — a message sent at 00:30 in
+ * October is still on October's side of midnight when it's read in November.
  */
-export function dayKey(iso: string, offsetMinutes: number): string {
+export type Offset = number | ((epochMs: number) => number);
+
+/** The browser's own offset at each instant. Pass this on the client; null on the server. */
+export function localOffset(epochMs: number): number {
+  return new Date(epochMs).getTimezoneOffset();
+}
+
+/**
+ * A calendar day in the viewer's timezone, as YYYY-MM-DD. The offset is
+ * passed in so tests are timezone-proof and the server render can skip
+ * dividers; with localOffset each message gets its own day's offset.
+ */
+export function dayKey(iso: string, offset: Offset): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "unknown";
-  return new Date(t - offsetMinutes * 60_000).toISOString().slice(0, 10);
+  const minutes = typeof offset === "function" ? offset(t) : offset;
+  return new Date(t - minutes * 60_000).toISOString().slice(0, 10);
 }
 
 /**
@@ -45,7 +59,7 @@ export function dayKey(iso: string, offsetMinutes: number): string {
  */
 export function layoutMessages<M extends Placeable>(
   messages: readonly M[],
-  opts: { viewerId: string; cursor: string | null; offsetMinutes: number | null },
+  opts: { viewerId: string; cursor: string | null; offsetMinutes: Offset | null },
 ): Row<M>[] {
   const rows: Row<M>[] = [];
   let prev: M | null = null;
@@ -91,21 +105,43 @@ export function byTime<M extends { createdAt: string; id: string; pending?: bool
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
+/** What merging needs from a message. */
+type Mergeable = {
+  id: string;
+  createdAt: string;
+  pending?: boolean;
+  /** A send that didn't go through: kept, with its text, until Retry or Discard. */
+  failed?: unknown;
+  editedAt?: string | null;
+  replyTo?: unknown;
+};
+
 /**
- * Merge incoming messages into a list: new ids are added, known ids are
- * replaced by the fresher copy, order is restored. Returns the same array
- * when nothing changed, so React can skip the render.
+ * What the screen knows that a page can't. A page is a snapshot taken when
+ * it was asked for; Realtime may have delivered a delete since, and the
+ * snapshot would bring the message (and its words, in reply quotes) back.
  */
-export function mergeMessages<M extends { id: string; createdAt: string; pending?: boolean }>(
-  list: readonly M[],
-  incoming: readonly M[],
-): M[] {
+export type MergeGuard = {
+  /** Ids this client has seen deleted. They stay gone, and quotes of them stay blank. */
+  deleted?: ReadonlySet<string>;
+};
+
+/**
+ * Merge incoming messages into a list: new ids are added, known ids take the
+ * fresher copy, order is restored. A copy that says nothing new keeps the
+ * object already on screen, and an edit seen live beats a page read before
+ * it. Returns the same array when nothing changed, so React (and every
+ * memoized row) can skip the render.
+ */
+export function mergeMessages<M extends Mergeable>(list: readonly M[], incoming: readonly M[], guard: MergeGuard = {}): M[] {
   if (incoming.length === 0) return list as M[];
   const byId = new Map(list.map((m) => [m.id, m]));
   let changed = false;
-  for (const m of incoming) {
-    const cur = byId.get(m.id);
-    if (cur !== m) {
+  for (const raw of incoming) {
+    if (guard.deleted?.has(raw.id)) continue;
+    const cur = byId.get(raw.id);
+    const m = fresher(cur, withoutDeletedQuote(raw, guard.deleted));
+    if (m !== cur) {
       byId.set(m.id, m);
       changed = true;
     }
@@ -114,27 +150,66 @@ export function mergeMessages<M extends { id: string; createdAt: string; pending
   return Array.from(byId.values()).sort(byTime);
 }
 
+function fresher<M extends Mergeable>(cur: M | undefined, next: M): M {
+  if (!cur || cur === next) return next;
+  if (sameData(cur, next)) return cur;
+  if (cur.editedAt && (!next.editedAt || isAfter(cur.editedAt, next.editedAt))) return cur;
+  return next;
+}
+
+/** A reply whose original was deleted on this screen: its quote stays blank. */
+function withoutDeletedQuote<M extends Mergeable>(m: M, deleted: ReadonlySet<string> | undefined): M {
+  const q = m.replyTo as { id?: unknown; preview?: unknown; deleted?: unknown } | null | undefined;
+  if (!deleted || !q || typeof q !== "object" || typeof q.id !== "string" || !deleted.has(q.id)) return m;
+  if (q.deleted === true && !q.preview) return m;
+  return { ...m, replyTo: { ...q, preview: "", deleted: true } };
+}
+
+/**
+ * Structural equality for the plain, JSON-shaped data a server action
+ * returns. A resync's copy of an unchanged message is a new object with the
+ * same contents; this is how it's recognized as unchanged.
+ */
+export function sameData(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((v, i) => sameData(v, b[i]));
+  }
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  const ra = a as Record<string, unknown>;
+  const rb = b as Record<string, unknown>;
+  return ka.every((k) => Object.prototype.hasOwnProperty.call(rb, k) && sameData(ra[k], rb[k]));
+}
+
 /**
  * Reconcile the newest page from the server with what's on screen: anything
  * on screen that the server should have returned but didn't (inside the
- * page's window, created before its snapshot) was deleted. Pending messages
- * and ones that arrived live after the snapshot are kept.
+ * page's window, created before its snapshot) was deleted. Pending and
+ * failed sends, and messages that arrived live after the snapshot, are kept.
+ * The window's edge is the page's oldest row by (created_at, id) — the
+ * order the server pages in — so a row tied on created_at with it but
+ * sorting before it is outside the page, not deleted.
  */
-export function reconcilePage<M extends { id: string; createdAt: string; pending?: boolean }>(
+export function reconcilePage<M extends Mergeable>(
   list: readonly M[],
   page: readonly M[],
-  opts: { asOf: string; complete: boolean },
+  opts: { asOf: string; complete: boolean } & MergeGuard,
 ): M[] {
   const ids = new Set(page.map((m) => m.id));
-  const oldest = page[0]?.createdAt ?? null;
+  let oldest: M | null = null;
+  for (const m of page) if (!oldest || byTime(m, oldest) < 0) oldest = m;
   const keep = list.filter(
     (m) =>
       m.pending ||
+      !!m.failed ||
       ids.has(m.id) ||
       isAfter(m.createdAt, opts.asOf) ||
-      (!opts.complete && oldest !== null && isAfter(oldest, m.createdAt)),
+      (!opts.complete && oldest !== null && byTime(m, oldest) < 0),
   );
-  const next = mergeMessages(keep.filter((m) => !ids.has(m.id)), page);
+  const next = mergeMessages(keep, page, opts);
   const same = next.length === list.length && next.every((m, i) => m === list[i]);
   return same ? (list as M[]) : next;
 }

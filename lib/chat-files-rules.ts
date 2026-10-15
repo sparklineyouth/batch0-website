@@ -12,7 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import {
-  ATTACHMENT_ACCEPT,
+  ATTACHMENT_ACCEPT as SUPPORT_ACCEPT,
   ATTACHMENT_EXTENSIONS,
   ATTACHMENT_MAX_BYTES,
   ATTACHMENT_TYPES_LABEL,
@@ -30,7 +30,6 @@ import {
 } from "./support-attachment-rules.ts";
 
 export {
-  ATTACHMENT_ACCEPT,
   ATTACHMENT_EXTENSIONS,
   ATTACHMENT_MAX_BYTES,
   ATTACHMENT_TYPES_LABEL,
@@ -42,6 +41,18 @@ export {
   normalizeContentType,
   validateUploadRequest,
 };
+
+/**
+ * Chat's picker `accept`: support's list without HEIC/HEIF. Listing them
+ * tells iOS the page takes HEIC, so an iPhone photo arrives as one — and a
+ * HEIC can't show inline (isInlineImage) or open on most Android and Windows
+ * machines. Without them iOS converts the photo to JPEG on pick, and the
+ * whole channel sees the picture. A dropped .heic is still accepted (the
+ * allow-list is support's); it just posts as a download.
+ */
+export const ATTACHMENT_ACCEPT = SUPPORT_ACCEPT.split(",")
+  .filter((t) => !/heic|heif/i.test(t))
+  .join(",");
 
 export const CHAT_FILES_BUCKET = "chat-files";
 /** Files on one message. */
