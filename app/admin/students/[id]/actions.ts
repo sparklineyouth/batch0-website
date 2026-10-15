@@ -357,6 +357,9 @@ export async function refundLatestPayment(userId: string, reason: string) {
 
   const chargeId = typeof refund.charge === "string" ? refund.charge : refund.charge?.id;
   if (!chargeId) throw new Error("Stripe accepted the refund but returned no charge. Reconcile before retrying.");
+  // Records the refund and posts its #staff line, as on /admin/payments:
+  // once, whether this call or the charge.refunded webhook racing it records
+  // it first (lib/stripe-fulfillment.ts).
   await handleChargeRefunded(await stripe.charges.retrieve(chargeId), { silent: true });
 
   await logAudit({

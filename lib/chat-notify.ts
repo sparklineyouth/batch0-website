@@ -172,3 +172,34 @@ export async function clearChannelBells(userId: string, channelId: string): Prom
   }
   return data?.length ?? 0;
 }
+
+/** Links per update. The filter rides in the URL, and a link is longer than a bare id (LOOKUP_CHUNK). */
+const CLEAR_CHUNK = 100;
+
+/**
+ * Take down this person's chat bells for many channels at once ("Mark all
+ * read"): one update per hundred channels, one after another — not one per
+ * channel all in flight together, which for a staff inbox of a thousand DMs
+ * was a thousand sockets from one action. A failure throws: the read cursors
+ * have already moved, so the caller should hear that bells stayed up (and
+ * can simply run it again) rather than count them as cleared.
+ */
+export async function clearChannelBellsMany(userId: string, channelIds: readonly string[]): Promise<number> {
+  const links = Array.from(new Set(channelIds.map(chatLink)));
+  const admin = createAdminClient();
+  const readAt = new Date().toISOString();
+  let cleared = 0;
+  for (let i = 0; i < links.length; i += CLEAR_CHUNK) {
+    const { data, error } = await admin
+      .from("notifications")
+      .update({ read_at: readAt })
+      .eq("user_id", userId)
+      .in("link", links.slice(i, i + CLEAR_CHUNK))
+      .in("type", CHAT_BELL_TYPES as unknown as string[])
+      .is("read_at", null)
+      .select("id");
+    if (error) throw new Error(`Couldn't clear chat bells: ${error.message}`);
+    cleared += data?.length ?? 0;
+  }
+  return cleared;
+}

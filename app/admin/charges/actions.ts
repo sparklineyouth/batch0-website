@@ -194,11 +194,19 @@ export async function refundCharge(chargeId: string, reason?: string) {
     body: `$${(existing.amount_cents / 100).toFixed(2)} returned to your card.`,
     link: "/dashboard/billing",
   });
-  // The #staff feed, where the Discord admin feed used to get refunds: who,
-  // and a link. The amount and the reason stay behind charges.manage
-  // (lib/staff-feed.ts). postStaffFeed never throws: the refund already
-  // happened.
-  {
+  // Record the refunded total, if the charge.refunded webhook hasn't yet:
+  // whichever of the two moves it posts the #staff line (who, and a link;
+  // the amount and the reason stay behind charges.manage, lib/staff-feed.ts),
+  // so a refund is announced once however the two race (handleChargeRefunded
+  // does the same conditional write). postStaffFeed never throws: the refund
+  // already happened.
+  const { data: recorded } = await admin
+    .from("user_charges")
+    .update({ amount_refunded_cents: refund.amount })
+    .eq("id", chargeId)
+    .lt("amount_refunded_cents", refund.amount)
+    .select("id");
+  if (Array.isArray(recorded) && recorded.length > 0) {
     const { data: p } = await admin.from("profiles").select("full_name").eq("id", existing.user_id).maybeSingle();
     await postStaffFeed(
       chargeRefundedLine({ name: p?.full_name, kind: existing.kind === "fine" ? "fine" : "fee", userId: existing.user_id, siteUrl: env.siteUrl }),

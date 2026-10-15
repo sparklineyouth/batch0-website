@@ -7,7 +7,6 @@ import { logAudit } from "@/lib/audit";
 import { sendEmail } from "@/lib/email/send";
 import { notifyMany } from "@/lib/notifications";
 import { postToChannel } from "@/lib/chat-post";
-import { env } from "@/lib/env";
 
 export type AnnouncementInput = {
   cohortId: string | null; // null = all enrolled
@@ -116,15 +115,19 @@ export async function broadcastAnnouncement(
   const mentionEveryone = input.postChat && !!input.mentionEveryone;
   if (input.postChat) {
     // An announcement for everyone goes to #announcements; one for a single
-    // cohort goes to that cohort's own channel, where only that cohort (and
-    // staff) reads it — so its words and any @everyone ping stay inside the
-    // audience the email went to.
+    // cohort goes to that cohort's own channel, which only that cohort, the
+    // mentors assigned to its students, and staff read (chat_can_read in
+    // 0101) — so its words and any @everyone ping stay close to the audience
+    // the email went to.
     // postToChannel never throws: a chat copy that doesn't land is reported
     // back to the composer, it doesn't undo the notifications and emails
-    // that already went out.
+    // that already went out. That includes an author who is muted in chat:
+    // the announcement goes out, its chat copy doesn't, and chatError says why.
     //
-    // Chat caps a message at MESSAGE_MAX; an announcement has no limit. The
-    // link is what a cut-short copy ends with, so the rest is one tap away.
+    // Chat caps a message at MESSAGE_MAX; an announcement has no limit. A
+    // longer one goes out whole, as consecutive messages, rather than cut
+    // with a link to /dashboard/announcements: mentors, investors and
+    // accepted applicants read these channels and can't open that page.
     //
     // Everyone above already got this announcement's own bell, so the chat
     // copy rings nobody twice: not an @everyone ping, and not the "All
@@ -135,7 +138,6 @@ export async function broadcastAnnouncement(
         senderId: authorId,
         body: chatAnnouncementBody({ title: input.title, body: input.body }),
         mentionEveryone,
-        link: announcementId ? `${env.siteUrl}${notificationLink}` : undefined,
         excludeBells: Array.from(new Set(recipients.map((r) => r.user_id as string))),
       },
     );

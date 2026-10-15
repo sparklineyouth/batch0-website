@@ -482,9 +482,10 @@ export function effectiveNotify(kind: ChannelKind, pref: NotifyPref | null | und
 
 /**
  * What one channel adds to the Chat badge: a text channel its mentions, a DM
- * or group 1 while anything in it is unread. Nothing when it's muted, and
- * nothing for a conversation closed since its last message — the sidebar's
- * rule, so the badge never counts what the sidebar shows as read.
+ * or group 1 while anything in it is unread — or, set to "Only @mentions",
+ * while a mention of you is. Nothing when it's muted, and nothing for a
+ * conversation closed since its last message — the sidebar's rule, so the
+ * badge never counts what the sidebar shows as read.
  */
 export function attentionFor(
   kind: ChannelKind,
@@ -494,7 +495,22 @@ export function attentionFor(
 ): number {
   if (effectiveNotify(kind, pref) === "none") return 0;
   if (kind === "channel") return counts.mentions;
-  return visible && counts.unread > 0 ? 1 : 0;
+  return visible && sidebarMentions(kind, counts, pref) > 0 ? 1 : 0;
+}
+
+/**
+ * The number on a sidebar row (and the badge's test for a conversation): a
+ * text channel's mentions; a DM's or group's unread, since every message
+ * there is to you — unless it's set to "Only @mentions", when it's only the
+ * mentions too, like a channel. Live, pass one message's counts
+ * ({ unread: 1, mentions: 1 if it mentions you, else 0 }) for what it adds.
+ */
+export function sidebarMentions(
+  kind: ChannelKind,
+  counts: { unread: number; mentions: number },
+  pref: NotifyPref | null | undefined,
+): number {
+  return kind === "channel" || effectiveNotify(kind, pref) === "mentions" ? counts.mentions : counts.unread;
 }
 
 /** Does this message concern this recipient enough to ring a bell at all? */
@@ -532,6 +548,17 @@ export function bellTitle(
  * chat_unread()'s window in 0101, so joining a cohort doesn't open on "99+".
  */
 export const UNREAD_LOOKBACK_MS = 14 * 24 * 60 * 60_000;
+
+/**
+ * Does this line count as a message (for unread, the "new" line, a channel's
+ * last activity)? A person's message, never a system line ("Maya pinned a
+ * message.") — except in #staff (the channel whose system key is 'staff'),
+ * where the system lines are the feed and the news. `systemKey` is the
+ * channel's. public.chat_counts_as_message in 0101, the same rule.
+ */
+export function countsAsMessage(kind: "message" | "system", systemKey: string | null): boolean {
+  return kind === "message" || (kind === "system" && systemKey === "staff");
+}
 
 /**
  * Where the "new" line goes when there's no read cursor yet: a text channel
@@ -615,24 +642,6 @@ export function normalizeChannelName(input: string): string {
 }
 
 export const CHANNEL_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/;
-
-/**
- * A post from outside the composer (an announcement cross-post), fitted to
- * MESSAGE_MAX: trimmed, and when it's longer, cut at the last word break
- * that leaves room for "…" and the link to the full text — never a post that
- * just stops mid-sentence.
- */
-export function fitPostBody(raw: string, link?: string): string {
-  const body = raw.trim();
-  if (body.length <= MESSAGE_MAX) return body;
-  const tail = link ? `…\n\nRead the rest: ${link}` : "…";
-  const room = MESSAGE_MAX - tail.length;
-  const cut = body.slice(0, room);
-  const space = Math.max(cut.lastIndexOf(" "), cut.lastIndexOf("\n"));
-  // A word break near the end; otherwise (one enormous word) a hard cut.
-  const head = (space > room * 0.8 ? cut.slice(0, space) : cut).trimEnd();
-  return `${head}${tail}`;
-}
 
 /**
  * The reaction palette. A fixed set rather than any string: it keeps the

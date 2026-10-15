@@ -5,12 +5,18 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import path from "node:path";
 
 // Run the real broadcastAnnouncement (app/admin/announcements/actions.ts)
-// against doubles and look at what it hands postToChannel: the link a
-// cut-short chat copy ends with, and the people who already got the
-// announcement's own bell, so the chat copy rings none of them twice.
+// against doubles and look at what it hands postToChannel: the whole text
+// (a long one is split into messages there, never cut with a link some
+// readers can't open), and the people who already got the announcement's own
+// bell, so the chat copy rings none of them twice.
 
 const ANN = "00000000-0000-4000-8000-0000000000a1";
-const state: { posts: any[]; enrolled: string[]; insertFails: boolean } = { posts: [], enrolled: [], insertFails: false };
+const state: { posts: any[]; enrolled: string[]; insertFails: boolean; postResult: any } = {
+  posts: [],
+  enrolled: [],
+  insertFails: false,
+  postResult: { ok: true, messageId: "m", messageIds: ["m"], channelId: "c" },
+};
 const db = {
   from(table: string) {
     const chain: any = {
@@ -44,8 +50,7 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
       "@/lib/audit": "export const logAudit=async()=>{};",
       "@/lib/email/send": "export const sendEmail=async()=>{};",
       "@/lib/notifications": "export const notifyMany=async()=>{};",
-      "@/lib/chat-post": g + "export const postToChannel=async(target,input)=>{t.state.posts.push({target,input});return {ok:true,messageId:'m',channelId:'c'};};",
-      "@/lib/env": "export const env={siteUrl:'https://batch0.test'};",
+      "@/lib/chat-post": g + "export const postToChannel=async(target,input)=>{t.state.posts.push({target,input});return t.state.postResult;};",
     };
     if (doubles[specifier]) return { url: fake(doubles[specifier]), shortCircuit: true };
     if (specifier.startsWith("@/")) return next(pathToFileURL(path.join(root, specifier.slice(2) + ".ts")).href, context);
@@ -56,16 +61,21 @@ const { broadcastAnnouncement } = await import("../app/admin/announcements/actio
 
 const base = { cohortId: null, title: "Kickoff moved", body: "Now Tuesday.", sendEmail: false, postChat: true };
 
-test("the chat copy links the announcement and bells nobody the announcement already belled", async () => {
+test("the chat copy is the whole announcement and bells nobody the announcement already belled", async () => {
   state.posts = [];
   state.insertFails = false;
   state.enrolled = ["s1", "s2", "s1"]; // enrolled in two cohorts: one bell, one exclusion
-  await broadcastAnnouncement({ ...base, mentionEveryone: true });
+  const long = "Now Tuesday. ".repeat(600).trim(); // past one chat message
+  await broadcastAnnouncement({ ...base, body: long, mentionEveryone: true });
   assert.equal(state.posts.length, 1);
   const { target, input } = state.posts[0];
   assert.deepEqual(target, { systemKey: "announcements" });
   assert.equal(input.mentionEveryone, true);
-  assert.equal(input.link, `https://batch0.test/dashboard/announcements#a-${ANN}`);
+  assert.equal(input.body, `**Kickoff moved**\n\n${long}`, "not cut: postToChannel splits it");
+  // No "read the rest" link: /dashboard/announcements is for enrolled
+  // students, and mentors, investors and accepted applicants read the channel.
+  assert.equal("link" in input, false);
+  assert.ok(!JSON.stringify(input).includes("/dashboard/announcements"));
   assert.deepEqual([...input.excludeBells].sort(), ["s1", "s2"]);
 });
 
@@ -79,10 +89,28 @@ test("without @everyone, followers who got the announcement's bell still get no 
   assert.deepEqual(input.excludeBells, ["s1"]);
 });
 
-test("an announcement that wasn't saved has no page to link to", async () => {
+test("an announcement that wasn't saved still gets its chat copy", async () => {
   state.posts = [];
   state.insertFails = true;
   state.enrolled = [];
-  await broadcastAnnouncement(base);
-  assert.equal(state.posts[0].input.link, undefined);
+  const out = await broadcastAnnouncement(base);
+  assert.equal(out.announcementId, null);
+  assert.equal(state.posts.length, 1);
+  assert.equal(out.chatPosted, true);
+});
+
+test("a muted author's announcement goes out, its chat copy doesn't, and the composer is told why", async () => {
+  state.posts = [];
+  state.insertFails = false;
+  state.enrolled = ["s1"];
+  state.postResult = { ok: false, reason: "You can't post in chat right now." };
+  try {
+    const out = await broadcastAnnouncement({ ...base, mentionEveryone: true });
+    assert.equal(out.recipients, 1);
+    assert.equal(out.announcementId, ANN);
+    assert.equal(out.chatPosted, false);
+    assert.equal(out.chatError, "You can't post in chat right now.");
+  } finally {
+    state.postResult = { ok: true, messageId: "m", messageIds: ["m"], channelId: "c" };
+  }
 });

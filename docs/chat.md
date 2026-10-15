@@ -25,7 +25,7 @@ and no categories.
 | --- | --- | --- |
 | `#announcements` | everyone let in | staff only |
 | `#general`, `#wins`, `#help` | everyone let in | everyone who reads it |
-| `#staff` | staff | staff. It also carries the **staff feed**: new applications, acceptances, enrollments, refunds (not waivers), pass requests and challenge entries, as system lines (`postStaffFeed`, `lib/chat-post.ts`). A line names the person and links to the admin page; it never carries an email, an amount or a refund reason, which stay behind those pages' own permissions (`lib/staff-feed.ts`). |
+| `#staff` | staff | staff. It also carries the **staff feed**: new applications, acceptances, enrollments, refunds (not waivers), pass requests and challenge entries, as system lines (`postStaffFeed`, `lib/chat-post.ts`). A line names the person and links to the admin page; it never carries an email, an amount or a refund reason, which stay behind those pages' own permissions (`lib/staff-feed.ts`). Enrollments and refunds post once, from whichever path records them first: the checkout webhook, the daily Stripe reconcile, an admin refund, or a refund made in the Stripe dashboard. |
 | one per cohort (`#fall-2026`) | that cohort's enrolled students, the mentors assigned to any of them, plus staff | everyone who reads it |
 | one per team (`#team-acme`) | that team's members, the mentors assigned to any of them, plus staff | everyone who reads it |
 
@@ -106,7 +106,12 @@ reads through the service role and isn't in that test.
 
 All reads go through the service role (`lib/chat.ts`), with the viewer
 checked explicitly, because every screen needs other people's names. RLS is the
-backstop, and it's what Realtime applies. Emails never reach the browser:
+backstop, and it's what Realtime applies. The read policies are for signed-in
+users only (anonymous requests get nothing, and no message columns at all),
+and the big tables (messages, members, reactions) ask whether a row's channel
+is in the viewer's readable set (`chat_viewer_channel_ids()`, the same rule
+as `chat_can_read()` worked out once per statement): an unfiltered request
+over 300k messages costs ~40 ms, not a function call per row (~4.5 s). Emails never reach the browser:
 a person is a name, a role label and two flags, and the #staff feed names
 people without them. Names resolve only for people a message actually
 involves (its mentions, sender, reactors, the reply's sender); any other
@@ -158,7 +163,9 @@ signed-in users get read policies only.
   (`mutePerson`, `chat_mutes`): for an hour, a day, a week or until lifted.
   A muted account can't post, react, pin, or start or change a conversation,
   except a DM with the team to ask about it, and the composer says "You
-  can't post in chat right now." Staff are never muted.
+  can't post in chat right now." Staff are never muted. A mute also holds
+  for an announcement's chat copy: the announcement itself still goes out,
+  and the composer reports the mute as why it didn't reach chat.
 - **Fines:** an account with a pending fine can only DM the team. Posting,
   editing, reacting (channels included), pinning and starting or changing a
   group are all locked elsewhere; reporting, blocking and leaving still work.
@@ -196,7 +203,10 @@ notifications policy no longer lets admins read anyone else's chat bells.
   and none while the person had it open in the last two minutes. Catching up
   clears the bells.
 - An announcement cross-posted to chat bells nobody its own `announcement`
-  bell already reached (`excludeBells`), with or without @everyone.
+  bell already reached (`excludeBells`), with or without @everyone. One too
+  long for a single message is posted whole, as consecutive messages split
+  between paragraphs (`lib/chat-post-split.ts`, code blocks kept intact), with
+  @everyone and the bell on the first only.
 
 Types: `chat_dm`, `chat_mention`, `chat_message`, `chat_reported` (to
 staff no report on that channel names), and `chat_flagged` (*Ask the team*,
@@ -262,11 +272,22 @@ revision points at it (`chat_files_in_use()`), and nothing at all when a read
 fails or most old files look unreferenced.
 
 Deleting an account (`deleteUserAccount`) first runs `purgeChatContentFor()`
-(`lib/chat-purge.ts`): their messages are blanked, their earlier versions
-deleted and their files removed from storage, staged ones included. Evidence
-stays as it is: a reported message, and every message in a reported DM or
-group. It's idempotent and throws on a failure, so the account is only
-deleted once the purge has worked. The privacy policy says so.
+(`lib/chat-purge.ts`):
+
+- Their Chat messages are blanked, their earlier versions deleted and their
+  files removed from storage, staged ones included.
+- Their direct messages from before Chat (`dm_messages`, unsent ones too)
+  are deleted outright; 0089's trigger recomputes each old conversation's
+  preview from what's left. Their old team-thread posts (`team_messages`) go
+  with the profile (the foreign key cascades); the Chat copies are blanked as
+  above.
+- Evidence stays as it is: a reported message, and every message in a
+  reported DM or group, including an old DM reported before Chat
+  (`dm_reports`) or in it.
+
+It's idempotent and throws on a failure, so the account is only deleted once
+the purge has worked, and 0101 carries history only once, so a re-run can't
+bring anything back. The privacy policy says so.
 
 ## History carried over
 
@@ -322,13 +343,19 @@ Tests:
   `lib/chat-files-rules.test.ts` (the attachment path grammar and the
   staged-file checks), `lib/chat-housekeeping.test.ts` (the sweep, against an
   in-memory bucket), `components/chat/live-rows.test.ts` (applying Realtime
-  rows on the client)
+  rows on the client), `lib/chat-post-split.test.ts` and `lib/chat-post.test.ts`
+  (long posts split whole, mutes, rollback), `lib/chat-purge.test.ts` (what
+  an account deletion removes and keeps), `lib/chat-server.test.ts` (bulk
+  bell clearing, mention search ranking, the sidebar's mention counts)
 - `lib/chat-migration-db.test.ts`: real Postgres via PGlite, with policies
   run as a signed-in user, then triggers, carry-over, the Discord teardown
   and idempotency.
-- `lib/staff-feed.test.ts`, `lib/announcement-chat.test.ts`,
-  `lib/account-deletion.test.ts`: what the feed says, what an announcement
-  hands chat, and that deleting an account purges its chat first.
+- `lib/staff-feed.test.ts`, `lib/stripe-staff-feed.test.ts`,
+  `lib/announcement-chat.test.ts`, `lib/account-deletion.test.ts`,
+  `lib/app-host.test.ts`: what the feed says and that every payment path
+  posts it once, what an announcement hands chat, that deleting an account
+  purges its chat first, and that every legal page (the guidelines included)
+  is served like the others.
 - `lib/legal-pages.test.ts` pins the privacy policy's and the FAQ's chat
   sentences to the rules above.
 

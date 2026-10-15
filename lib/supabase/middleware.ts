@@ -95,6 +95,7 @@ const PUBLIC_STATIC_PREFIXES = [
   "/privacy",
   "/terms",
   "/refund-policy",
+  "/community-guidelines",
   "/sponsors",
   // The service worker's offline fallback. It is precached at install time and
   // served from the device with no network, so it reads nothing about the

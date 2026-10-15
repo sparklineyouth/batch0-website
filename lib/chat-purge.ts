@@ -22,14 +22,28 @@ import type { Role } from "@/lib/types";
  * you disappear. (A report on a text channel is about one message, so only
  * that one is kept there.)
  *
+ * The same goes for the copies 0101 left behind. The old direct messages
+ * (0089) were copied into Chat under the same ids, but their rows stay in
+ * dm_messages, where deleting the account only nulls sender_id: so their
+ * rows are deleted too (purgeOldDirectMessages), except in a conversation
+ * someone reported. The old team thread (0011) needs nothing here:
+ * team_messages.author_id cascades, so those rows go with the profile, and
+ * their Chat copies are blanked above like any channel message.
+ *
  * Idempotent: a second run finds the blanked messages already blank and
- * their revisions already gone. Throws on any failure, so the caller stops
- * before deleting the account and can simply run it again; before migration
- * 0101 there's nothing to purge.
+ * their revisions and old rows already gone. Throws on any failure, so the
+ * caller stops before deleting the account and can simply run it again;
+ * before migration 0101 there's nothing in Chat to purge.
  */
 export async function purgeChatContentFor(userId: string): Promise<void> {
   const uid = asUuid(userId);
   if (!uid) throw new Error("That account isn't one.");
+  const chat = await purgeChatMessages(uid);
+  await purgeOldDirectMessages(uid, chat);
+}
+
+/** Their Chat messages, as above. False when Chat isn't set up here yet (before 0101). */
+async function purgeChatMessages(uid: string): Promise<boolean> {
   const admin = createAdminClient();
 
   let messages: { id: string; channel_id: string; attachments: unknown; deleted_at: string | null }[];
@@ -44,7 +58,7 @@ export async function purgeChatContentFor(userId: string): Promise<void> {
       "their messages",
     );
   } catch (err) {
-    if (isMissingSchemaError(err)) return;
+    if (isMissingSchemaError(err)) return false;
     throw err;
   }
 
@@ -81,6 +95,65 @@ export async function purgeChatContentFor(userId: string): Promise<void> {
   // purged messages, and files staged and never sent.
   for (const path of await stagedPaths(uid, channelIds)) files.add(path);
   await removeChatFiles(Array.from(files).filter((p) => !keptFiles.has(p)));
+  return true;
+}
+
+/**
+ * Their rows in the old direct messages (0089), unsent ones included. Deleted,
+ * not blanked: the body check there won't take an empty one, and a deleted
+ * row leaves nothing behind — 0089's trigger (dm_messages_touch_conversation)
+ * redoes the conversation's message_count, last_message_preview and
+ * last_sender_id from what's left on every delete, so their last line doesn't
+ * survive on dm_conversations either. Kept: every row in a conversation
+ * someone reported, the old way (dm_reports) or in Chat, where it's the DM
+ * with the same id. Nothing to do on a database without 0089.
+ */
+async function purgeOldDirectMessages(uid: string, chat: boolean): Promise<void> {
+  const admin = createAdminClient();
+  let rows: { id: string; conversation_id: string }[];
+  try {
+    rows = await pageAll(
+      (from, to) => admin.from("dm_messages").select("id, conversation_id").eq("sender_id", uid).order("id").range(from, to),
+      "their old direct messages",
+    );
+  } catch (err) {
+    if (isMissingSchemaError(err)) return;
+    throw err;
+  }
+  if (rows.length === 0) return;
+
+  const reported = await reportedOldConversations(uniq(rows.map((r) => r.conversation_id)), chat);
+  for (const part of chunks(rows.filter((r) => !reported.has(r.conversation_id)).map((r) => r.id))) {
+    const { error } = await admin.from("dm_messages").delete().eq("sender_id", uid).in("id", part);
+    if (error) throw new Error(`Couldn't remove their old direct messages: ${error.message}`);
+  }
+}
+
+/**
+ * Which of these old conversations someone reported: before Chat (dm_reports,
+ * which comes with dm_messages) or since (chat_reports on the same id, once
+ * 0101 is in). A failed read throws: it must never read as "not reported".
+ */
+async function reportedOldConversations(ids: readonly string[], chat: boolean): Promise<Set<string>> {
+  const admin = createAdminClient();
+  const out = new Set<string>();
+  for (const part of chunks(ids)) {
+    const [old, inChat] = await Promise.all([
+      pageAll<{ conversation_id: string }>(
+        (from, to) => admin.from("dm_reports").select("conversation_id").in("conversation_id", part).order("id").range(from, to),
+        "old reports",
+      ),
+      chat
+        ? pageAll<{ channel_id: string }>(
+            (from, to) => admin.from("chat_reports").select("channel_id").in("channel_id", part).order("id").range(from, to),
+            "reports",
+          )
+        : [],
+    ]);
+    for (const r of old) out.add(r.conversation_id);
+    for (const r of inChat) out.add(r.channel_id);
+  }
+  return out;
 }
 
 const uniq = <T,>(xs: Iterable<T>): T[] => Array.from(new Set(xs));

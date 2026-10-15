@@ -148,7 +148,11 @@ export function AnnounceForm({ cohorts }: { cohorts: CohortOption[] }) {
           checked={chat}
           onChange={setChat}
           label={cohortId ? "Also post in the cohort's channel" : "Also post in #announcements"}
-          hint={cohortId ? "Only that cohort and staff read it in Chat." : "Everyone at batch0 can read it in Chat."}
+          hint={
+            cohortId
+              ? "Only that cohort, the mentors assigned to its students, and staff read it in Chat."
+              : "Everyone at batch0 can read it in Chat."
+          }
         />
         {chat && (
           <Toggle

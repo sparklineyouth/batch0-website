@@ -359,6 +359,21 @@ test("who reads what: the policies and canReadChannel() agree for every person a
     const expected = channels.filter((c) => canReadChannel(c, v, channelReportsOpenTo(reportsOn(c.id), v))).map((c) => c.id);
     const actual = (await asUser<{ id: string }>(db, uid, `select id from public.chat_channels`)).rows.map((r) => r.id);
     assert.deepEqual(sorted(actual), sorted(expected), `${who} reads a different set in SQL than in TypeScript`);
+    // The set the message, member and reaction policies use is the same rule,
+    // worked out all at once.
+    const set = (await asUser<{ id: string }>(db, uid, `select public.chat_viewer_channel_ids() as id`)).rows.map((r) => r.id);
+    assert.deepEqual(sorted(set), sorted(expected), `${who}'s chat_viewer_channel_ids() differs from chat_can_read()`);
+  }
+  // Anyone without a session reads nothing, without scanning anything.
+  await db.exec(`set role anon`);
+  try {
+    await assert.rejects(db.query(`select public.chat_viewer_channel_ids()`), /permission denied/);
+    await assert.rejects(db.query(`select id from public.chat_messages`), /permission denied/);
+    // The other tables' policies are for signed-in users only: no policy, no rows.
+    assert.equal((await db.query(`select 1 from public.chat_members`)).rows.length, 0);
+    assert.equal((await db.query(`select 1 from public.chat_channels`)).rows.length, 0);
+  } finally {
+    await db.exec(`reset role`);
   }
 
   // Spot checks of the rule itself, so the matrix can't agree on nonsense.

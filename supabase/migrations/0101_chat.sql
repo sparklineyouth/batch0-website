@@ -662,6 +662,57 @@ begin
 end;
 $$;
 
+-- Every channel this person can read, as one set: chat_can_read() for all of
+-- them at once. The read policies ask "is this row's channel in the
+-- viewer's set" — the set is worked out once per statement and probed per
+-- row, so a query over every message costs a hash lookup per row rather than
+-- a function call. Kept branch for branch with chat_can_read() (the PGlite
+-- test compares the two for every person and channel).
+create or replace function public.chat_readable_channel_ids(uid uuid)
+returns setof uuid
+language sql
+stable
+security definer set search_path = public
+as $$
+  with me as (
+    select uid is not null and public.chat_is_staff(uid) as staff,
+           uid is not null and public.chat_is_vetted(uid) as vetted
+  )
+  select m.channel_id from public.chat_members m where m.user_id = uid
+  union
+  select c.id from public.chat_channels c, me
+  where uid is not null and c.kind = 'channel' and (
+    me.staff
+    or (c.audience = 'everyone' and me.vetted)
+    or (c.audience = 'cohort' and c.cohort_id in (
+          select e.cohort_id from public.enrollments e where e.user_id = uid
+          union
+          select e.cohort_id from public.mentor_assignments ma
+          join public.enrollments e on e.user_id = ma.student_id
+          where ma.mentor_id = uid))
+    or (c.audience = 'team' and c.team_id in (
+          select tm.team_id from public.team_members tm where tm.user_id = uid
+          union
+          select tm.team_id from public.mentor_assignments ma
+          join public.team_members tm on tm.user_id = ma.student_id
+          where ma.mentor_id = uid)))
+  union
+  select r.channel_id from public.chat_reports r
+  join public.chat_channels c on c.id = r.channel_id and c.kind in ('dm', 'group'), me
+  where me.staff
+  group by r.channel_id
+  having not bool_or(uid = any(r.party_ids));
+$$;
+
+create or replace function public.chat_viewer_channel_ids()
+returns setof uuid
+language sql
+stable
+security definer set search_path = public
+as $$
+  select public.chat_readable_channel_ids(auth.uid());
+$$;
+
 -- Unread and mention counts for the sidebar, in one query. Service role only
 -- (it takes a uid). A text channel the person has never opened counts from
 -- two weeks back (UNREAD_LOOKBACK_MS in lib/chat-access.ts), so joining a
@@ -709,6 +760,11 @@ $$;
 revoke execute on function public.chat_is_staff(uuid) from public, anon, authenticated;
 revoke execute on function public.chat_is_vetted(uuid) from public, anon, authenticated;
 revoke execute on function public.chat_can_read(public.chat_channels, uuid) from public, anon, authenticated;
+revoke execute on function public.chat_readable_channel_ids(uuid) from public, anon, authenticated;
+-- The read policies call these as the signed-in user; over /rpc they only
+-- ever answer for the caller.
+revoke execute on function public.chat_viewer_channel_ids() from public, anon;
+grant execute on function public.chat_viewer_channel_ids() to authenticated;
 revoke execute on function public.chat_unread(uuid, uuid[]) from public, anon, authenticated;
 -- lib/chat.ts calls this one over /rpc as the service role. Granted outright,
 -- not left to Supabase's default privileges (the 0080/0090 pattern).
@@ -749,13 +805,20 @@ grant execute on function public.chat_files_in_use(text[]) to service_role;
 -- 8. Policies: READ ONLY. Write policies are dropped by name so a re-run over
 --    a hand-edited database removes them.
 -- ----------------------------------------------------------------------------
+-- Signed-in only (`to authenticated`): anon gets a constant-false plan
+-- instead of a scan. Messages, members and reactions ask "is this row's
+-- channel in the viewer's set" (chat_viewer_channel_ids), worked out once per
+-- statement: a request with no filter over every message costs a hash probe
+-- per row (about 40 ms at 300k messages), not a function call per row
+-- (about 4.5 s). Realtime's per-change check works the set out once per
+-- subscriber, a few index lookups.
 drop policy if exists "chat_channels read" on public.chat_channels;
 create policy "chat_channels read" on public.chat_channels
-  for select using (public.chat_viewer_can_read(chat_channels));
+  for select to authenticated using (public.chat_viewer_can_read(chat_channels));
 
 drop policy if exists "chat_messages read" on public.chat_messages;
 create policy "chat_messages read" on public.chat_messages
-  for select using (public.chat_viewer_can_read_channel(channel_id));
+  for select to authenticated using (channel_id in (select public.chat_viewer_channel_ids()));
 
 -- Readers see every column but who removed a message and who pinned it.
 -- deleted_by would tell a reported DM's members which moderator is working
@@ -769,23 +832,23 @@ grant select (id, channel_id, sender_id, body, reply_to_id, mentions, mention_ev
 
 drop policy if exists "chat_members read" on public.chat_members;
 create policy "chat_members read" on public.chat_members
-  for select using (public.chat_viewer_can_read_channel(channel_id));
+  for select to authenticated using (channel_id in (select public.chat_viewer_channel_ids()));
 
 drop policy if exists "chat_reactions read" on public.chat_reactions;
 create policy "chat_reactions read" on public.chat_reactions
-  for select using (exists (
+  for select to authenticated using (exists (
     select 1 from public.chat_messages m
-    where m.id = chat_reactions.message_id and public.chat_viewer_can_read_channel(m.channel_id)
+    where m.id = chat_reactions.message_id and m.channel_id in (select public.chat_viewer_channel_ids())
   ));
 
 drop policy if exists "chat_reads own" on public.chat_reads;
 create policy "chat_reads own" on public.chat_reads
-  for select using (user_id = auth.uid());
+  for select to authenticated using (user_id = auth.uid());
 
 -- Your block list is yours; being blocked is not something you get told.
 drop policy if exists "chat_blocks own" on public.chat_blocks;
 create policy "chat_blocks own" on public.chat_blocks
-  for select using (blocker_id = auth.uid());
+  for select to authenticated using (blocker_id = auth.uid());
 
 -- Reports, revisions and mutes have no policy at all: service role only. A
 -- report's row says who else in the channel has been reported (party_ids)

@@ -59,9 +59,12 @@ export function chargeRefundedLine(a: {
   return `${a.kind === "fine" ? "Fine" : "Fee"} refunded to **${feedName(a.name, "a student")}** · ${a.siteUrl}/admin/charges?user=${a.userId}`;
 }
 
-/** An enrollment payment refunded. The amount and the reason stay on /admin/payments. */
-export function paymentRefundedLine(a: { name: string | null | undefined; siteUrl: string }): string {
-  return `Enrollment payment refunded to **${feedName(a.name, "a student")}** · ${a.siteUrl}/admin/payments`;
+/**
+ * An enrollment payment refunded, in full or (`partial`) in part. The amount
+ * and the reason stay on /admin/payments.
+ */
+export function paymentRefundedLine(a: { name: string | null | undefined; partial?: boolean; siteUrl: string }): string {
+  return `Enrollment payment ${a.partial ? "partly refunded" : "refunded"} to **${feedName(a.name, "a student")}** · ${a.siteUrl}/admin/payments`;
 }
 
 export function feedbackCreditLine(a: { name: string | null | undefined; topic: string; siteUrl: string }): string {

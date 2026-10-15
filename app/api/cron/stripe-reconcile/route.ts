@@ -21,7 +21,9 @@ const WINDOW_DAYS = 14;
  * idempotent, so on a healthy day it finds nothing to do.
  *
  * Announcements are suppressed: a payment this run discovers has already
- * been confirmed to the student on-screen at checkout time.
+ * been confirmed to the student on-screen at checkout time. #staff still
+ * gets its line for an enrollment or refund this run is the first to record
+ * (a missed webhook is exactly when nobody else would post it).
  */
 export async function GET(req: Request) {
   if (!env.cronSecret) {

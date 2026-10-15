@@ -68,7 +68,7 @@ import {
   type SidebarData,
 } from "@/lib/chat";
 import { buildChannelPayload, peopleIn, personalLocks, type ChannelPayload, type ChannelTarget } from "@/lib/chat-payload";
-import { chatLink, clearChannelBells, notifyNewMessage } from "@/lib/chat-notify";
+import { chatLink, clearChannelBells, clearChannelBellsMany, notifyNewMessage } from "@/lib/chat-notify";
 import { mintChatUploads, removeChannelFiles, verifyChatUploads, type MintedChatUpload } from "@/lib/chat-files";
 import {
   currentReader,
@@ -703,7 +703,7 @@ export async function markAllRead(): Promise<ActionResult<{ count: number }>> {
         { onConflict: "channel_id,user_id" },
       );
     if (error) throw new Error(error.message);
-    await Promise.all(items.map((i) => clearChannelBells(viewer.userId, i.id)));
+    await clearChannelBellsMany(viewer.userId, items.map((i) => i.id));
     return { count: items.length };
   });
 }

@@ -190,6 +190,23 @@ test("plan against the real files: a production database that has everything but
   assert.deepEqual(done.filter((p) => p.status !== "unrecorded" && p.status !== "applied").map((p) => p.version), []);
 });
 
+test("plan: the newest file recorded but failing its check is an earlier draft, and runs again", () => {
+  const all = new Set([...productionTables(100), "profiles", "app_roles"]);
+  const recorded = new Set(real.map((f) => f.version));
+  const passing = new Map(Object.keys(MIGRATION_CHECKS).map((v) => [v, true] as [string, boolean]));
+  // Recorded and verified: nothing to do.
+  assert.deepEqual(planMigrations(real, state({ recorded, checks: passing, existingTables: all })).filter((p) => p.status !== "applied"), []);
+  // 0101 recorded from an earlier draft: its check fails, so it runs again.
+  const draft = planMigrations(real, state({ recorded, checks: new Map([...passing, ["0101", false]]), existingTables: all }));
+  const pending = draft.filter((p) => p.status !== "applied");
+  assert.deepEqual(pending.map((p) => [p.version, p.status]), [["0101", "pending"]]);
+  assert.match(pending[0].why, /earlier draft/);
+  // An older recorded file whose check fails is left alone: a later file may
+  // have changed what it made on purpose.
+  const older = planMigrations(real, state({ recorded, checks: new Map([...passing, ["0095", false]]), existingTables: all }));
+  assert.deepEqual(older.filter((p) => p.status !== "applied"), []);
+});
+
 test("plan: a skipped older file is a GAP, never 'live' — its own tables decide", () => {
   // 0086 was skipped by hand; 0085 and 0087 ran. Inferring 0086 from 0087
   // would record it unrun and hide the hole forever.

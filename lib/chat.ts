@@ -17,6 +17,7 @@ import {
   otherInDmKey,
   PEOPLE_SEARCH_MAX,
   reportVisibleTo,
+  sidebarMentions,
   type Audience,
   type ChannelKind,
   type ChannelScope,
@@ -128,6 +129,7 @@ export type SidebarItem = {
   /** DMs and groups only; a text channel's preview isn't shown. */
   preview: string | null;
   unread: number;
+  /** The number on the row (sidebarMentions): a channel's mentions; a conversation's unread, or its mentions on "Only @mentions". */
   mentions: number;
   notify: NotifyPref | null;
   position: number;
@@ -821,7 +823,7 @@ export async function buildSidebar(viewer: ChatViewer): Promise<SidebarData> {
               cut: Array.from(c.lastMessagePreview).length >= 140,
             }),
       unread: count.unread,
-      mentions: c.kind === "channel" ? count.mentions : count.unread,
+      mentions: sidebarMentions(c.kind, count, read?.notify ?? null),
       notify: read?.notify ?? null,
       position: c.position,
     };
@@ -954,28 +956,40 @@ export async function searchChannelPeople(
     return ordered(Array.from(people.values()).filter((p) => p.name.toLowerCase().includes(lower)));
   }
 
-  // Name matches a page at a time, kept only when they can read the channel.
-  // Ten pages is plenty for a name: past that the query is too short to mean anyone.
+  // Name matches a page at a time, in name order, kept only when they can
+  // read the channel: first names that start with the query, then names with
+  // a word that does, then any that contain it, until there are enough to
+  // rank. Ranking only what one "contains" scan found missed "Maya" behind
+  // two hundred "Amara"s for "ma". Four pages a pattern is plenty for a
+  // name: past that the query is too short to mean anyone.
   const admin = createAdminClient();
-  const found: ChatPerson[] = [];
+  const found = new Map<string, ChatPerson>();
+  const checked = new Set<string>();
   const SCAN = 200;
-  for (let from = 0, pages = 0; found.length < limit * 3 && pages < 10; from += SCAN, pages++) {
-    const rows = (must(
-      await admin
-        .from("profiles")
-        .select("id, full_name, role")
-        .ilike("full_name", `%${q}%`)
-        .order("full_name")
-        .order("id")
-        .range(from, from + SCAN - 1),
-      "people",
-    ) ?? []) as any[];
-    if (rows.length === 0) break;
-    const readers = new Set(await readersAmong(channel, rows.map((r) => r.id)));
-    found.push(...(await toPeople(rows.filter((r) => readers.has(r.id)))));
-    if (rows.length < SCAN) break;
+  const PAGES = 4;
+  for (const pattern of [`${q}%`, `% ${q}%`, `%${q}%`]) {
+    for (let from = 0, pages = 0; found.size < limit * 3 && pages < PAGES; from += SCAN, pages++) {
+      const rows = (must(
+        await admin
+          .from("profiles")
+          .select("id, full_name, role")
+          .ilike("full_name", pattern)
+          .order("full_name")
+          .order("id")
+          .range(from, from + SCAN - 1),
+        "people",
+      ) ?? []) as any[];
+      // The later patterns match the earlier ones' names again: vet each person once.
+      const fresh = rows.filter((r) => !checked.has(r.id));
+      for (const r of fresh) checked.add(r.id);
+      if (fresh.length) {
+        const readers = new Set(await readersAmong(channel, fresh.map((r) => r.id)));
+        for (const p of await toPeople(fresh.filter((r) => readers.has(r.id)))) found.set(p.id, p);
+      }
+      if (rows.length < SCAN) break;
+    }
   }
-  return ordered(found);
+  return ordered(Array.from(found.values()));
 }
 
 // ---------------------------------------------------------------------------

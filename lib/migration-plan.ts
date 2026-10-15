@@ -78,7 +78,14 @@ where permissions @> array['ai_usage.view']::text[];`,
    and not exists (select 1 from public.app_roles
                    where permissions @> array['discord.manage']::text[])
    and exists (select 1 from pg_publication_tables
-               where pubname = 'supabase_realtime' and tablename = 'chat_messages') as ok;`,
+               where pubname = 'supabase_realtime' and tablename = 'chat_messages')
+   -- The newest pieces, so a database that ran an earlier draft of 0101
+   -- reads as not done, and gets 0101 again (it's idempotent).
+   and to_regclass('public.chat_mutes') is not null
+   and to_regprocedure('public.chat_files_in_use(text[])') is not null
+   and to_regprocedure('public.chat_counts_as_message(text, text)') is not null
+   and not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'chat_reports')
+   and exists (select 1 from public.site_settings where key = 'chat_history_carried') as ok;`,
 };
 
 /**
@@ -366,6 +373,14 @@ export function planMigrations(files: readonly MigrationFile[], state: DbState):
     if (state.recorded?.has(f.version)) {
       // A shared version proves only that one of its files ran.
       if ((versionCount.get(f.version) ?? 0) > 1 && tablesSay === false) return false;
+      // The newest file is recorded but its verify query fails: an earlier
+      // draft of it ran (a branch's migration, edited since). Nothing after
+      // it can depend on the draft, and the October files are idempotent, so
+      // it runs again. Only the newest: an older file's check can fail for
+      // what a later file changed on purpose.
+      if (i === sorted.length - 1 && hasCheck(f.version) && !ABSENCE_CHECKS.has(f.version) && !checkPasses(f.version)) {
+        return false;
+      }
       return true;
     }
     if (hasCheck(f.version)) {
@@ -404,7 +419,9 @@ export function planMigrations(files: readonly MigrationFile[], state: DbState):
     // Its own evidence says it hasn't run.
     const missingTables = ownTables[i].filter((t) => !state.existingTables.has(t));
     const why = hasCheck(f.version)
-      ? "its verify query fails"
+      ? state.recorded?.has(f.version)
+        ? "recorded, but its verify query fails: an earlier draft of it ran, so it runs again"
+        : "its verify query fails"
       : state.recorded?.has(f.version)
         ? `recorded, but its tables are missing (${missingTables.join(", ")}) — version ${f.version} is shared`
         : `its tables are missing (${missingTables.join(", ")})`;

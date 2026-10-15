@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   asUuid,
   attentionFor,
@@ -12,7 +13,6 @@ import {
   ONLY_THE_TEAM_REASON,
   reachVerdict,
   FINE_REASON,
-  fitPostBody,
   MESSAGE_MAX,
   muteActive,
   MUTED_REASON,
@@ -28,6 +28,7 @@ import {
   canReadChannel,
   canStartGroup,
   conversationAllowed,
+  countsAsMessage,
   SAFEGUARD_REASON,
   GROUP_MAX_MEMBERS,
   compareChannels,
@@ -47,6 +48,7 @@ import {
   reportScope,
   reportVisibleTo,
   shouldBell,
+  sidebarMentions,
   slowModeWait,
   sortedReactions,
   toggleReaction,
@@ -468,6 +470,44 @@ test("the badge counts what the sidebar shows as unread, and nothing else", () =
   assert.equal(attentionFor("dm", { unread: 0, mentions: 0 }, null, true), 0);
 });
 
+test("a DM or group on 'Only @mentions' lights the badge and its pill for mentions only", () => {
+  const chatter = { unread: 5, mentions: 0 };
+  const pinged = { unread: 5, mentions: 2 };
+  for (const kind of ["dm", "group"] as const) {
+    assert.equal(attentionFor(kind, chatter, "mentions", true), 0, `${kind}: unread, but nobody mentioned you`);
+    assert.equal(attentionFor(kind, pinged, "mentions", true), 1, `${kind}: a mention is one, like any unread`);
+    assert.equal(attentionFor(kind, pinged, "mentions", false), 0, `${kind}: closed since its last message`);
+    assert.equal(attentionFor(kind, chatter, "all", true), 1, `${kind}: "All messages" is the default`);
+    assert.equal(attentionFor(kind, chatter, null, true), 1);
+    assert.equal(sidebarMentions(kind, chatter, "mentions"), 0, `${kind}: no pill, just bold`);
+    assert.equal(sidebarMentions(kind, pinged, "mentions"), 2);
+    assert.equal(sidebarMentions(kind, pinged, null), 5, `${kind}: every unread is to you`);
+    assert.equal(sidebarMentions(kind, pinged, "all"), 5);
+  }
+  // A text channel's pill is its mentions, whatever it's set to.
+  assert.equal(sidebarMentions("channel", pinged, null), 2);
+  assert.equal(sidebarMentions("channel", pinged, "all"), 2);
+  // Live, one message's worth: what it adds to the row.
+  assert.equal(sidebarMentions("group", { unread: 1, mentions: 0 }, "mentions"), 0);
+  assert.equal(sidebarMentions("group", { unread: 1, mentions: 1 }, "mentions"), 1);
+  assert.equal(sidebarMentions("dm", { unread: 1, mentions: 0 }, null), 1);
+});
+
+test("what counts as a message: chat_counts_as_message in 0101", () => {
+  assert.equal(countsAsMessage("message", null), true);
+  assert.equal(countsAsMessage("message", "staff"), true);
+  assert.equal(countsAsMessage("message", "general"), true);
+  assert.equal(countsAsMessage("system", null), false, "a pin or a rename echoes something someone did");
+  assert.equal(countsAsMessage("system", "general"), false);
+  assert.equal(countsAsMessage("system", "team:x"), false);
+  assert.equal(countsAsMessage("system", "staff"), true, "#staff's feed is the news");
+  // The SQL, to the letter, so the two can't drift apart unnoticed.
+  const sql = readFileSync(new URL("../supabase/migrations/0101_chat.sql", import.meta.url), "utf8");
+  const fn = sql.match(/function public\.chat_counts_as_message\(kind text, system_key text\)[\s\S]*?\$\$([\s\S]*?)\$\$/);
+  assert.ok(fn, "0101 defines chat_counts_as_message");
+  assert.equal(fn[1].trim(), "select kind = 'message' or (kind = 'system' and system_key is not distinct from 'staff');");
+});
+
 test("a mute or a fine stops posting, except for staff", () => {
   const now = Date.parse("2026-10-15T12:00:00Z");
   assert.equal(muteActive(null, now), false);
@@ -500,18 +540,6 @@ test("a channel never opened counts as unread from two weeks back, a conversatio
   assert.equal(defaultReadCursor("channel", now), new Date(now - UNREAD_LOOKBACK_MS).toISOString());
   assert.equal(defaultReadCursor("dm", now), new Date(0).toISOString());
   assert.equal(defaultReadCursor("group", now), new Date(0).toISOString());
-});
-
-test("a long cross-post is cut at a word, with an ellipsis and the link", () => {
-  assert.equal(fitPostBody("  short  ", "/x"), "short");
-  const long = "word ".repeat(1500);
-  const out = fitPostBody(long, "https://batch0.org/dashboard/announcements#a-1");
-  assert.ok(out.length <= MESSAGE_MAX);
-  assert.ok(out.endsWith("…\n\nRead the rest: https://batch0.org/dashboard/announcements#a-1"));
-  assert.ok(/word…/.test(out), "cut after a whole word");
-  const noLink = fitPostBody("x".repeat(MESSAGE_MAX + 10));
-  assert.equal(noLink.length, MESSAGE_MAX);
-  assert.ok(noLink.endsWith("…"));
 });
 
 test("who can open a DM: reachable first, then the safeguarding rule", () => {

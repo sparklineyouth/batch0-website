@@ -82,15 +82,17 @@ export default function PrivacyPage() {
           someone from the batch0 team. When you edit or delete a
           message, we keep the earlier version so a report can still be
           reviewed. When an account is deleted, we blank the messages it
-          posted and delete their earlier versions and files, except a
-          message someone reported, or any message in a direct or group
-          conversation someone reported: those we keep, with their earlier
-          versions and files, as evidence of what was reported.
+          posted in Chat and delete their earlier versions and files, and we
+          delete its direct messages and team-thread posts from before Chat,
+          except a message someone reported, or any message in a direct or
+          group conversation someone reported: those we keep, with their
+          earlier versions and files, as evidence of what was reported.
         </li>
         <li>
           <strong>Retired features:</strong> we still hold what was posted or
           uploaded in parts of batch0 we have since retired: the team thread
-          (its messages now appear in your team&rsquo;s channel in Chat),
+          (its messages now appear in your team&rsquo;s channel in Chat, and
+          go when the account that posted them is deleted),
           lesson comments, discussions, weekly check-ins, office hours bookings
           and their recap notes, and files uploaded to batch0 before files
           moved to Google Drive.

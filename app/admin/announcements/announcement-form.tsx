@@ -9,6 +9,7 @@ import {
   FieldError,
 } from "@/components/ui/input";
 import { getActionError } from "@/lib/action-error";
+import { MUTED_REASON } from "@/lib/chat-access";
 import { Toggle } from "@/components/ui/toggle";
 import { broadcastAnnouncement } from "./actions";
 
@@ -43,10 +44,12 @@ export function AnnouncementForm({ cohorts }: { cohorts: Cohort[] }) {
             (out.chatPosted ? (cohortId ? " and posted in the cohort's channel." : " and posted in #announcements.") : "."),
         );
         if (chatToo && !out.chatPosted) {
+          // A chat mute holds here too (lib/chat-post.ts): then posting it
+          // yourself isn't the way round it.
           setError(
             `The chat post didn't go through${
               out.chatError ? ` (${out.chatError})` : ""
-            }. You can post it in Chat yourself.`,
+            }.${out.chatError === MUTED_REASON ? "" : " You can post it in Chat yourself."}`,
           );
         }
         setTitle("");
@@ -97,7 +100,7 @@ export function AnnouncementForm({ cohorts }: { cohorts: Cohort[] }) {
         label={cohortId ? "Also post in the cohort's channel" : "Also post in #announcements"}
         description={
           cohortId
-            ? "Post it in this cohort's channel in Chat, where only the cohort and staff read it."
+            ? "Post it in this cohort's channel in Chat, where only the cohort, the mentors assigned to its students, and staff read it."
             : "Post it in the #announcements channel in Chat, where everyone at batch0 can read it."
         }
         checked={chatToo}

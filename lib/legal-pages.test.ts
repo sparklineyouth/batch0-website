@@ -107,7 +107,8 @@ test("the privacy policy says who can read chat, and that reports and edits chan
   assert.match(privacy, /adults outside the batch0 team can&rsquo;t message students privately/);
   assert.match(privacy, /we keep the earlier version/);
   // lib/chat-purge.ts, called before the auth delete.
-  assert.match(privacy, /When an account is deleted, we blank the messages it posted and delete their earlier versions and files, except a message someone reported, or any message in a direct or group conversation someone reported: those we keep, with their earlier versions and files, as evidence/);
+  // purgeChatContentFor (lib/chat-purge.ts): Chat copies blanked, old DMs deleted, evidence kept.
+  assert.match(privacy, /When an account is deleted, we blank the messages it posted in Chat and delete their earlier versions and files, and we delete its direct messages and team-thread posts from before Chat, except a message someone reported, or any message in a direct or group conversation someone reported: those we keep, with their earlier versions and files, as evidence/);
   // Mentors and investors read the community channels, so they see more
   // than what a student chooses to publish.
   assert.doesNotMatch(privacy, /only see what you choose to publish/);

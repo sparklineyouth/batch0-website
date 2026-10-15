@@ -55,7 +55,11 @@ check-ins, in-app files, discussions and the old recorder at once:
   `create or replace`, `drop policy if exists`, guarded data moves). Running
   one again changes nothing, even after the app is in use: 0093 seeds Fall's
   assignments only on its first complete run, so a re-run doesn't bring back
-  one an admin deleted.
+  one an admin deleted, and 0101 carries the old DMs and team threads into
+  Chat only once (the `chat_history_carried` setting), so a re-run can't bring
+  back what an account deletion or a moderator removed. A database that ran
+  an earlier draft of 0101 fails 0101's verify query (it checks the newest
+  pieces too), so `npm run db:migrate -- --apply` runs it again there.
 - **The app works before they run.** Code that reads a new table or column
   treats "does not exist" as "not set up yet" (`lib/schema-ready.ts`): the
   feature shows an empty state, nothing returns a 500.
@@ -195,7 +199,14 @@ select to_regclass('public.chat_channels') is not null
    and not exists (select 1 from public.app_roles
                    where permissions @> array['discord.manage']::text[])
    and exists (select 1 from pg_publication_tables
-               where pubname = 'supabase_realtime' and tablename = 'chat_messages') as ok;
+               where pubname = 'supabase_realtime' and tablename = 'chat_messages')
+   -- The newest pieces, so a database that ran an earlier draft of 0101
+   -- reads as not done, and gets 0101 again (it's idempotent).
+   and to_regclass('public.chat_mutes') is not null
+   and to_regprocedure('public.chat_files_in_use(text[])') is not null
+   and to_regprocedure('public.chat_counts_as_message(text, text)') is not null
+   and not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'chat_reports')
+   and exists (select 1 from public.site_settings where key = 'chat_history_carried') as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,

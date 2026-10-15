@@ -6,9 +6,6 @@ import { handleChargeRefunded } from "@/lib/stripe-fulfillment";
 import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { reconcileStripe } from "@/lib/stripe-reconcile";
-import { postStaffFeed } from "@/lib/chat-post";
-import { env } from "@/lib/env";
-import { paymentRefundedLine } from "@/lib/staff-feed";
 
 /**
  * Pull every transaction Stripe knows about back into the platform.
@@ -20,7 +17,9 @@ import { paymentRefundedLine } from "@/lib/staff-feed";
  *
  * Announcements stay off: this is usually catching up on old money, and a
  * student shouldn't get a "welcome aboard" email for last spring's
- * payment. Rows, statuses, enrollments, and receipts are all still fixed.
+ * payment. Rows, statuses, enrollments, and receipts are all still fixed,
+ * and #staff gets its line for an enrollment or refund this run is the
+ * first to record (lib/stripe-fulfillment.ts).
  */
 export async function reconcileStripeNow(input?: { days?: number }) {
   await assertPermission("payments.manage");
@@ -67,6 +66,9 @@ export async function refundPayment(paymentId: string, reason?: string) {
 
   const chargeId = typeof refund.charge === "string" ? refund.charge : refund.charge?.id;
   if (!chargeId) throw new Error("Stripe accepted the refund but returned no charge. Reconcile before retrying.");
+  // Records the refund, and posts its #staff line (who, and a link; the amount
+  // and the reason stay behind payments.view) — once, whether this call or
+  // the charge.refunded webhook racing it records it first.
   await handleChargeRefunded(await stripe.charges.retrieve(chargeId), { silent: true });
 
   await logAudit({
@@ -79,12 +81,6 @@ export async function refundPayment(paymentId: string, reason?: string) {
       reason: reason ?? null,
     },
   });
-  // #staff: who, and a link. The amount and the reason stay behind
-  // payments.view (lib/staff-feed.ts).
-  {
-    const { data: who } = await admin.from("profiles").select("full_name").eq("id", p.user_id).maybeSingle();
-    await postStaffFeed(paymentRefundedLine({ name: who?.full_name, siteUrl: env.siteUrl }));
-  }
 
   revalidatePath("/admin/payments");
   return { ok: true, refundId: refund.id };

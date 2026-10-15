@@ -64,6 +64,7 @@ const MARKETING_PREFIXES = [
   "/privacy",
   "/terms",
   "/refund-policy",
+  "/community-guidelines",
   "/pass",
   "/teams",
   "/verify",
