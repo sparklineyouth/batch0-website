@@ -74,19 +74,35 @@ reads through the service role and isn't in that test.
   mentor's mentees' teams and cohorts in on every read, so assigning,
   unassigning or moving a student needs no resync.
 - **Reports** freeze who they're about (`chat_reports.party_ids`,
-  `reportPartyIds()`, and a trigger in 0101 that only ever adds): the
-  reported message's sender, every party to an earlier report on the same
-  channel, and for a DM or group everyone in it and everyone who ever posted
-  in it. A text channel's report is about its one message, not the room. A
-  moderator that **any** report on a channel names never sees that channel's
-  reports, can't resolve them, isn't belled about them, and gets no read path
-  into the conversation through them (`channelReportsOpenTo()`, and the same
-  `exists … and not exists …` in `chat_can_read()`): leaving the group, or a
-  later report filed after they left, changes nothing. The `chat.report` audit
-  row has no actor, so the audit log doesn't say who reported either. When
-  every moderator is a party, the report becomes a confidential concern in
-  Support instead (`escalateReport`), and the report action's result
-  (`ReportOutcome`) says where it went.
+  `reportPartyIds()`, and a trigger in 0101 that only ever adds). A
+  text-channel report is about its one message: its sender, nobody else. A
+  DM's or group's report is about everyone in it, everyone who ever posted
+  in it, the reported sender, and every party to an earlier report on it.
+  - A moderator a report names never sees it, can't resolve it and isn't
+    belled about it. For a DM or group that holds across all of its reports:
+    a moderator **any** of them names sees none of them and gets no read path
+    into the conversation through them (`channelReportsOpenTo()`, and the
+    same `exists … and not exists …` in `chat_can_read()`), so leaving the
+    group, or a later report filed after they left, changes nothing.
+  - A text-channel report stands alone (`reportScope()`): staff read every
+    text channel anyway, and judging them together would let anyone bury a
+    report with a throwaway one on a moderator's message. Staff can't be
+    added to a group that has a report (`addToGroup`), which closes the
+    group version of the same trick.
+  - Reports are service-role only: no RLS policy, not even for the reporter
+    (a row's `party_ids` would say who else was reported). Who removed or
+    pinned a message (`deleted_by`, `pinned_by`) isn't selectable by readers
+    either, so Realtime doesn't send it.
+  - The `chat.report` audit row has no actor, so the audit log doesn't say
+    who reported either.
+  - When **every** moderator is a party, nobody on the team is shown the
+    report at all, not even as a Support ticket: every full admin can open
+    every Support ticket, and every full admin moderates chat, so all of
+    them are parties. The report stays saved for the first moderator who
+    isn't a party, and the reporter is told exactly that and pointed outside
+    batch0: the independent safeguarding contact when
+    `SAFEGUARDING_CONTACT_EMAIL` is set, a trusted adult, and emergency
+    services (`ReportOutcome` `outside`, `outsideReportAdvice()`).
 
 All reads go through the service role (`lib/chat.ts`), with the viewer
 checked explicitly, because every screen needs other people's names. RLS is the
@@ -209,6 +225,13 @@ typing topic, to listen and to send. They carry a user id and nothing else;
 in a DM or group, a typing event naming someone who isn't in it is ignored.
 If a join is refused, presence and typing stay empty; chat works without
 them.
+
+They are **hints, not facts**. Realtime authorizes who may join a topic,
+not what a sender puts in the payload, so a let-in user could claim to be
+someone else's dot or "typing…". The client narrows it (a DM's or group's
+typing must come from a member; a text channel's from someone it already
+knows reads there), and nothing ever trusts either: no access, no unread
+count, no bell and no record depends on presence or typing.
 
 A resync covers what Realtime can't deliver: on reconnect, when the tab comes
 back, and every 30 seconds while visible, with the sidebar. The nav badge

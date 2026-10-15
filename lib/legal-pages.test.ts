@@ -131,6 +131,8 @@ test("the community guidelines say how to report, block and reach a person", () 
   const g = page("community-guidelines");
   assert.match(g, /choose Report message in its menu/);
   assert.match(g, /never to the person it&rsquo;s about, even when that is someone on the team/);
+  // …and when the whole team is part of it, nobody on it is shown it (outsideReportAdvice).
+  assert.match(g, /handles reports is part of what you reported, none of them is shown/);
   assert.match(g, /<strong>Block someone<\/strong>/);
   assert.match(g, /href="\/support\?topic=concern"/);
   assert.match(g, /Mentors, investors and other adults outside the batch0 team don&rsquo;t message students privately/);

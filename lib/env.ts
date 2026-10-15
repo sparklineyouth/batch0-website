@@ -24,6 +24,13 @@ export const env = {
 
   cronSecret: process.env.CRON_SECRET,
 
+  // An adult outside the batch0 team who handles safeguarding concerns (a
+  // board member, an advisor). Shown to a student whose chat report can't go
+  // to any moderator because every one of them is part of what was reported
+  // (outsideReportAdvice in lib/chat-access.ts). Optional: without it the
+  // student is pointed to a trusted adult and emergency services only.
+  safeguardingEmail: process.env.SAFEGUARDING_CONTACT_EMAIL?.trim() || null,
+
   // Email (Resend). Optional — the app falls back to a console-log stub
   // when these aren't set, so local dev keeps working without a key.
   resendApiKey: process.env.RESEND_API_KEY,

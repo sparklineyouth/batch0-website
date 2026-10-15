@@ -108,7 +108,9 @@ export default function CommunityGuidelinesPage() {
           <strong>Report it:</strong> choose Report message in its menu. A
           report goes to the batch0 team, and never to the person it&rsquo;s
           about, even when that is someone on the team. The person you report
-          isn&rsquo;t told who reported them.
+          isn&rsquo;t told who reported them. If everyone on the team who
+          handles reports is part of what you reported, none of them is shown
+          it, and Chat tells you so straight away and who to go to instead.
         </li>
         <li>
           <strong>Block someone</strong> to stop hearing from them. In a direct

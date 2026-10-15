@@ -100,31 +100,49 @@ export function channelReportsOpenTo(
 }
 
 /**
- * The queue's rule for one channel's reports: channelReportsOpenTo, and never
- * someone in the DM or group right now either — no snapshot can know who
- * joined after the last report.
+ * The reports a moderator's view of one report is judged with.
+ *
+ * A text channel's report stands alone. Staff read every text channel
+ * anyway, so nothing about one report there can open anything else, and
+ * judging them together would let anyone bury a report: one throwaway report
+ * on a moderator's message would hide every report in #help from them.
+ *
+ * A DM's or group's reports are judged together (channelReportsOpenTo): a
+ * moderator someone in it reported, who then left, must not come back in
+ * through the next report, which can no longer see them as a member.
+ */
+export function reportScope(
+  kind: ChannelKind,
+  own: { partyIds: readonly string[] },
+  channelReports: readonly { partyIds: readonly string[] }[],
+): readonly { partyIds: readonly string[] }[] {
+  return kind === "channel" ? [own] : channelReports;
+}
+
+/**
+ * The queue's rule for one report: open to the moderator over its scope
+ * (reportScope), and for a DM or group, never to someone in it right now
+ * either — no snapshot can know who joined after the last report.
  */
 export function reportVisibleTo(
   channel: { id: string; kind: ChannelKind },
+  own: { partyIds: readonly string[] },
   channelReports: readonly { partyIds: readonly string[] }[],
   viewer: ChatViewer,
 ): boolean {
-  if (!channelReportsOpenTo(channelReports, viewer)) return false;
+  if (!channelReportsOpenTo(reportScope(channel.kind, own, channelReports), viewer)) return false;
   return channel.kind === "channel" || !viewer.memberOf.includes(channel.id);
 }
 
 /**
  * Who a new report is about, frozen when it's filed (chat_reports.party_ids):
  *
- *   - a DM or group: everyone in it now, and everyone who ever posted in it
- *     (someone who said it and then left is still who it's about);
- *   - the reported message's sender;
- *   - every party to an earlier report on the same channel, so the set only
- *     ever grows.
- *
- * A text channel's report is about one message, not the people in the room:
- * staff read every channel anyway, and naming everyone who ever posted in
- * #general would hide its reports from every moderator who ever said hello.
+ *   - a text channel: the reported message's sender, and nobody else — not
+ *     the room, and not earlier reports' parties (reportScope says why);
+ *   - a DM or group: everyone in it now, everyone who ever posted in it
+ *     (someone who said it and then left is still who it's about), the
+ *     reported sender, and every party to an earlier report on it, so the
+ *     set only ever grows.
  */
 export function reportPartyIds(input: {
   kind: ChannelKind;
@@ -134,30 +152,53 @@ export function reportPartyIds(input: {
   earlier: readonly { partyIds: readonly string[] }[];
 }): string[] {
   const out = new Set<string>();
+  if (input.messageSenderId) out.add(input.messageSenderId);
   if (input.kind !== "channel") {
     for (const id of input.members) if (id) out.add(id);
     for (const id of input.senders) if (id) out.add(id);
+    for (const r of input.earlier) for (const id of r.partyIds) if (id) out.add(id);
   }
-  if (input.messageSenderId) out.add(input.messageSenderId);
-  for (const r of input.earlier) for (const id of r.partyIds) if (id) out.add(id);
   return Array.from(out);
 }
 
 /**
- * Who hears about a new report. `eligible` is every moderator the channel's
- * reports stay open to (none of them a party); the reporter isn't belled
- * about their own report. With nobody eligible the report would reach no
- * one — every moderator is in it — so it has to `escalate` outside chat.
+ * Who hears about a new report: every moderator it's open to over its scope
+ * (reportScope), except the reporter, who isn't belled about their own
+ * report. With nobody eligible — every moderator is part of it — the report
+ * can reach no one on the team, and `outside` says so.
  */
 export function reportRouting(
+  kind: ChannelKind,
   moderatorIds: readonly string[],
+  report: { partyIds: readonly string[] },
   channelReports: readonly { partyIds: readonly string[] }[],
   reporterId: string,
-): { notify: string[]; escalate: boolean } {
-  const eligible = Array.from(new Set(moderatorIds)).filter((id) =>
-    channelReportsOpenTo(channelReports, { userId: id, staff: true }),
-  );
-  return { notify: eligible.filter((id) => id !== reporterId), escalate: eligible.length === 0 };
+): { notify: string[]; outside: boolean } {
+  const scope = reportScope(kind, report, channelReports);
+  const eligible = Array.from(new Set(moderatorIds)).filter((id) => channelReportsOpenTo(scope, { userId: id, staff: true }));
+  return { notify: eligible.filter((id) => id !== reporterId), outside: eligible.length === 0 };
+}
+
+/**
+ * Where a report went (reportMessage / reportConversation). "moderators":
+ * the chat team was told. "outside": everyone who could act on it is part of
+ * it, so nobody on the team is shown it — not even as a Support ticket, which
+ * every full admin can open. It waits, saved, for a moderator who isn't part
+ * of it, and the reporter is pointed outside batch0 meanwhile.
+ */
+export type ReportOutcome =
+  | { routedTo: "moderators" }
+  | { routedTo: "outside"; safeguardingEmail: string | null };
+
+/** What the reporter reads after an "outside" report: where to go, now. */
+export function outsideReportAdvice(safeguardingEmail: string | null): string[] {
+  return [
+    "Everyone on the batch0 team who handles reports is part of this conversation, so none of them is shown your report. It's saved, and waits for a team member who isn't part of it.",
+    safeguardingEmail
+      ? `Don't wait for that. Email ${safeguardingEmail}, batch0's independent safeguarding contact, or tell a parent or another adult you trust today.`
+      : "Don't wait for that. Tell a parent or another adult you trust today.",
+    "If you're in danger right now, contact your local emergency services (911 in the US). In the US you can also call or text Childhelp at 1-800-422-4453, any time.",
+  ];
 }
 
 /** Is the viewer a party to this DM or group (not a moderator looking in)? */

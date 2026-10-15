@@ -473,11 +473,36 @@ test("a report's parties are frozen when it's filed, as reportPartyIds() has the
     channelFrozen,
     reportPartyIds({ kind: "channel", members: [], senders: [ADMIN, ENROLLED], messageSenderId: ADMIN, earlier: [] }),
   );
-  // Whatever the caller passed is kept: the freeze only ever adds.
-  await db.exec(`insert into public.chat_reports (channel_id, reporter_id, reason, party_ids) values
-    ('${general}', '${ENROLLED}', 'passed', array['${STAFF}']::uuid[])`);
+  // Whatever the caller passed is kept: the freeze only ever adds. And in a
+  // text channel an earlier report's parties don't carry over (ADMIN, from
+  // 'in general', isn't added), so no report can bury another.
+  await db.exec(`insert into public.chat_reports (channel_id, message_id, reporter_id, reason, party_ids) values
+    ('${general}', '90000000-0000-4000-8000-0000000000b4', '${OTHER}', 'passed', array['${STAFF}']::uuid[])`);
   const passed = (await db.query<any>(`select party_ids from public.chat_reports where reason = 'passed'`)).rows[0].party_ids;
-  assert.deepEqual(sorted(passed), sorted([STAFF, ADMIN]));
+  assert.deepEqual(sorted(passed), sorted([STAFF, ENROLLED]));
+});
+
+test("reports are service-role only, and nobody reads who removed or pinned a message", async () => {
+  const db = await setup();
+  await db.exec(migration);
+  const general = await channelId(db, "general");
+  await db.exec(`
+    insert into public.chat_messages (id, channel_id, sender_id, body) values
+      ('90000000-0000-4000-8000-0000000000e1', '${general}', '${OTHER}', 'rude'),
+      ('90000000-0000-4000-8000-0000000000e2', '${general}', '${MENTOR}', 'also rude');
+    insert into public.chat_reports (channel_id, message_id, reporter_id, reason) values
+      ('${general}', '90000000-0000-4000-8000-0000000000e1', '${ENROLLED}', 'mine'),
+      ('${general}', '90000000-0000-4000-8000-0000000000e2', '${ACCEPTED}', 'theirs');
+    update public.chat_messages set body = '', deleted_at = now(), deleted_by = '${ADMIN}' where id = '90000000-0000-4000-8000-0000000000e1';
+  `);
+  // Not even your own report: its party_ids would say who else was reported.
+  assert.equal((await asUser(db, ENROLLED, `select id from public.chat_reports`)).rows.length, 0);
+  // The message itself is readable; who removed it isn't.
+  const own = await asUser(db, ENROLLED, `select id, deleted_at is not null as gone from public.chat_messages where id = '90000000-0000-4000-8000-0000000000e1'`);
+  assert.deepEqual(own.rows, [{ id: "90000000-0000-4000-8000-0000000000e1", gone: true }]);
+  await assert.rejects(asUser(db, ENROLLED, `select deleted_by from public.chat_messages`), /permission denied/);
+  await assert.rejects(asUser(db, ENROLLED, `select pinned_by from public.chat_messages`), /permission denied/);
+  await assert.rejects(asUser(db, ENROLLED, `select * from public.chat_messages`), /permission denied/);
 });
 
 test("messages, members and reactions are readable exactly where the channel is", async () => {
@@ -736,6 +761,17 @@ test("old DMs, blocks, reports and the team thread carry over once", async () =>
     (await db.query<any>(`select id, body from public.chat_messages where channel_id = '${team}'`)).rows,
     [{ id: TEAM_MSG, body: "team thread lives on" }],
   );
+
+  // History is carried once. What Chat removes afterwards — an unsent
+  // message's words, purged with the account; a team-thread message staff
+  // deleted — a later run of 0101 doesn't bring back.
+  await db.exec(`
+    delete from public.chat_message_revisions where message_id = '${DM_MSG_UNSENT}';
+    delete from public.chat_messages where id = '${TEAM_MSG}';
+  `);
+  await db.exec(migration);
+  assert.equal((await db.query(`select 1 from public.chat_message_revisions where message_id = '${DM_MSG_UNSENT}'`)).rows.length, 0);
+  assert.equal((await db.query(`select 1 from public.chat_messages where id = '${TEAM_MSG}'`)).rows.length, 0);
 });
 
 test("an unblock survives a re-run: blocks are carried once", async () => {
@@ -958,7 +994,7 @@ test("Discord is gone: tables, columns, settings, the permission, and old bells'
   assert.deepEqual(cols.rows, []);
   assert.deepEqual(
     (await db.query<any>(`select key from public.site_settings order by key`)).rows,
-    [{ key: "chat_blocks_carried" }, { key: "referrals_enabled" }],
+    [{ key: "chat_blocks_carried" }, { key: "chat_history_carried" }, { key: "referrals_enabled" }],
   );
   const roles = Object.fromEntries(
     (await db.query<any>(`select slug, permissions from public.app_roles`)).rows.map((r) => [r.slug, r.permissions]),

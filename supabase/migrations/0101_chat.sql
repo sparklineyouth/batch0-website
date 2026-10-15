@@ -432,12 +432,13 @@ create table if not exists public.chat_reports (
   reviewed_at timestamptz,
   -- Who the report is about, frozen when it's filed (reportPartyIds() in
   -- lib/chat-access.ts, and chat_reports_freeze_parties() below): the
-  -- reported message's sender, every party to an earlier report on the same
-  -- channel, and for a DM or group everyone in it and everyone who ever posted
-  -- in it. No moderator any report on a channel names may read its reports,
-  -- or the conversation through them — they'd learn who reported them, and
-  -- why. Not a foreign key: someone who deletes their account still mustn't
-  -- come back as a reader.
+  -- reported message's sender; for a DM or group also everyone in it,
+  -- everyone who ever posted in it, and every party to an earlier report on
+  -- it. No moderator a DM's or group's reports name may read any of them, or
+  -- the conversation through them — they'd learn who reported them, and why.
+  -- A text-channel report stands alone (reportScope() says why: judging them
+  -- together would let a throwaway report bury another). Not a foreign key:
+  -- someone who deletes their account still mustn't come back as a reader.
   party_ids uuid[] not null default '{}',
   created_at timestamptz not null default now()
 );
@@ -464,7 +465,7 @@ begin
       union all
       select m.sender_id from public.chat_messages m where m.id = new.message_id
       union all
-      select unnest(r.party_ids) from public.chat_reports r where r.channel_id = new.channel_id
+      select unnest(r.party_ids) from public.chat_reports r where conversation and r.channel_id = new.channel_id
       union all
       select cm.user_id from public.chat_members cm where conversation and cm.channel_id = new.channel_id
       union all
@@ -756,6 +757,16 @@ drop policy if exists "chat_messages read" on public.chat_messages;
 create policy "chat_messages read" on public.chat_messages
   for select using (public.chat_viewer_can_read_channel(channel_id));
 
+-- Readers see every column but who removed a message and who pinned it.
+-- deleted_by would tell a reported DM's members which moderator is working
+-- it; RLS is per row, so the columns are held back by privilege — and
+-- Realtime sends only the columns a subscriber may select. The app reads
+-- through the service role and never needs them here.
+revoke select on public.chat_messages from anon, authenticated;
+grant select (id, channel_id, sender_id, body, reply_to_id, mentions, mention_everyone, attachments,
+              reactions, kind, created_at, edited_at, deleted_at, pinned_at)
+  on public.chat_messages to authenticated;
+
 drop policy if exists "chat_members read" on public.chat_members;
 create policy "chat_members read" on public.chat_members
   for select using (public.chat_viewer_can_read_channel(channel_id));
@@ -776,11 +787,11 @@ drop policy if exists "chat_blocks own" on public.chat_blocks;
 create policy "chat_blocks own" on public.chat_blocks
   for select using (blocker_id = auth.uid());
 
+-- Reports, revisions and mutes have no policy at all: service role only. A
+-- report's row says who else in the channel has been reported (party_ids)
+-- and which moderator handled it (reviewed_by); the app reads reports only
+-- through the service role, so nobody needs a policy on them.
 drop policy if exists "chat_reports own" on public.chat_reports;
-create policy "chat_reports own" on public.chat_reports
-  for select using (reporter_id = auth.uid());
-
--- Revisions and mutes have no policy at all: service role only.
 do $$
 declare
   p record;
@@ -789,9 +800,9 @@ begin
     select tablename, policyname from pg_policies
     where schemaname = 'public'
       and ((tablename in ('chat_channels', 'chat_members', 'chat_reads', 'chat_messages',
-                          'chat_reactions', 'chat_blocks', 'chat_reports')
+                          'chat_reactions', 'chat_blocks')
             and cmd <> 'SELECT')
-           or tablename in ('chat_message_revisions', 'chat_mutes'))
+           or tablename in ('chat_reports', 'chat_message_revisions', 'chat_mutes'))
   loop
     execute format('drop policy if exists %I on public.%I', p.policyname, p.tablename);
   end loop;
@@ -1023,17 +1034,25 @@ on conflict (system_key) do nothing;
 
 -- ----------------------------------------------------------------------------
 -- 10. History: the old direct messages (0089) and team threads (0011) come
---     back as Chat DMs and team-channel messages, with the same ids, so a
---     re-run inserts nothing twice. Unsent DMs arrive deleted, their words in
---     the revisions table only. Blocks and DM reports carry over, and the old
---     tables close to everyone but the service role.
+--     back as Chat DMs and team-channel messages, with the same ids. Unsent
+--     DMs arrive deleted, their words in the revisions table only. Blocks and
+--     DM reports carry over, and the old tables close to everyone but the
+--     service role.
+--
+--     Once only (the chat_history_carried setting), like the blocks below.
+--     Nothing writes the old tables after this, so there is never anything
+--     new to carry — and a second carry could only undo what Chat has done
+--     since: bring back a revision an account deletion removed, or a DM
+--     channel or team-thread message staff deleted.
 -- ----------------------------------------------------------------------------
 do $$
 declare
   moved text[] := '{}';
   legacy record;
+  carried boolean := exists (select 1 from public.site_settings where key = 'chat_history_carried');
 begin
-  if to_regclass('public.dm_conversations') is not null
+  if not carried
+     and to_regclass('public.dm_conversations') is not null
      and to_regclass('public.dm_messages') is not null then
 
     insert into public.chat_channels (id, kind, audience, dm_key, created_at)
@@ -1094,7 +1113,7 @@ begin
     on conflict (key) do nothing;
   end if;
 
-  if to_regclass('public.dm_reports') is not null and to_regclass('public.dm_conversations') is not null then
+  if not carried and to_regclass('public.dm_reports') is not null and to_regclass('public.dm_conversations') is not null then
     -- 0099 turned every open DM report into a sensitive Support concern, and
     -- that's where it's being worked. Carried here as still open, the same
     -- report would sit in two queues, so such a copy arrives closed. (Kept,
@@ -1128,13 +1147,18 @@ begin
       and exists (select 1 from public.chat_reports cr where cr.id = r.id);
   end if;
 
-  if to_regclass('public.team_messages') is not null then
+  if not carried and to_regclass('public.team_messages') is not null then
     insert into public.chat_messages (id, channel_id, sender_id, body, created_at)
     select tm.id, c.id, tm.author_id, left(tm.body, 4000), tm.created_at
     from public.team_messages tm
     join public.chat_channels c on c.system_key = 'team:' || tm.team_id
     where char_length(tm.body) > 0
     on conflict do nothing;
+  end if;
+
+  if not carried then
+    insert into public.site_settings (key, value) values ('chat_history_carried', 'true'::jsonb)
+    on conflict (key) do nothing;
   end if;
 
   -- The old tables stay (nothing is dropped that a re-run would need), but

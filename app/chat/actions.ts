@@ -7,7 +7,6 @@ import { notifyMany } from "@/lib/notifications";
 import { runAction, type ActionResult } from "@/lib/action-result";
 import { logAudit, logAuditMany } from "@/lib/audit";
 import { env } from "@/lib/env";
-import { announceNewTicket, createTicket } from "@/lib/support";
 import {
   asUuid,
   canDeleteMessage,
@@ -34,6 +33,7 @@ import {
   type ChatViewer,
   type NotifyPref,
   type ReactionMap,
+  type ReportOutcome,
 } from "@/lib/chat-access";
 import { mentionedIds, mentionsEveryone } from "@/lib/chat-format";
 import { CHAT_MAX_FILES } from "@/lib/chat-files-rules";
@@ -819,6 +819,14 @@ export async function addToGroup(channelId: string, userIds: string[]): Promise<
       throw new Error(`A group holds up to ${GROUP_MAX_MEMBERS} people.`);
     }
     const people = await assertGroupable(viewer, ids, current);
+    // A moderator added to a reported group would become a party to its next
+    // report, and a party sees none of the group's reports: adding the
+    // moderator and reporting again would bury the first report. They read
+    // a reported group through its reports instead.
+    const moderators = await listModeratorIds();
+    if (ids.some((id) => moderators.includes(id)) && (await countChannelReports(group)) > 0) {
+      throw new Error("batch0 staff can't be added to this group.");
+    }
     const { error } = await createAdminClient()
       .from("chat_members")
       .upsert(ids.map((uid) => ({ channel_id: group, user_id: uid, added_by: viewer.userId })), {
@@ -917,16 +925,6 @@ export async function unblockPerson(userId: string): Promise<ActionResult> {
 // Reporting — the one thing that opens a DM or group to the team
 // ---------------------------------------------------------------------------
 
-/**
- * Where a report went. "moderators": the chat team was told. "support":
- * every moderator is part of what was reported, so it became a confidential
- * Support concern instead (the reporter gets its email receipt). "nobody":
- * even that failed — the reporter should write to `contactEmail`.
- */
-export type ReportOutcome =
-  | { routedTo: "moderators" | "support" }
-  | { routedTo: "nobody"; contactEmail: string };
-
 async function fileReport(
   viewer: ChatViewer,
   channel: ChannelRow,
@@ -939,15 +937,17 @@ async function fileReport(
   await rateLimit("chat-report", viewer.userId, 10, 3600, "You've filed several reports just now. Try again later.");
   // Everything that can fail runs before the report exists: one that's in
   // the table but told to nobody would sit there unseen.
+  const conversation = channel.kind !== "channel";
   const [earlier, members, senders, moderators] = await Promise.all([
-    listChannelReportParties(channel.id),
-    channel.kind === "channel" ? Promise.resolve([] as string[]) : listMembers([channel.id]).then((m) => m.get(channel.id) ?? []),
-    channel.kind === "channel" ? Promise.resolve([] as string[]) : listChannelSenderIds(channel.id),
+    conversation ? listChannelReportParties(channel.id) : Promise.resolve([] as { partyIds: string[] }[]),
+    conversation ? listMembers([channel.id]).then((m) => m.get(channel.id) ?? []) : Promise.resolve([] as string[]),
+    conversation ? listChannelSenderIds(channel.id) : Promise.resolve([] as string[]),
     listModeratorIds(),
   ]);
-  // Who it's about, frozen now (reportPartyIds). A moderator among them
-  // never sees this report or any other on the channel, or reads the
-  // conversation through them — leaving the group afterwards changes nothing.
+  // Who it's about, frozen now (reportPartyIds): a text-channel report's
+  // sender; everyone a DM or group has held. A moderator among them never
+  // sees it — for a conversation, nor any other report on it, or reads the
+  // conversation through them; leaving the group afterwards changes nothing.
   const partyIds = reportPartyIds({
     kind: channel.kind,
     members,
@@ -964,7 +964,7 @@ async function fileReport(
   const reportId = (data as { id: string }).id;
   // What was stored is what the read rule and the queue will judge by: 0101's
   // chat_reports_freeze_parties trigger adds anyone this list missed (say,
-  // someone who joined or posted a moment ago). Bells and escalation follow it.
+  // someone who joined or posted a moment ago). Bells follow it.
   const stored = (data as { party_ids: string[] | null }).party_ids;
   const parties = Array.isArray(stored) ? stored : partyIds;
   // A system row, pointed at the report: no reporter, no reason. audit.view
@@ -972,65 +972,27 @@ async function fileReport(
   // read who filed it, or when they did, off the audit log.
   await logAuditMany(null, [{ action: "chat.report", targetType: "chat_report", targetId: reportId }]);
 
-  const routing = reportRouting(moderators, [...earlier, { partyIds: parties }], viewer.userId);
+  const own = { partyIds: parties };
+  const routing = reportRouting(channel.kind, moderators, own, [...earlier, own], viewer.userId);
   if (routing.notify.length > 0) {
     await notifyMany(
       routing.notify.map((id) => ({
         userId: id,
         type: "chat_reported",
-        title:
-          earlier.length > 0
-            ? channel.kind === "channel"
-              ? "Another report in a reported channel"
-              : "Another report on a reported conversation"
-            : "Someone reported a chat message",
+        title: earlier.length > 0 ? "Another report on a reported conversation" : "Someone reported a chat message",
         link: `/admin/chat/reports/${reportId}`,
       })),
     );
   }
-  if (!routing.escalate) return { routedTo: "moderators" };
-  return (await escalateReport(viewer, reportId, reason)) ? { routedTo: "support" } : { routedTo: "nobody", contactEmail: env.contactEmail };
-}
-
-/**
- * Every moderator is part of what was reported, so the queue can show it to
- * nobody. It goes to Support as a confidential concern from the reporter —
- * support.sensitive's queue, the team inbox's email and the reporter's own
- * receipt, where someone can be given chat.manage to work it — and never
- * through anything a party reads in chat.
- */
-async function escalateReport(viewer: ChatViewer, reportId: string, reason: string): Promise<boolean> {
-  try {
-    const { data, error } = await createAdminClient()
-      .from("profiles")
-      .select("email, full_name")
-      .eq("id", viewer.userId)
-      .maybeSingle();
-    if (error || !data) throw new Error(error?.message ?? "no profile");
-    const ticket = await createTicket({
-      filedBy: "requester",
-      userId: viewer.userId,
-      email: String((data as any).email ?? ""),
-      name: (data as any).full_name ?? null,
-      category: "concern",
-      subject: "A batch0 Chat report about the chat team",
-      body: [
-        `Filed from a batch0 Chat report (report ${reportId}). Everyone who moderates chat is part of what was reported, so it couldn't go to the chat report queue.`,
-        `What I wrote:\n${reason}`,
-        "For the team: give chat.manage to someone who isn't part of it, and the report shows for them at /admin/chat.",
-      ].join("\n\n"),
-      surface: "web",
-      context: { source: "chat_report", page: "/chat" },
-    });
-    await announceNewTicket(ticket);
-    console.warn("[chat] report escalated to Support: every moderator is a party", { reportId, ticket: ticket.reference });
-    await logAuditMany(null, [{ action: "chat.report_escalated", targetType: "chat_report", targetId: reportId }]);
-    return true;
-  } catch (err) {
-    console.error("[chat] report reached no moderator and couldn't be escalated", reportId, err);
-    await logAuditMany(null, [{ action: "chat.report_unrouted", targetType: "chat_report", targetId: reportId }]);
-    return false;
-  }
+  if (!routing.outside) return { routedTo: "moderators" };
+  // Every moderator is part of it. Nothing on the team can carry it safely:
+  // a Support concern is readable by every full admin, and every full admin
+  // moderates chat, so every one of them is a party here. It stays saved for
+  // the first moderator who isn't (the queue shows it to them), and the
+  // reporter is pointed outside batch0 (outsideReportAdvice).
+  console.warn("[chat] report reached no moderator: every moderator is a party", { reportId });
+  await logAuditMany(null, [{ action: "chat.report_unrouted", targetType: "chat_report", targetId: reportId }]);
+  return { routedTo: "outside", safeguardingEmail: env.safeguardingEmail };
 }
 
 /** Report one message. In a DM or group, this also hands the whole conversation to the team. */

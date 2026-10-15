@@ -42,7 +42,9 @@ import {
   laterTimestamp,
   normalizeChannelName,
   otherInDmKey,
+  outsideReportAdvice,
   reportOpenTo,
+  reportScope,
   reportVisibleTo,
   shouldBell,
   slowModeWait,
@@ -194,19 +196,19 @@ test("a report is never shown to someone it's about", () => {
   assert.equal(reportOpenTo([], viewer()), false, "not staff");
   assert.equal(reportOpenTo([], viewer({ staff: true, userId: "" })), false);
   const dm = { id: "d1", kind: "dm" as const };
-  assert.equal(reportVisibleTo(dm, [{ partyIds: [YOU] }], staff), true);
-  assert.equal(reportVisibleTo(dm, [{ partyIds: [YOU] }], { ...staff, memberOf: ["d1"] }), false, "joined after the report");
+  const aboutYou = { partyIds: [YOU] };
+  assert.equal(reportVisibleTo(dm, aboutYou, [aboutYou], staff), true);
+  assert.equal(reportVisibleTo(dm, aboutYou, [aboutYou], { ...staff, memberOf: ["d1"] }), false, "joined after the report");
   const c1 = { id: "c1", kind: "channel" as const };
-  assert.equal(reportVisibleTo(c1, [{ partyIds: [YOU] }], { ...staff, memberOf: ["c1"] }), true);
-  assert.equal(reportVisibleTo(c1, [{ partyIds: [ME] }], staff), false, "sent the reported message");
-  assert.equal(reportVisibleTo(c1, [], staff), false, "nothing reported");
+  assert.equal(reportVisibleTo(c1, aboutYou, [aboutYou], { ...staff, memberOf: ["c1"] }), true);
+  assert.equal(reportVisibleTo(c1, { partyIds: [ME] }, [{ partyIds: [ME] }], staff), false, "sent the reported message");
   // The read rule follows: a party's `reported` is false, so no read path.
   const dmScope = channel({ id: "d1", kind: "dm", audience: "members" });
   assert.equal(canReadChannel(dmScope, staff, channelReportsOpenTo([{ partyIds: [ME, YOU] }], staff)), false);
   assert.equal(canReadChannel(dmScope, staff, channelReportsOpenTo([{ partyIds: [YOU] }], staff)), true);
 });
 
-test("a party to any report on a channel stays out of every report on it", () => {
+test("a party to any report on a DM or group stays out of every report on it", () => {
   const staff = viewer({ staff: true });
   const first = { partyIds: [ME, YOU] };
   // Reported, then left the group: a later report can't see them as a member
@@ -217,7 +219,25 @@ test("a party to any report on a channel stays out of every report on it", () =>
   assert.equal(channelReportsOpenTo([later, first], staff), false, "order doesn't matter");
   assert.equal(channelReportsOpenTo([], staff), false, "no report, no read path");
   assert.equal(channelReportsOpenTo([later], viewer()), false, "never for non-staff");
-  assert.equal(reportVisibleTo({ id: "g", kind: "group" }, [first, later], staff), false);
+  assert.equal(reportVisibleTo({ id: "g", kind: "group" }, later, [first, later], staff), false);
+  assert.deepEqual(reportScope("group", later, [first, later]), [first, later]);
+});
+
+test("a text-channel report stands alone, so nobody can bury one with another", () => {
+  const MENTOR = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const staff = viewer({ staff: true }); // ME is the only moderator
+  const aboutMentor = { partyIds: [MENTOR] };
+  // The mentor, reported, files a throwaway report on the moderator's message.
+  const throwaway = { partyIds: [ME] };
+  const help = { id: "help", kind: "channel" as const };
+  assert.equal(reportVisibleTo(help, aboutMentor, [aboutMentor, throwaway], staff), true, "the report about the mentor stays in the queue");
+  assert.equal(reportVisibleTo(help, throwaway, [aboutMentor, throwaway], staff), false, "the one about the moderator doesn't reach them");
+  assert.deepEqual(reportScope("channel", aboutMentor, [aboutMentor, throwaway]), [aboutMentor]);
+  // And the throwaway's parties don't snowball into the next report there.
+  assert.deepEqual(
+    reportPartyIds({ kind: "channel", members: [], senders: [], messageSenderId: MENTOR, earlier: [throwaway] }),
+    [MENTOR],
+  );
 });
 
 test("a report freezes everyone it could be about", () => {
@@ -233,29 +253,41 @@ test("a report freezes everyone it could be about", () => {
     reportPartyIds({ kind: "dm", members: [ME], senders: [], messageSenderId: YOU, earlier: [{ partyIds: [A] }] }).sort(),
     [ME, YOU, A].sort(),
   );
-  // A text channel: the message's sender (and earlier parties), not the room.
+  // A text channel: the message's sender, not the room, not earlier reports.
   assert.deepEqual(
     reportPartyIds({ kind: "channel", members: [ME], senders: [ME, YOU], messageSenderId: MOD, earlier: [] }),
     [MOD],
   );
   assert.deepEqual(
     reportPartyIds({ kind: "channel", members: [], senders: [], messageSenderId: null, earlier: [{ partyIds: [MOD] }] }),
-    [MOD],
+    [],
   );
 });
 
-test("report bells go to moderators it leaves out, and escalate when that's nobody", () => {
+test("report bells go to moderators it leaves out; with nobody left it goes outside", () => {
   const M1 = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
   const M2 = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const r = (partyIds: string[]) => ({ partyIds });
   // The reported moderator is never told; the other one is.
-  assert.deepEqual(reportRouting([M1, M2], [{ partyIds: [ME, M1] }], ME), { notify: [M2], escalate: false });
-  // Every moderator is a party: nobody in chat can see it.
-  assert.deepEqual(reportRouting([M1], [{ partyIds: [ME, M1] }], ME), { notify: [], escalate: true });
-  assert.deepEqual(reportRouting([], [{ partyIds: [ME] }], ME), { notify: [], escalate: true });
-  // An earlier report naming M2 keeps M2 out of the new one too.
-  assert.deepEqual(reportRouting([M1, M2], [{ partyIds: [M2] }, { partyIds: [ME] }], ME), { notify: [M1], escalate: false });
+  assert.deepEqual(reportRouting("dm", [M1, M2], r([ME, M1]), [r([ME, M1])], ME), { notify: [M2], outside: false });
+  // Every moderator is a party: nobody on the team can see it.
+  assert.deepEqual(reportRouting("dm", [M1], r([ME, M1]), [r([ME, M1])], ME), { notify: [], outside: true });
+  assert.deepEqual(reportRouting("group", [], r([ME]), [r([ME])], ME), { notify: [], outside: true });
+  // In a conversation an earlier report naming M2 keeps M2 out of the new one too…
+  assert.deepEqual(reportRouting("group", [M1, M2], r([ME]), [r([M2]), r([ME])], ME), { notify: [M1], outside: false });
+  // …but in a text channel each report stands alone.
+  assert.deepEqual(reportRouting("channel", [M1, M2], r([YOU]), [r([M2]), r([YOU])], ME), { notify: [M1, M2], outside: false });
   // A moderator who reports isn't belled about their own report, but can see it.
-  assert.deepEqual(reportRouting([M1], [{ partyIds: [YOU] }], M1), { notify: [], escalate: false });
+  assert.deepEqual(reportRouting("dm", [M1], r([YOU]), [r([YOU])], M1), { notify: [], outside: false });
+});
+
+test("an outside report tells the reporter where to go now, with the safeguarding contact when there is one", () => {
+  const without = outsideReportAdvice(null);
+  assert.match(without.join(" "), /none of them is shown your report/);
+  assert.match(without.join(" "), /adult you trust/);
+  assert.match(without.join(" "), /911/);
+  assert.doesNotMatch(without.join(" "), /safeguarding contact/);
+  assert.match(outsideReportAdvice("safe@example.org").join(" "), /Email safe@example\.org, batch0's independent safeguarding contact/);
 });
 
 test("dmKey is order-independent and refuses a DM with yourself", () => {

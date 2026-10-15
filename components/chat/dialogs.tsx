@@ -11,6 +11,8 @@ import {
   TOPIC_MAX,
   normalizeChannelName,
   type Posting,
+  outsideReportAdvice,
+  type ReportOutcome,
 } from "@/lib/chat-access";
 import { plainText } from "@/lib/chat-format";
 import type { ActionResult } from "@/lib/action-result";
@@ -379,11 +381,13 @@ export function ReportDialog({
   message: UiMessage | null;
   people: Record<string, ChatPerson>;
   onClose: () => void;
+  /** The team was told. An "outside" report stays open here, with what to do next. */
   onDone: () => void;
 }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [outside, setOutside] = useState<string[] | null>(null);
   const privateThread = channel.kind !== "channel";
   const submit = async () => {
     if (busy) return;
@@ -393,9 +397,32 @@ export function ReportDialog({
       message ? reportMessage({ messageId: message.id, reason }) : reportConversation({ channelId: channel.id, reason }),
     );
     setBusy(false);
-    if (!res.ok) setError(resultError(res, "Couldn't send the report."));
+    if (!res.ok) return setError(resultError(res, "Couldn't send the report."));
+    const outcome: ReportOutcome | undefined = res.data;
+    // Nobody on the team can be shown it: say so, and where to go instead,
+    // rather than "the team will look at it".
+    if (outcome?.routedTo === "outside") setOutside(outsideReportAdvice(outcome.safeguardingEmail));
     else onDone();
   };
+  if (outside) {
+    return (
+      <Modal open title="Your report is saved" onClose={onClose}>
+        <div className="space-y-3 text-sm leading-relaxed text-ink" role="status">
+          {outside.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+          <p className="text-xs text-ink-soft">
+            <Link href="/community-guidelines" target="_blank" className="link-ink">
+              Community guidelines
+            </Link>
+          </p>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button onClick={onClose}>Close</Button>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal open title={message ? "Report message" : "Report conversation"} onClose={onClose} busy={busy}>
       {message ? (

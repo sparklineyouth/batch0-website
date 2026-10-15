@@ -1424,9 +1424,9 @@ async function channelKinds(ids: readonly string[]): Promise<Map<string, Channel
 }
 
 /**
- * The rows this moderator may see: every report on a channel is judged
- * together (reportVisibleTo over all of them), so a moderator named by one
- * report on a conversation sees none of its reports.
+ * The rows this moderator may see (reportVisibleTo): a text-channel report on
+ * its own parties; a DM's or group's together with every report on it, so a
+ * moderator named by one report on a conversation sees none of its reports.
  */
 async function visibleReportRows(viewer: ChatViewer, rows: any[]): Promise<any[]> {
   if (!viewer.staff || rows.length === 0) return [];
@@ -1437,7 +1437,7 @@ async function visibleReportRows(viewer: ChatViewer, rows: any[]): Promise<any[]
     // A report whose channel is gone stands on its own parties.
     const all = r.channel_id ? (parties.get(r.channel_id) ?? own) : own;
     const kind = (r.channel_id && kinds.get(r.channel_id)) || "channel";
-    return reportVisibleTo({ id: r.channel_id ?? "", kind }, all, viewer);
+    return reportVisibleTo({ id: r.channel_id ?? "", kind }, own[0], all, viewer);
   });
 }
 
