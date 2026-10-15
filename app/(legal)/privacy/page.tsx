@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Privacy Policy</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: October 14, 2026
+        Last updated: October 15, 2026
       </p>
 
       <p>
@@ -49,11 +49,53 @@ export default function PrivacyPage() {
           webinar's chat or Q&amp;A.
         </li>
         <li>
+          <strong>batch0 Chat:</strong> the messages, files, reactions and
+          pins you post in channels, direct messages and group messages, and
+          which conversations you&rsquo;ve read. Who can read a channel:
+          <ul>
+            <li>
+              #announcements, #general, #wins and #help: every accepted or
+              enrolled student, and every mentor, investor and other account
+              that isn&rsquo;t a student. Anyone who can read them can see
+              who else can, by name.
+            </li>
+            <li>
+              Your cohort&rsquo;s channel: your cohort&rsquo;s enrolled
+              students, and the mentors assigned to any of them.
+            </li>
+            <li>
+              Your team&rsquo;s channel: your team, and the mentors assigned
+              to anyone on it.
+            </li>
+            <li>
+              The batch0 team reads every channel, and can add people to any
+              channel.
+            </li>
+          </ul>
+          A direct or group message can be read only by the people in it,
+          until one of them reports a message; reporting hands that
+          conversation to the batch0 team so they can act on it. Students can
+          message each other, and the batch0 team, privately. Mentors,
+          investors and other adults outside the batch0 team can&rsquo;t
+          message students privately: they talk with students only in
+          channels the batch0 team can read, or in a group that includes
+          someone from the batch0 team. When you edit or delete a
+          message, we keep the earlier version so a report can still be
+          reviewed. When an account is deleted, we blank the messages it
+          posted in Chat and delete their earlier versions and files, and we
+          delete its direct messages and team-thread posts from before Chat,
+          except a message someone reported, or any message in a direct or
+          group conversation someone reported: those we keep, with their
+          earlier versions and files, as evidence of what was reported.
+        </li>
+        <li>
           <strong>Retired features:</strong> we still hold what was posted or
-          uploaded in parts of batch0 we have since retired: the team thread,
-          lesson comments, discussions, direct messages, weekly check-ins,
-          office hours bookings and their recap notes, and files uploaded to
-          batch0 before files moved to Google Drive.
+          uploaded in parts of batch0 we have since retired: the team thread
+          (its messages now appear in your team&rsquo;s channel in Chat, and
+          go when the account that posted them is deleted),
+          lesson comments, discussions, weekly check-ins, office hours bookings
+          and their recap notes, and files uploaded to batch0 before files
+          moved to Google Drive.
         </li>
         <li>
           <strong>Call and webinar recordings:</strong> 1:1 calls and webinars
@@ -117,8 +159,9 @@ export default function PrivacyPage() {
           only.
         </li>
         <li>
-          <strong>Mentors and investors</strong> only see what you choose to
-          publish (e.g. a public team profile).
+          <strong>Mentors and investors</strong> see what you choose to
+          publish (e.g. a public team profile), and what is posted in the
+          batch0 Chat channels they can read, listed above.
         </li>
       </ul>
 
@@ -222,7 +265,7 @@ export default function PrivacyPage() {
           name: "Privacy Policy",
           description:
             "How batch0 collects, uses, and protects student and parent data.",
-          dateModified: "2026-10-14",
+          dateModified: "2026-10-15",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Privacy", path: "/privacy" }])} />

@@ -1,10 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { Send } from "lucide-react";
-import {
-  broadcastAnnouncement,
-  type AnnouncementPing,
-} from "@/app/admin/announcements/actions";
+import { broadcastAnnouncement } from "@/app/admin/announcements/actions";
 import { getActionError } from "@/lib/action-error";
 
 export type CohortOption = { id: string; name: string };
@@ -16,17 +13,18 @@ export type CohortOption = { id: string; name: string };
  * moved", "demo day link changed" — and it calls the same
  * `broadcastAnnouncement` action as the desktop composer, so it persists the
  * row, fans out in-app notifications, optionally emails every enrolled student,
- * optionally posts to Discord, and writes the audit entry.
+ * optionally posts it in Chat (#announcements, or the cohort's own channel
+ * for a one-cohort announcement), and writes the audit entry.
  *
  * Three deliberate choices about the blast radius:
  *
  *   Email defaults OFF. The action emails recipients in a sequential loop; a
  *   mis-tap here is an inbox for every student in the program and cannot be
- *   recalled. Discord defaults ON because a channel post can be deleted.
+ *   recalled. The chat post defaults ON because a chat message can be
+ *   deleted.
  *
- *   The ping selector only offers none/@here/@everyone. The role-ping options
- *   the desktop composer exposes need you to know which Discord role maps to
- *   which audience, which is not a thing to reason about one-handed.
+ *   @everyone defaults OFF and is only offered with the chat post. It
+ *   notifies everyone who can read the channel it lands in.
  *
  *   Send takes a confirmation tap, and the button says exactly who it reaches.
  *   The recipient count comes back from the action afterwards, so the label is
@@ -37,13 +35,15 @@ export function AnnounceForm({ cohorts }: { cohorts: CohortOption[] }) {
   const [body, setBody] = useState("");
   const [cohortId, setCohortId] = useState<string>("");
   const [email, setEmail] = useState(false);
-  const [discord, setDiscord] = useState(true);
-  const [ping, setPing] = useState<AnnouncementPing>("none");
+  const [chat, setChat] = useState(true);
+  const [pingEveryone, setPingEveryone] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState<{ recipients: number; discord: boolean } | null>(
-    null,
-  );
+  const [sent, setSent] = useState<{
+    recipients: number;
+    chat: boolean;
+    chatError: string | null;
+  } | null>(null);
   const [pending, startTransition] = useTransition();
 
   const ready = !!title.trim() && !!body.trim();
@@ -65,10 +65,14 @@ export function AnnounceForm({ cohorts }: { cohorts: CohortOption[] }) {
           title,
           body,
           sendEmail: email,
-          postDiscord: discord,
-          discordPing: ping,
+          postChat: chat,
+          mentionEveryone: chat && pingEveryone,
         });
-        setSent({ recipients: res.recipients, discord: res.discordPosted });
+        setSent({
+          recipients: res.recipients,
+          chat: res.chatPosted,
+          chatError: res.chatError,
+        });
         setTitle("");
         setBody("");
       } catch (e) {
@@ -84,10 +88,14 @@ export function AnnounceForm({ cohorts }: { cohorts: CohortOption[] }) {
           Sent to {sent.recipients} student{sent.recipients === 1 ? "" : "s"}.
         </p>
         <p className="mt-1 text-[12px] text-ink-soft">
-          {sent.discord
-            ? "Posted to Discord too."
-            : discord
-              ? "Discord post didn't go through — check the channel config."
+          {sent.chat
+            ? cohortId
+              ? "Posted in the cohort's channel too."
+              : "Posted in #announcements too."
+            : chat
+              ? `The chat post didn't go through${
+                  sent.chatError ? ` (${sent.chatError})` : ""
+                }.`
               : "In-app only."}
         </p>
         <button
@@ -137,11 +145,24 @@ export function AnnounceForm({ cohorts }: { cohorts: CohortOption[] }) {
 
       <div className="space-y-2">
         <Toggle
-          checked={discord}
-          onChange={setDiscord}
-          label="Post to Discord"
-          hint="Goes to the announcements channel."
+          checked={chat}
+          onChange={setChat}
+          label={cohortId ? "Also post in the cohort's channel" : "Also post in #announcements"}
+          hint={
+            cohortId
+              ? "Only that cohort, the mentors assigned to its students, and staff read it in Chat."
+              : "Everyone at batch0 can read it in Chat."
+          }
         />
+        {chat && (
+          <Toggle
+            checked={pingEveryone}
+            onChange={setPingEveryone}
+            label="Notify everyone (@everyone)"
+            hint="Pings everyone who can read the channel."
+            tone="warn"
+          />
+        )}
         <Toggle
           checked={email}
           onChange={setEmail}
@@ -150,23 +171,6 @@ export function AnnounceForm({ cohorts }: { cohorts: CohortOption[] }) {
           tone="warn"
         />
       </div>
-
-      {discord && (
-        <label className="block">
-          <span className="font-mono text-[10px] font-medium uppercase tracking-[0.22em] text-ink-faint">
-            Discord ping
-          </span>
-          <select
-            value={ping}
-            onChange={(e) => setPing(e.target.value as AnnouncementPing)}
-            className="mt-2 h-11 w-full rounded-xl border border-line bg-wash px-3 text-[15px] text-ink focus:border-phosphor focus:outline-none focus:ring-1 focus:ring-phosphor"
-          >
-            <option value="none">No ping</option>
-            <option value="here">@here — people online now</option>
-            <option value="everyone">@everyone — notifies the server</option>
-          </select>
-        </label>
-      )}
 
       {error && (
         <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-[13px] text-red-600 dark:text-red-300">
@@ -192,7 +196,8 @@ export function AnnounceForm({ cohorts }: { cohorts: CohortOption[] }) {
         <p className="text-center text-[11px] leading-relaxed text-ink-faint">
           Tap again to send to {audience}
           {email ? ", including email" : ""}
-          {discord && ping !== "none" ? `, pinging @${ping}` : ""}.
+          {chat ? (cohortId ? ", posting in the cohort's channel" : ", posting in #announcements") : ""}
+          {chat && pingEveryone ? " and pinging @everyone" : ""}.
         </p>
       )}
     </div>

@@ -210,7 +210,7 @@ const orgJsonLd = {
   // Only LinkedIn is listed. The original note here was right that a wrong
   // handle hands the brand entity to someone else's profile, so this stays
   // limited to the one URL that has been seen to describe this program and
-  // point back at this domain. Instagram/Discord/X remain deliberately absent
+  // point back at this domain. Instagram/X remain deliberately absent
   // until someone confirms them (NEEDED_FACTS.md #11; the footer carries the
   // same TODO).
   sameAs: ["https://www.linkedin.com/company/batch0"],

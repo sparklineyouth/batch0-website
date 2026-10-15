@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Search, X } from "lucide-react";
 import { navItemMatches, type NavGroup, type NavItem } from "@/lib/nav-config";
+import { ChatNavBadge } from "@/components/chat/nav-badge";
 
 type Props = {
   /** Stable key used to namespace the per-group collapse state in
@@ -227,6 +228,7 @@ export function SidebarNav({ storageKey, groups, filterItem }: Props) {
                       >
                         <Icon className="h-4 w-4 shrink-0" />
                         {it.label}
+                        {it.href === "/chat" ? <ChatNavBadge /> : null}
                       </Link>
                     );
                   })}

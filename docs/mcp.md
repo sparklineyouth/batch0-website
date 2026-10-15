@@ -117,7 +117,7 @@ Text uploads are limited to 200,000 characters and 400,000 UTF-8 bytes; PDF uplo
 
 `batch0_save_kickoff` takes `cohort_id`, `record`, `reason`, optional `expected_hash`, and `dry_run`. `record` allows `headline`, `intro`, `time_label`, `location_label`, `join_url`, `agenda: [{title, body}]`, `checklist: [{label, href}]`, and `note`. Unspecified fields stay unchanged. Explicit null restores the app's default. Checklist links are site-relative or HTTPS; a join link must be HTTPS.
 
-This tool changes the kickoff **page**, not an event or room. Live events are created in `/admin/events`; a hosted event needs no provider-side room (the event id is the room), and the event's visibility decides who may join. The MCP intentionally cannot send notifications, email, Discord messages, advertisements, or payment requests.
+This tool changes the kickoff **page**, not an event or room. Live events are created in `/admin/events`; a hosted event needs no provider-side room (the event id is the room), and the event's visibility decides who may join. The MCP intentionally cannot send notifications, email, chat messages, advertisements, or payment requests.
 
 ## Security and failure behavior
 

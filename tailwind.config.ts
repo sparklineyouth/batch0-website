@@ -4,6 +4,10 @@ const config: Config = {
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    // Class names that live in lib/, like ROLE_COLORS in lib/permissions.ts
+    // (role tags in chat and the admin): unscanned, purple, sky and rose
+    // roles rendered with no colour at all.
+    "./lib/**/*.{ts,tsx}",
   ],
   darkMode: "class",
   theme: {

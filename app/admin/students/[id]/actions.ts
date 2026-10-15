@@ -8,32 +8,18 @@ import { notify } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { stripe } from "@/lib/stripe";
 import { handleChargeRefunded } from "@/lib/stripe-fulfillment";
+import { purgeChatContentFor } from "@/lib/chat-purge";
 import { env } from "@/lib/env";
-import { kickFromGuild, removeRoleFromMember, getDiscordSettings } from "@/lib/discord";
 import type { ActionResult } from "@/lib/action-result";
 
 async function fetchTargetProfile(userId: string) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("profiles")
-    .select("id, email, full_name, role, discord_user_id")
+    .select("id, email, full_name, role")
     .eq("id", userId)
     .maybeSingle();
-  if (error) {
-    // 42703 = column does not exist — fall back to the core columns
-    // so this works whether or not migration 0008 was applied.
-    if ((error as any).code === "42703") {
-      const fallback = await admin
-        .from("profiles")
-        .select("id, email, full_name, role")
-        .eq("id", userId)
-        .maybeSingle();
-      if (fallback.error) throw new Error(fallback.error.message);
-      if (!fallback.data) throw new Error("User not found");
-      return { ...(fallback.data as any), discord_user_id: null };
-    }
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
   if (!data) throw new Error("User not found");
   return data;
 }
@@ -70,20 +56,6 @@ export async function removeFromProgram(userId: string, reason: string) {
 
   // Drop all enrollments.
   await admin.from("enrollments").delete().eq("user_id", userId);
-
-  // Strip batch0-managed Discord roles. We keep them on the server
-  // (use Delete account to fully remove) but they lose access to
-  // role-gated channels.
-  if (target.discord_user_id) {
-    try {
-      const settings = await getDiscordSettings();
-      for (const rid of Object.values(settings.roleIdByRole)) {
-        if (rid) await removeRoleFromMember(target.discord_user_id, rid);
-      }
-    } catch (err) {
-      console.error("[remove] discord role strip failed", err);
-    }
-  }
 
   await logAudit({
     action: "user.removed_from_program",
@@ -323,11 +295,12 @@ export async function deleteUserAccount(userId: string, reason: string) {
 
   const admin = createAdminClient();
 
-  // Kick from Discord first (best-effort) — once we delete the auth
-  // user, we lose their discord_user_id.
-  if (target.discord_user_id) {
-    await kickFromGuild(target.discord_user_id).catch(() => {});
-  }
+  // Chat keeps a deleted account's messages in everyone else's history
+  // (sender_id goes null), so their words, earlier versions and files are
+  // blanked first, except what's under a report, which is kept as evidence
+  // (the privacy policy says so). Before the auth delete: if it fails, the
+  // account is still here and a retry is safe, since the purge is idempotent.
+  await purgeChatContentFor(userId);
 
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) throw new Error(error.message);
@@ -384,6 +357,9 @@ export async function refundLatestPayment(userId: string, reason: string) {
 
   const chargeId = typeof refund.charge === "string" ? refund.charge : refund.charge?.id;
   if (!chargeId) throw new Error("Stripe accepted the refund but returned no charge. Reconcile before retrying.");
+  // Records the refund and posts its #staff line, as on /admin/payments:
+  // once, whether this call or the charge.refunded webhook racing it records
+  // it first (lib/stripe-fulfillment.ts).
   await handleChargeRefunded(await stripe.charges.retrieve(chargeId), { silent: true });
 
   await logAudit({

@@ -10,14 +10,14 @@ export async function GET() {
     return new Response("Forbidden", { status: 403 });
   }
   const admin = createAdminClient();
-  // Try the richer select (includes discord_*). If migration 0008 hasn't
-  // been applied yet, fall back to the core columns so the export still
-  // works.
+  // Try the richer select (includes grade). If that column's migration
+  // hasn't been applied yet, fall back to the core columns so the export
+  // still works.
   let data: any[] | null = null;
   const rich = await admin
     .from("profiles")
     .select(
-      "id, email, full_name, grade, role, referral_code, discord_user_id, discord_username, created_at, applications!applications_user_id_fkey(status), enrollments!enrollments_user_id_fkey(cohort:cohorts(name))",
+      "id, email, full_name, grade, role, referral_code, created_at, applications!applications_user_id_fkey(status), enrollments!enrollments_user_id_fkey(cohort:cohorts(name))",
     )
     .order("created_at", { ascending: false });
   if (rich.error && (rich.error as any).code === "42703") {
@@ -47,8 +47,6 @@ export async function GET() {
       p.grade ?? "",
       p.role,
       p.referral_code ?? "",
-      p.discord_user_id ?? "",
-      p.discord_username ?? "",
       latest?.status ?? "",
       cohort?.name ?? "",
       p.created_at,
@@ -63,8 +61,6 @@ export async function GET() {
       "grade",
       "role",
       "referral_code",
-      "discord_user_id",
-      "discord_username",
       "latest_application_status",
       "enrolled_cohort",
       "joined_at",

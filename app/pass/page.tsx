@@ -31,7 +31,6 @@ import {
   PenLine,
   Hammer,
   Wrench,
-  MessagesSquare,
   ArrowRight,
   Sparkles,
 } from "lucide-react";
@@ -116,12 +115,6 @@ const PERKS: Perk[] = [
     icon: Globe,
     title: "A public founder profile",
     body: "Your pass gets its own page you control — project, bio, website, demo, shipped milestones. Publish it or keep it private; the card code and serial are always on the ticket.",
-  },
-  {
-    key: "discord",
-    icon: MessagesSquare,
-    title: "A founder role in Discord",
-    body: "Link your account and the Founder Pass role lands automatically. Link it later and it still lands.",
   },
   {
     key: "badge",

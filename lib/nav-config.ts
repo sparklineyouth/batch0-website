@@ -33,6 +33,7 @@ import {
   LineChart,
   GraduationCap,
   LifeBuoy,
+  Hash,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -102,7 +103,7 @@ const STUDENT_ICONS: Record<StudentNavHref, LucideIcon> = {
   "/dashboard/calls": Video,
   "/dashboard/resources": FolderArchive,
   "/dashboard/announcements": Megaphone,
-  "/dashboard/community": MessagesSquare,
+  "/chat": MessagesSquare,
   "/dashboard/billing": CreditCard,
   "/dashboard/scholarships": GraduationCap,
   "/dashboard/referrals": Star,
@@ -144,6 +145,8 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
     label: "",
     items: [
       { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
+      // The chat app itself, outside /admin: every admin-area role has chat.
+      { href: "/chat", label: "Chat", icon: MessagesSquare, keywords: ["messages", "dms", "channels"] },
     ],
   },
   {
@@ -333,10 +336,11 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         keywords: ["pass requests", "feedback requests"],
       },
       {
-        href: "/admin/discord",
-        label: "Discord",
-        icon: MessagesSquare,
-        perm: "discord.manage",
+        href: "/admin/chat",
+        label: "Chat channels",
+        icon: Hash,
+        perm: "chat.manage",
+        keywords: ["chat reports", "moderation", "channels"],
       },
       {
         href: "/admin/roles",
@@ -401,6 +405,7 @@ export const MENTOR_NAV_GROUPS: NavGroup[] = [
     label: "",
     items: [
       { href: "/mentor", label: "Overview", icon: LayoutDashboard, exact: true },
+      { href: "/chat", label: "Chat", icon: MessagesSquare },
       // Under /dashboard but open to every role (lib/dashboard-gate.ts): a
       // mentor's own requests to the team, not the student view.
       { href: "/dashboard/support", label: "Help & support", icon: LifeBuoy },
@@ -440,6 +445,7 @@ export const INVESTOR_NAV_GROUPS: NavGroup[] = [
     label: "",
     items: [
       { href: "/investor", label: "Overview", icon: LayoutDashboard, exact: true },
+      { href: "/chat", label: "Chat", icon: MessagesSquare },
       // Same exemption as the mentor's — see MENTOR_NAV_GROUPS.
       { href: "/dashboard/support", label: "Help & support", icon: LifeBuoy },
     ],

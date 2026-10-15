@@ -17,7 +17,7 @@ import type { Tab } from "@/components/app/tab-bar";
  * laptop to finish. Applications get decided, announcements get sent, people
  * get looked up.
  *
- * Everything else — the email builder, roles, Discord config, the blog, cohort
+ * Everything else — the email builder, roles, chat channels, the blog, cohort
  * setup — stays on the desktop panel and is linked from More. Those are
  * considered, multi-field jobs. Shrinking them to 390px would produce something
  * you *can* use and shouldn't.

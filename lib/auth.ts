@@ -151,10 +151,6 @@ export const getProfile = cache(async function getProfile(): Promise<Profile | n
     referral_code: null,
     ai_context: null,
     theme: "dark",
-    discord_user_id: null,
-    discord_username: null,
-    discord_avatar: null,
-    discord_linked_at: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };

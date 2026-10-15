@@ -121,7 +121,7 @@ const STUDENT = [
   "/dashboard/billing", "/dashboard/assignments", "/dashboard/calls", "/dashboard/community", "/dashboard/course",
   "/dashboard/enrolled", "/dashboard/events", "/dashboard/intros",
   "/dashboard/kickoff", "/dashboard/phone", "/dashboard/referrals", "/dashboard/resources",
-  "/dashboard/scholarships", "/dashboard/settings", "/dashboard/team", "/notifications",
+  "/dashboard/scholarships", "/dashboard/settings", "/dashboard/team", "/notifications", "/chat",
   "/app/home", "/app/events", "/app/course", "/app/assignments", "/app/announcements", "/app/more",
 ];
 const MENTOR = [
@@ -133,7 +133,7 @@ const ADMIN = [
   "/admin", "/admin/announcements", "/admin/application-questions", "/admin/applications", "/admin/assignments",
   "/admin/audit", "/admin/blog", "/admin/blog/new", "/admin/calls", "/admin/challenges", "/admin/challenges/new",
   "/admin/charges", "/admin/cohorts", "/admin/course", "/admin/demo-day",
-  "/admin/demo-day/rubric", "/admin/demo-day/tickets", "/admin/discord", "/admin/email",
+  "/admin/demo-day/rubric", "/admin/demo-day/tickets", "/admin/chat", "/admin/email",
   "/admin/email/automations", "/admin/email/automations/new", "/admin/email/blast", "/admin/email/compose",
   "/admin/email/outbox", "/admin/email/settings", "/admin/email/templates",
   "/admin/email/templates/new", "/admin/events", "/admin/flows", "/admin/flows/new",

@@ -36,7 +36,7 @@ test("each missing table or column names its migration once", async () => {
   assert.deepEqual(r, { missing: ["0093", "0096"], complete: true });
 });
 
-test("a leftover permission key flags 0099 or 0100", async () => {
+test("a leftover permission key flags 0099, 0100 or 0101", async () => {
   const r = await checkPendingMigrations(async (p) => ({
     error: null,
     found: !!p.leftover?.values.includes("ai_usage.view"),
@@ -53,18 +53,18 @@ test("a failed probe is not 'missing' and marks the answer incomplete", async ()
   assert.deepEqual(r, { missing: ["0094"], complete: false });
 });
 
-test("probes cover 0093–0096 by schema and 0099–0100 by leftovers", () => {
+test("probes cover 0093–0096 and 0101 by schema, 0099–0101 by leftovers", () => {
   const schema = new Set(MIGRATION_PROBES.filter((p) => !p.leftover).map((p) => p.migration));
   const leftover = new Set(MIGRATION_PROBES.filter((p) => p.leftover).map((p) => p.migration));
-  assert.deepEqual([...schema].sort(), ["0093", "0094", "0095", "0096"]);
-  assert.deepEqual([...leftover].sort(), ["0099", "0100"]);
+  assert.deepEqual([...schema].sort(), ["0093", "0094", "0095", "0096", "0101"]);
+  assert.deepEqual([...leftover].sort(), ["0099", "0100", "0101"]);
   for (const p of MIGRATION_PROBES) assert.match(p.table, /^[a-z_]+$/);
 });
 
 test("the notice is the one line the overview shows", () => {
   assert.equal(
     PENDING_MIGRATIONS_NOTICE,
-    "Database update needed: run migrations 0093–0100 (docs/migrations-2026-10.md)",
+    "Database update needed: run migrations 0093–0101 (docs/migrations-2026-10.md)",
   );
 });
 
@@ -73,4 +73,22 @@ test("cache freshness", () => {
   assert.equal(isFresh(1_000, 1_000 + PROBE_TTL_MS - 1), true);
   assert.equal(isFresh(1_000, 1_000 + PROBE_TTL_MS), false);
   assert.equal(isFresh(5_000, 1_000), false);
+});
+
+test("a database without Chat, or still granting discord.manage, needs 0101", async () => {
+  const noChat = await checkPendingMigrations(async (p) => ({
+    error: p.table.startsWith("chat_") ? MISSING_TABLE : null,
+  }));
+  assert.deepEqual(noChat, { missing: ["0101"], complete: true });
+  // An earlier draft of 0101 made the channels but not the mutes the posting
+  // checks read: still needs this one.
+  const draft = await checkPendingMigrations(async (p) => ({
+    error: p.table === "chat_mutes" ? MISSING_TABLE : null,
+  }));
+  assert.deepEqual(draft, { missing: ["0101"], complete: true });
+  const stale = await checkPendingMigrations(async (p) => ({
+    error: null,
+    found: !!p.leftover?.values.includes("discord.manage"),
+  }));
+  assert.deepEqual(stale, { missing: ["0101"], complete: true });
 });

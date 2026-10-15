@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, Mail, MessageSquare } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Mail, MessagesSquare } from "lucide-react";
 import { requirePermission } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -18,9 +18,8 @@ export const dynamic = "force-dynamic";
  *
  * The whole screen answers "should I be worried about this student, and how do I
  * reach them". So: where they are in the funnel, what they owe, who they build
- * with, and whether their assignments are in — plus a mailto and their Discord
- * handle, because the reason you looked them up is usually that you're about to
- * contact them.
+ * with, and whether their assignments are in — plus a mailto, because the
+ * reason you looked them up is usually that you're about to contact them.
  *
  * It is read-only by design. Every mutation on a person (role changes, fee
  * waivers, account deletion) is consequential and irreversible-ish, and the
@@ -67,7 +66,7 @@ export default async function AdminAppPerson(
       guard,
       admin
         .from("profiles")
-        .select("id, full_name, email, role, discord_username, created_at")
+        .select("id, full_name, email, role, created_at")
         .eq("id", params.id)
         .maybeSingle(),
       admin
@@ -111,6 +110,11 @@ export default async function AdminAppPerson(
     enrollment?.cohort,
   );
   const team = embed<{ id: string; name: string }>(membership?.team);
+  // Chat's safeguarding rule (lib/chat-access.ts conversationAllowed): only
+  // chat staff may message a student privately. Anyone else would land on a
+  // draft that can't be sent, and nobody can message themselves.
+  const canMessage =
+    person.id !== viewer.profile.id && (can(caps, "chat.manage") || person.role !== "student");
   const owed = assignments.items.filter((i) => isOwed(i.status));
   const handedIn = owed.filter((i) => isHandedIn(i.status)).length;
   const missing = owed.filter((i) => i.status === "missing").length;
@@ -141,13 +145,15 @@ export default async function AdminAppPerson(
             <Mail className="h-4 w-4" />
             Email
           </a>
-          {!!person.discord_username && (
-            <div className="flex h-11 flex-1 items-center justify-center gap-2 rounded-md border border-line bg-wash px-3 text-[13px] text-ink-soft">
-              <MessageSquare className="h-4 w-4 shrink-0" />
-              <span className="truncate font-mono text-[12px]">
-                {person.discord_username as string}
-              </span>
-            </div>
+          {canMessage && (
+            <Link
+              href={`/chat?to=${person.id as string}`}
+              prefetch={false}
+              className="press flex h-11 flex-1 items-center justify-center gap-2 rounded-md border border-line bg-wash text-[13px] font-medium text-ink active:scale-[0.99]"
+            >
+              <MessagesSquare className="h-4 w-4" />
+              Message
+            </Link>
           )}
         </div>
         <p className="mt-2 truncate text-center font-mono text-[11px] text-ink-faint">

@@ -12,7 +12,6 @@ export type SiteSettingsInput = {
   applications_closed_message: string;
   active_cohort_id: string | null;
   active_cohort_name: string | null;
-  discord_url: string;
   demo_day_date: string | null;
   maintenance_mode: boolean;
   referrals_enabled: boolean;
@@ -24,7 +23,6 @@ const KEYS: (keyof SiteSettingsInput)[] = [
   "applications_closed_message",
   "active_cohort_id",
   "active_cohort_name",
-  "discord_url",
   "demo_day_date",
   "maintenance_mode",
   "referrals_enabled",
@@ -38,9 +36,6 @@ export async function saveSiteSettings(
 
     if (input.contact_email && !/^\S+@\S+\.\S+$/.test(input.contact_email)) {
       throw new Error("Contact email looks invalid");
-    }
-    if (input.discord_url && !/^https?:\/\//.test(input.discord_url)) {
-      throw new Error("Discord URL must start with http(s)://");
     }
 
     const admin = createAdminClient();

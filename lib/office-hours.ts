@@ -37,7 +37,7 @@ export type OfficeHoursSession = {
   joinUrl: string | null;
   /**
    * The slot's meeting field when it isn't an https link. The old form took
-   * any text ("zoom.us/j/1", a Discord channel), so it is shown as plain
+   * any text ("zoom.us/j/1", "Room 204"), so it is shown as plain
    * text, never linked.
    */
   meetingText: string | null;

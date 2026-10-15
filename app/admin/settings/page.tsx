@@ -16,7 +16,6 @@ const DEFAULTS: SiteSettingsInput = {
     "Applications are currently closed. Check back soon for the next cohort.",
   active_cohort_id: null,
   active_cohort_name: null,
-  discord_url: "",
   demo_day_date: null,
   maintenance_mode: false,
   referrals_enabled: true,
@@ -59,8 +58,6 @@ export default async function AdminSettingsPage() {
       typeof raw.active_cohort_name === "string"
         ? raw.active_cohort_name
         : null,
-    discord_url:
-      typeof raw.discord_url === "string" ? raw.discord_url : "",
     demo_day_date:
       typeof raw.demo_day_date === "string" ? raw.demo_day_date : null,
     maintenance_mode:

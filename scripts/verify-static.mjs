@@ -38,6 +38,7 @@ const MUST_BE_STATIC = [
   "/privacy",
   "/terms",
   "/refund-policy",
+  "/community-guidelines",
   // The auth funnel prerenders because ?next/?error moved to client-side
   // reads — adding a searchParams prop or server session read back to either
   // page flips it to per-request rendering.

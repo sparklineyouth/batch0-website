@@ -6,15 +6,15 @@ import { applyApplicationDecision } from "@/lib/application-decisions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// Each due acceptance sends an email + does a Discord sync over the network.
+// Each due acceptance sends an email and a notification over the network.
 // The default 10s could cut a batch of them off mid-flight; 60 matches the
 // email-queue cron for the same reason.
 export const maxDuration = 60;
 
 /** What one invocation may spend, and why these numbers.
  *
- *  A row is a dozen Supabase round trips, a Resend send and up to five Discord
- *  calls: a second or two when every upstream is healthy, and unbounded when
+ *  A row is a dozen Supabase round trips and a Resend send: a second or two
+ *  when every upstream is healthy, and unbounded when
  *  one isn't, because none of those calls carries a timeout of its own. Run
  *  sequentially, the old cap of 100 never fitted in the minute above, and
  *  overrunning here isn't a slow cron — it's the Gateway Timeout this path has
@@ -58,14 +58,14 @@ const MAX_ACCEPT_ATTEMPTS = 3;
  * times — see below).
  *
  * We run the SAME acceptance the Accept button runs (announceAcceptance email,
- * Discord role sync, audit row), attributed to the reviewer who scheduled it —
+ * notification, audit row), attributed to the reviewer who scheduled it —
  * `applyApplicationDecision` clears the parked columns as part of the write, so
  * a row is never picked up twice by accident, and a one-minute maxDuration
  * against a five-minute schedule means two invocations never overlap either.
  *
  * That same clear is the one thing in here with no undo: it commits
  * `status = 'accepted'` with the schedule erased BEFORE the acceptance email
- * and the Discord sync run. A row abandoned in that window is a student who is
+ * and notification go out. A row abandoned in that window is a student who is
  * accepted in the database, never told, and no longer selectable by anything —
  * silently, permanently. So this route never starts a row it can't finish
  * inside the budget, and it puts the schedule BACK on any row that is still
@@ -212,7 +212,7 @@ export async function GET(req: Request) {
  * side of it — for at most `budgetMs`.
  *
  * Nothing underneath carries a timeout of its own — not the Supabase fetch, not
- * Resend, not Discord — so a single hung upstream would otherwise spend the
+ * Resend — so a single hung upstream would otherwise spend the
  * whole invocation and take the rest of the batch down with it. Losing this
  * race does NOT cancel the work, it only stops us waiting on it, which is why
  * the caller re-parks: whatever finishes in the background either already
@@ -292,7 +292,7 @@ async function acceptAttempts(
  * success, so the next tick can try again.
  *
  * `applyApplicationDecision` clears the schedule in the same statement that
- * commits `accepted`, and the email, in-app notification and Discord sync only
+ * commits `accepted`, and the email and in-app notification only
  * run after it — so a failure past that point leaves a student accepted with
  * nothing on record saying they were never told. Restoring the three columns
  * hands the row back to the claim query (which is why that query admits

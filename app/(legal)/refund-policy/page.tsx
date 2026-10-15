@@ -14,7 +14,7 @@ export default function RefundPolicyPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Refund Policy</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: October 14, 2026
+        Last updated: October 15, 2026
       </p>
 
       <p>
@@ -73,8 +73,8 @@ export default function RefundPolicyPage() {
         Thursday.
       </p>
       <p>
-        Requests sent any other way — a Discord message, a chat message, a
-        social DM, a text to a team member, a reply in an unrelated thread, a
+        Requests sent any other way — a message in batch0 Chat, a webinar
+        chat message, a social DM, a text to a team member, a reply in an unrelated thread, a
         PayPal dispute, or a card chargeback — are not refund requests under
         this policy and do not stop the clock. Use a support request or email
         instead: the two routes above are the only two, and both give you a
@@ -270,7 +270,7 @@ export default function RefundPolicyPage() {
           path: "/refund-policy",
           name: "Refund Policy",
           description,
-          dateModified: "2026-10-14",
+          dateModified: "2026-10-15",
         })}
       />
       <JsonLd

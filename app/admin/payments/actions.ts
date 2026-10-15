@@ -6,11 +6,6 @@ import { handleChargeRefunded } from "@/lib/stripe-fulfillment";
 import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { reconcileStripe } from "@/lib/stripe-reconcile";
-import {
-  postChannelMessage,
-  refundEmbed,
-  getDiscordSettings,
-} from "@/lib/discord";
 
 /**
  * Pull every transaction Stripe knows about back into the platform.
@@ -22,7 +17,9 @@ import {
  *
  * Announcements stay off: this is usually catching up on old money, and a
  * student shouldn't get a "welcome aboard" email for last spring's
- * payment. Rows, statuses, enrollments, and receipts are all still fixed.
+ * payment. Rows, statuses, enrollments, and receipts are all still fixed,
+ * and #staff gets its line for an enrollment or refund this run is the
+ * first to record (lib/stripe-fulfillment.ts).
  */
 export async function reconcileStripeNow(input?: { days?: number }) {
   await assertPermission("payments.manage");
@@ -69,6 +66,9 @@ export async function refundPayment(paymentId: string, reason?: string) {
 
   const chargeId = typeof refund.charge === "string" ? refund.charge : refund.charge?.id;
   if (!chargeId) throw new Error("Stripe accepted the refund but returned no charge. Reconcile before retrying.");
+  // Records the refund, and posts its #staff line (who, and a link; the amount
+  // and the reason stay behind payments.view) — once, whether this call or
+  // the charge.refunded webhook racing it records it first.
   await handleChargeRefunded(await stripe.charges.retrieve(chargeId), { silent: true });
 
   await logAudit({
@@ -81,30 +81,6 @@ export async function refundPayment(paymentId: string, reason?: string) {
       reason: reason ?? null,
     },
   });
-
-  try {
-    const settings = await getDiscordSettings();
-    if (settings.adminFeedChannelId) {
-      const { data: profile } = await admin
-        .from("profiles")
-        .select("full_name, email")
-        .eq("id", p.user_id)
-        .maybeSingle();
-      await postChannelMessage(settings.adminFeedChannelId, {
-        embeds: [
-          refundEmbed({
-            name: profile?.full_name ?? profile?.email ?? null,
-            amountCents: refund.amount,
-            description: "Enrollment payment refund",
-            reason: reason?.trim() || null,
-            kind: "payment",
-          }),
-        ],
-      });
-    }
-  } catch (err) {
-    console.error("[payments] discord refund post failed", err);
-  }
 
   revalidatePath("/admin/payments");
   return { ok: true, refundId: refund.id };

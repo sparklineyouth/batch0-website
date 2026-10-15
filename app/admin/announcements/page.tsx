@@ -3,8 +3,6 @@ import { Card } from "@/components/ui/card";
 import { LocalTime } from "@/components/ui/local-time";
 import { AnnouncementForm } from "./announcement-form";
 import { DeleteAnnouncementButton } from "./delete-button";
-import { getDiscordSettings } from "@/lib/discord";
-import type { BuiltInRole } from "@/lib/types";
 
 export const metadata = { title: "Announcements · Admin" };
 export const dynamic = "force-dynamic";
@@ -12,7 +10,7 @@ export const revalidate = 0;
 
 export default async function AdminAnnouncementsPage() {
   const admin = createAdminClient();
-  const [{ data: cohorts }, { data: anns }, discord] =
+  const [{ data: cohorts }, { data: anns }] =
     await Promise.all([
       admin.from("cohorts").select("id, name").order("starts_on"),
       admin
@@ -22,20 +20,7 @@ export default async function AdminAnnouncementsPage() {
         )
         .order("created_at", { ascending: false })
         .limit(100),
-      getDiscordSettings(),
     ]);
-
-  // Roles the admin can ping — only show options where the role ID is
-  // actually configured, otherwise the ping silently no-ops.
-  const ROLE_LABELS: { role: BuiltInRole; label: string }[] = [
-    { role: "student", label: "Students" },
-    { role: "mentor", label: "Mentors" },
-    { role: "investor", label: "Investors" },
-    { role: "admin", label: "Admins" },
-  ];
-  const pingableRoles = ROLE_LABELS.filter(
-    (r) => !!discord.roleIdByRole[r.role],
-  );
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -44,10 +29,7 @@ export default async function AdminAnnouncementsPage() {
         Broadcast to enrolled students.
       </p>
       <Card className="mt-6">
-        <AnnouncementForm
-          cohorts={(cohorts ?? []) as any}
-          pingableRoles={pingableRoles}
-        />
+        <AnnouncementForm cohorts={(cohorts ?? []) as any} />
       </Card>
 
       <h2 className="mt-10 text-sm font-semibold uppercase tracking-wider text-ink-soft">

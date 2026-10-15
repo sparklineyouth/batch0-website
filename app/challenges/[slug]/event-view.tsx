@@ -148,6 +148,8 @@ export function EventView({
                         challenge.location
                       )}
                     </p>
+                    {/* A challenge's own Discord server is still an online venue:
+                        only batch0's Discord integration was retired. */}
                     {/online|remote|virtual|anywhere|worldwide|discord|zoom|livestream/i.test(challenge.location) ||
                     /discord\.(gg|com)|zoom\.us|meet\.google\.com/i.test(challenge.locationUrl ?? "") ? (
                       <p className="truncate text-[13px] text-ink-soft">Build from anywhere</p>

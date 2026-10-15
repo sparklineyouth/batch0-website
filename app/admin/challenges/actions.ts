@@ -102,7 +102,7 @@ function blankRow(o: unknown, keys: string[]): boolean {
   return keys.every((k) => r[k] == null || text(r[k]) === "");
 }
 
-/** "discord.gg/abc" → "https://discord.gg/abc": what admins actually paste. */
+/** "lu.ma/abc" → "https://lu.ma/abc": what admins actually paste. */
 function withScheme(v: unknown): string {
   const t = text(v);
   if (!t || /^https?:\/\//i.test(t)) return t;

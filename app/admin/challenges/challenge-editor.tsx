@@ -337,7 +337,7 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
               <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Online" />
             </Field>
             <Field label="Location link (optional)">
-              <Input value={locationUrl} onChange={(e) => setLocationUrl(e.target.value)} placeholder="Discord invite, Maps link…" />
+              <Input value={locationUrl} onChange={(e) => setLocationUrl(e.target.value)} placeholder="Zoom link, Maps link…" />
             </Field>
           </div>
           <Field label="Extra milestones">
@@ -420,7 +420,7 @@ export function ChallengeEditor({ initial }: { initial: ChallengeEditorInitial |
           </Field>
           <Field label="Resources">
             <ResourceBuilder value={resources} onChange={setResources} />
-            <Hint>Starter kits, APIs, templates, a Discord invite.</Hint>
+            <Hint>Starter kits, APIs, templates, a sign-up form.</Hint>
           </Field>
         </Section>
 

@@ -24,6 +24,13 @@ export const env = {
 
   cronSecret: process.env.CRON_SECRET,
 
+  // An adult outside the batch0 team who handles safeguarding concerns (a
+  // board member, an advisor). Shown to a student whose chat report can't go
+  // to any moderator because every one of them is part of what was reported
+  // (outsideReportAdvice in lib/chat-access.ts). Optional: without it the
+  // student is pointed to a trusted adult and emergency services only.
+  safeguardingEmail: process.env.SAFEGUARDING_CONTACT_EMAIL?.trim() || null,
+
   // Email (Resend). Optional — the app falls back to a console-log stub
   // when these aren't set, so local dev keeps working without a key.
   resendApiKey: process.env.RESEND_API_KEY,
@@ -67,16 +74,6 @@ export const env = {
   liveTurnUrls: process.env.LIVE_TURN_URLS,
   liveTurnUsername: process.env.LIVE_TURN_USERNAME,
   liveTurnCredential: process.env.LIVE_TURN_CREDENTIAL,
-
-  discordBotToken: process.env.DISCORD_BOT_TOKEN,
-  discordGuildId: process.env.DISCORD_GUILD_ID,
-  discordRoleStudent: process.env.DISCORD_ROLE_STUDENT,
-  discordAnnouncementsWebhook: process.env.DISCORD_ANNOUNCEMENTS_WEBHOOK,
-  discordClientId: process.env.DISCORD_CLIENT_ID,
-  discordClientSecret: process.env.DISCORD_CLIENT_SECRET,
-  // Hex-encoded Ed25519 public key from the Discord developer portal —
-  // used to verify Interaction (slash command) requests.
-  discordPublicKey: process.env.DISCORD_PUBLIC_KEY,
 } as const;
 
 export function ensure(key: keyof typeof env, value: string | undefined): string {

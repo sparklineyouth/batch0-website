@@ -195,7 +195,7 @@ async function main() {
     mentor_id: panel.id,
     starts_at: new Date(Date.now() + 3 * DAY).toISOString(),
     ends_at: new Date(Date.now() + 3 * DAY + 30 * 60_000).toISOString(),
-    zoom_url: `Discord carry-room-${stamp}`,
+    zoom_url: `Room 204 carry-${stamp}`,
   });
   await insert("mentor_bookings", { slot_id: textSlot.id, student_id: cara.id, topic: null, status: "booked" });
 
@@ -268,8 +268,8 @@ async function main() {
   );
   check(
     "…and a meeting field that isn't a link as text, never an href",
-    studentCalls.body.includes(`Discord carry-room-${stamp}`) &&
-      !studentCalls.body.includes(`href="Discord`) &&
+    studentCalls.body.includes(`Room 204 carry-${stamp}`) &&
+      !studentCalls.body.includes(`href="Room 204`) &&
       studentCalls.body.includes("No join link; see the details"),
   );
   const mentorCalls = await get(asMentor, "/mentor/calls");
@@ -298,7 +298,7 @@ async function main() {
     panelHome.status === 200 &&
       panelHome.body.includes("Office hours already booked") &&
       panelHome.body.includes("Cara Carryover") &&
-      panelHome.body.includes(`Discord carry-room-${stamp}`),
+      panelHome.body.includes(`Room 204 carry-${stamp}`),
     String(panelHome.status),
   );
   const oldLink = await get(asCara, "/dashboard/office-hours");

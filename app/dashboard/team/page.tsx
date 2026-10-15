@@ -9,8 +9,6 @@ import { TeamHome } from "./team-home";
 import { InvitesInbox } from "./invites-inbox";
 import { getStudentAccess, aiAccessFrom } from "@/lib/access";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
-import { isDiscordEnabled } from "@/lib/discord";
-import { discordChannelUrl } from "@/lib/discord-links";
 import { env } from "@/lib/env";
 import { loadOlderUploads, loadTeamDrive } from "@/lib/team-drive";
 import { OlderUploads } from "@/components/team/older-uploads";
@@ -48,7 +46,6 @@ export default async function TeamPage(props: {
       { data: invites },
       { data: pitch },
       passHolders,
-      discordEnabled,
     ] = await Promise.all([
       admin
         .from("team_members")
@@ -69,7 +66,6 @@ export default async function TeamPage(props: {
         .eq("team_id", team.id)
         .maybeSingle(),
       passHolderUserIds(admin),
-      isDiscordEnabled(),
     ]);
     const [drive, olderUploads] = await Promise.all([drivePromise, olderUploadsPromise]);
 
@@ -87,11 +83,6 @@ export default async function TeamPage(props: {
         olderUploads={{ ...olderUploads, unavailable: olderUnavailable }}
         pitch={pitch as any}
         passHolderIds={[...passHolders]}
-        discordChannelUrl={
-          discordEnabled
-            ? discordChannelUrl(env.discordGuildId, team.discord_text_channel_id)
-            : null
-        }
         showAi={showAi}
         preCohort={access.preCohort}
       />

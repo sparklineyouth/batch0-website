@@ -54,7 +54,9 @@ export type ReconcileOptions = {
    * Suppress receipt emails / notifications. Default true — reconciliation
    * is usually catching up on old money, and nobody wants a "welcome
    * aboard" email for a payment they made last spring. The database is
-   * brought fully up to date either way.
+   * brought fully up to date either way, and the #staff feed still gets its
+   * line for an enrollment or a refund this run is the first to record
+   * (lib/stripe-fulfillment.ts): that's the team's feed, not the student's.
    */
   silent?: boolean;
   /** Safety valve on how many sessions to walk in one run. */

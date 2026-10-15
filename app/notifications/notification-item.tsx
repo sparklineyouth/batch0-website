@@ -18,6 +18,11 @@ import {
   MessageSquareReply,
   UserCheck,
   ClipboardList,
+  MessagesSquare,
+  AtSign,
+  Hash,
+  Flag,
+  HandHelping,
 } from "lucide-react";
 import { markNotificationRead } from "./actions";
 import { formatRelativeTime } from "@/lib/format-time";
@@ -61,6 +66,13 @@ const ICON_BY_TYPE: Record<string, any> = {
   support_assigned: UserCheck,
   support_staff_reply: MessageSquareText,
   support_resolved: CheckCircle,
+  // batch0 Chat (lib/chat-notify.ts). Chat bells carry no body, so the icon
+  // is most of what tells a DM from a mention from a report at a glance.
+  chat_dm: MessagesSquare,
+  chat_mention: AtSign,
+  chat_message: Hash,
+  chat_reported: Flag,
+  chat_flagged: HandHelping,
 };
 
 function iconFor(type: string) {

@@ -10,7 +10,7 @@
  * file", "a failed read deletes nothing" and "the second page of a folder is
  * still examined" get tested without a bucket to delete from — and those are
  * the claims that matter here, because a deleted object can't be brought
- * back. The same shape as lib/discord-auto-engine.ts and its fakes.
+ * back.
  *
  * So, like lib/support-attachment-rules.ts, this module imports nothing
  * server-side. Its one import is that module, by relative path with its

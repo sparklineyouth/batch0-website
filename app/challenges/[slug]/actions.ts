@@ -7,7 +7,6 @@ import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
 import { notify } from "@/lib/notifications";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { postChannelMessage, getDiscordSettings } from "@/lib/discord";
 import { env } from "@/lib/env";
 import {
   getChallengeBySlug,
@@ -31,6 +30,8 @@ import {
   type ReferralProgress,
   type UploadedFile,
 } from "@/lib/challenges";
+import { postStaffFeed } from "@/lib/chat-post";
+import { challengeEntryLine } from "@/lib/staff-feed";
 
 // ---------------------------------------------------------------------------
 // Entrant actions: register → draft (autosave) → submit.
@@ -796,19 +797,9 @@ async function fanOutSubmitted(ctx: Ctx, submissionId: string) {
         link: `/admin/challenges/${c.id}/submissions/${submissionId}`,
       });
     }
-
-    try {
-      const settings = await getDiscordSettings();
-      if (settings.adminFeedChannelId) {
-        await postChannelMessage(settings.adminFeedChannelId, {
-          content: `🏆 New **${c.title}** submission from ${
-            profile?.full_name ?? ctx.email ?? "an entrant"
-          } — ${env.siteUrl}/admin/challenges/${c.id}/submissions/${submissionId}`,
-        });
-      }
-    } catch (err) {
-      console.error("[challenge] discord cross-post failed", err);
-    }
+    await postStaffFeed(
+      challengeEntryLine({ name: profile?.full_name, challengeTitle: c.title, challengeId: c.id, submissionId, siteUrl: env.siteUrl }),
+    );
   } catch (err) {
     console.error("[challenge] post-submit notifications failed", err);
   }

@@ -44,9 +44,10 @@ type LivePromo =
 /**
  * Signed-in work surfaces: a tuition sale with "Apply now" is noise to admins,
  * mentors and enrolled students, and at phone width it pushes every page's
- * heading down four lines.
+ * heading down four lines. /chat is a fixed full-screen surface: the bar would
+ * sit hidden under it with a focusable "Apply now" link.
  */
-const SIGNED_IN_SURFACE = /^\/(admin|dashboard|app|mentor|investor|notifications)(\/|$)/;
+const SIGNED_IN_SURFACE = /^\/(admin|dashboard|app|mentor|investor|notifications|chat)(\/|$)/;
 
 export function SaleBanner() {
   const pathname = usePathname() ?? "";

@@ -47,7 +47,6 @@ export type ActiveCohort = {
 
 export type SiteSettings = {
   contactEmail: string;
-  discordUrl: string;
   applicationsOpen: boolean;
   applicationsClosedMessage: string;
   demoDayDate: string | null;
@@ -151,7 +150,6 @@ export type SiteConfig = {
 
 const FALLBACK_SETTINGS: SiteSettings = {
   contactEmail: "hello@batch0.org",
-  discordUrl: "",
   applicationsOpen: true,
   applicationsClosedMessage:
     "Applications are currently closed. Check back soon for the next cohort.",
@@ -545,10 +543,6 @@ async function loadSiteConfigData(
       typeof raw.contact_email === "string"
         ? raw.contact_email
         : FALLBACK_SETTINGS.contactEmail,
-    discordUrl:
-      typeof raw.discord_url === "string"
-        ? raw.discord_url
-        : FALLBACK_SETTINGS.discordUrl,
     applicationsOpen:
       typeof raw.applications_open === "boolean"
         ? raw.applications_open
@@ -587,9 +581,8 @@ async function loadSiteConfigData(
       : null;
 
   // The pin wins only while admissions are open. We `select("*")` so the read
-  // tolerates a missing `cohort_number` column — matches the pattern in
-  // 0008_discord_integration where the app tolerates the migration
-  // landing later than the code.
+  // tolerates a missing `cohort_number` column — the app tolerates the
+  // migration landing later than the code.
   function toCohort(data: any): ActiveCohort {
     return {
       id: data.id,

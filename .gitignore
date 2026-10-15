@@ -8,6 +8,8 @@ out
 .vercel
 .claude
 supabase/.temp
+# npm run db:migrate backups: database rows, personal data included. Never commit.
+backups/
 *.tsbuildinfo
 .gstack/
 

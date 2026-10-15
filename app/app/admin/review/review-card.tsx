@@ -33,8 +33,8 @@ type Decision = "accepted" | "waitlisted" | "rejected";
  *
  * It calls `decideApplication` — the same server action the desktop reviewer
  * uses — so a decision made from a phone sends the acceptance email, fires the
- * automation event, writes the audit row, syncs Discord roles and creates the
- * in-app notification, exactly as it would from a laptop. There is no
+ * automation event, writes the audit row and creates the in-app
+ * notification, exactly as it would from a laptop. There is no
  * "mobile decision" that behaves differently, because a half-decision is worse
  * than no decision: it looks done in the queue while the applicant hears
  * nothing.

@@ -13,10 +13,11 @@
 //
 // Imported by the student page, the admin editor, and the admin server action,
 // so keep it dependency-free and side-effect-free: no React, no icons, no
-// Supabase client, no next/headers.
+// Supabase client, no next/headers. The relative import is what lets
+// `node --test` run it as is (lib/kickoff.test.ts).
 // ---------------------------------------------------------------------------
 
-import { fmtDateOnly } from "@/lib/pre-cohort";
+import { fmtDateOnly } from "./pre-cohort.ts";
 
 export type KickoffAgendaItem = { title: string; body: string };
 export type KickoffChecklistItem = { label: string; href: string };
@@ -116,12 +117,21 @@ export const DEFAULT_AGENDA: readonly KickoffAgendaItem[] = [
   { title: "Assignments", body: "The first is due in week one." },
 ];
 
+/**
+ * The Chat row. #general is the whole community (every accepted student,
+ * mentors, investors); the cohort meets in its own channel.
+ */
+const CHAT_CHECKLIST_ITEM: KickoffChecklistItem = {
+  label: "Say hi in #general and your cohort's channel",
+  href: "/chat",
+};
+
 export const DEFAULT_CHECKLIST: readonly KickoffChecklistItem[] = [
   {
     label: "Work through Before One — your pre-cohort flows",
     href: "/dashboard/resources",
   },
-  { label: "Link Discord and meet your cohort", href: "/dashboard/community" },
+  CHAT_CHECKLIST_ITEM,
   { label: "Start your team — or accept an invite", href: "/dashboard/team" },
   { label: "Complete your profile", href: "/dashboard/settings" },
 ];
@@ -175,6 +185,10 @@ export function parseChecklist(value: unknown): KickoffChecklistItem[] | null {
       const label = trimmed((r as any).label);
       const href = trimmed((r as any).href);
       if (!label || !href || !isSafeHref(href)) return null;
+      // A checklist saved before Chat: its community row ("Link Discord and
+      // meet your cohort") pointed at the Discord page, which now forwards to
+      // /chat. Its words are about Discord, so the row becomes Chat's.
+      if (href === "/dashboard/community") return { ...CHAT_CHECKLIST_ITEM };
       return { label, href };
     })
     .filter((r): r is KickoffChecklistItem => r !== null);

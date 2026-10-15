@@ -256,7 +256,9 @@ export function ManagePanel({
             <p className="text-amber-700 dark:text-amber-300">
               This deletes the auth user and cascades through every related
               row (applications, enrollments, submissions, files, payments).
-              This is irreversible.
+              Their chat messages and files are blanked and their direct
+              messages from before Chat deleted, except any under a report,
+              which are kept as evidence. This is irreversible.
             </p>
             <div className="mt-3">
               <Label>Reason (audit only)</Label>

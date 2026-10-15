@@ -5,33 +5,29 @@ import { Templates } from "@/lib/email/templates";
 import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
 import { logAuditMany } from "@/lib/audit";
-import {
-  syncMemberRoles,
-  postChannelMessage,
-  announcementEmbed,
-  getDiscordSettings,
-} from "@/lib/discord";
 import { getPassForUser } from "@/lib/founder-pass";
 import { reviewerOverrodePass, type DecidedApplication } from "@/lib/reapply";
 import {
   grantAutoAdmits,
   type PassGrant,
 } from "@/lib/founder-pass-tiers";
+import { postStaffFeed } from "@/lib/chat-post";
+import { acceptedLine } from "@/lib/staff-feed";
 
 // Admission side-effects, in one place.
 //
 // An acceptance is not one write. It is a status change, an email that quotes
-// the exact tuition checkout will charge, an in-app notification, a Discord
-// role sync and a line in the staff feed — and until now all six lived inside
+// the exact tuition checkout will charge, the email event automations hang off
+// and an in-app notification — and until now all of them lived inside
 // app/admin/applications/[id]/actions.ts, reachable only by an admin clicking
 // "Accept". The auto-admit perk (a virtual founder pass admits its holder on
-// submit) needs the same six from a completely different entry point, and
-// copy-pasting them is how one path ends up quoting last season's price or
-// silently skipping the Discord role.
+// submit) needs the same from a completely different entry point, and
+// copy-pasting them is how one path ends up quoting last season's price.
 //
 // So the announcement is extracted here and BOTH paths call it. Everything
 // below is best-effort by design: the seat is already granted by the time this
-// runs, and a Discord outage must never un-admit somebody.
+// runs, and an email outage must never un-admit somebody. (Chat access needs no
+// step here: it follows enrollment and team membership on its own.)
 //
 // Takes a service-role client. Do not import into a client component.
 
@@ -117,38 +113,10 @@ export async function announceAcceptance(
     console.error("[admissions] accept notify failed", err);
   }
 
-  // Discord. Tolerant of migration 0008 not being applied (no discord_user_id
-  // column), which is why the handle read is wrapped rather than named in a
-  // select the caller shares.
-  try {
-    const { data, error } = await admin
-      .from("profiles")
-      .select("discord_user_id, role")
-      .eq("id", app.user_id)
-      .maybeSingle();
-    const handle =
-      error && (error as { code?: string }).code === "42703"
-        ? null
-        : ((data as { discord_user_id: string | null; role: string | null } | null) ??
-          null);
-    if (handle?.discord_user_id) {
-      await syncMemberRoles(handle.discord_user_id, (handle.role as any) ?? "student");
-    }
-    const settings = await getDiscordSettings();
-    if (settings.adminFeedChannelId) {
-      await postChannelMessage(settings.adminFeedChannelId, {
-        embeds: [
-          announcementEmbed({
-            title: `Accepted: ${app.full_name ?? app.applicantName ?? app.applicantEmail ?? "applicant"}`,
-            body: `Cohort: ${cohortName}`,
-            link: `${env.siteUrl}/admin/applications/${app.id}`,
-          }),
-        ],
-      });
-    }
-  } catch (err) {
-    console.error("[admissions] accept discord sync failed", err);
-  }
+  // The staff feed, in #staff (it used to be a Discord channel).
+  await postStaffFeed(
+    acceptedLine({ name: app.full_name || app.applicantName, cohortName, applicationId: app.id, siteUrl: env.siteUrl }),
+  );
 }
 
 /**

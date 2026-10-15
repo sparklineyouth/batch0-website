@@ -3,7 +3,7 @@
 //
 // An accepted (or already-enrolled) student whose cohort hasn't started yet
 // only gets the personal pages: home, application, billing, referrals,
-// settings, community (Discord) — plus kickoff, resources (pre-cohort
+// settings, chat — plus kickoff, resources (pre-cohort
 // section), announcements, and team once they've paid to enroll. Everything
 // else under /dashboard is off-limits until kickoff.
 //
@@ -38,16 +38,17 @@ export function isAcceptedStatus(
 /**
  * Nav hrefs (exact) that stay visible in the sidebar pre-cohort. Kickoff,
  * Resources, and Team additionally require enrollment — isStudentHrefVisible
- * (lib/student-nav.ts) and the pages enforce that on top of this set. Community
- * (Discord) is open to every pre-cohort student: the server is where a
- * cohort meets before day one.
+ * (lib/student-nav.ts) and the pages enforce that on top of this set. Chat
+ * is open to every pre-cohort student: the cohort's channel is where it
+ * meets before day one. (/chat lives outside /dashboard, so the lockdown
+ * never touches the page itself; it's listed so the nav keeps the link.)
  */
 export const PRE_COHORT_ALLOWED_HREFS = new Set<string>([
   "/dashboard",
   "/dashboard/application",
   "/dashboard/kickoff",
   "/dashboard/resources",
-  "/dashboard/community",
+  "/chat",
   // Announcements are how the team reaches a cohort in the weeks BEFORE day
   // one — the stretch where students have paid, have nothing to do yet, and
   // most need to hear from us. Locking the page until kickoff meant the one
@@ -88,6 +89,8 @@ const PRE_COHORT_ALLOWED_PREFIXES = [
   "/dashboard/enrolled",
   "/dashboard/kickoff",
   "/dashboard/resources",
+  // The old Community page, now a redirect to /chat: old lesson and kickoff
+  // links still land on it.
   "/dashboard/community",
   "/dashboard/announcements",
   "/dashboard/team",

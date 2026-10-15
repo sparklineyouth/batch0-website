@@ -8,11 +8,8 @@ import { notify } from "@/lib/notifications";
 import { stripe } from "@/lib/stripe";
 import { env } from "@/lib/env";
 import type { ChargeKind } from "@/lib/types";
-import {
-  postChannelMessage,
-  refundEmbed,
-  getDiscordSettings,
-} from "@/lib/discord";
+import { postStaffFeed } from "@/lib/chat-post";
+import { chargeRefundedLine } from "@/lib/staff-feed";
 
 export type ChargeInput = {
   userId: string;
@@ -197,29 +194,23 @@ export async function refundCharge(chargeId: string, reason?: string) {
     body: `$${(existing.amount_cents / 100).toFixed(2)} returned to your card.`,
     link: "/dashboard/billing",
   });
-
-  try {
-    const settings = await getDiscordSettings();
-    if (settings.adminFeedChannelId) {
-      const { data: p } = await admin
-        .from("profiles")
-        .select("full_name, email")
-        .eq("id", existing.user_id)
-        .maybeSingle();
-      await postChannelMessage(settings.adminFeedChannelId, {
-        embeds: [
-          refundEmbed({
-            name: p?.full_name ?? p?.email ?? null,
-            amountCents: existing.amount_cents,
-            description: existing.description,
-            reason: reason?.trim() || null,
-            kind: existing.kind,
-          }),
-        ],
-      });
-    }
-  } catch (err) {
-    console.error("[charges] discord refund post failed", err);
+  // Record the refunded total, if the charge.refunded webhook hasn't yet:
+  // whichever of the two moves it posts the #staff line (who, and a link;
+  // the amount and the reason stay behind charges.manage, lib/staff-feed.ts),
+  // so a refund is announced once however the two race (handleChargeRefunded
+  // does the same conditional write). postStaffFeed never throws: the refund
+  // already happened.
+  const { data: recorded } = await admin
+    .from("user_charges")
+    .update({ amount_refunded_cents: refund.amount })
+    .eq("id", chargeId)
+    .lt("amount_refunded_cents", refund.amount)
+    .select("id");
+  if (Array.isArray(recorded) && recorded.length > 0) {
+    const { data: p } = await admin.from("profiles").select("full_name").eq("id", existing.user_id).maybeSingle();
+    await postStaffFeed(
+      chargeRefundedLine({ name: p?.full_name, kind: existing.kind === "fine" ? "fine" : "fee", userId: existing.user_id, siteUrl: env.siteUrl }),
+    );
   }
 
   revalidatePath("/admin/charges");

@@ -44,7 +44,7 @@ export default async function Footer({ config, applyHref = "/apply" }: { config?
           >
             {contactEmail}
           </a>
-          {/* TODO(RISH): official social profiles (Instagram/Discord/X) —
+          {/* TODO(RISH): official social profiles (Instagram/X) —
               linked in NEEDED_FACTS.md; no placeholder links until then. */}
         </div>
 
@@ -97,6 +97,9 @@ export default async function Footer({ config, applyHref = "/apply" }: { config?
           </Link>
           <Link href="/refund-policy" className="hover:text-ink">
             Refund policy
+          </Link>
+          <Link href="/community-guidelines" className="hover:text-ink">
+            Community guidelines
           </Link>
           {/*
             In the legal row rather than only in the nav column above: every

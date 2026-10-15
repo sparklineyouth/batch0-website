@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { getViewer } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { getStudentAccess, loadAccessRows } from "@/lib/access";
-import { isDiscordEnabled } from "@/lib/discord";
 import { StudentSidebar } from "@/components/dashboard/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
 import { getSiteConfig } from "@/lib/site-config";
@@ -12,9 +11,9 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // The Discord flag and site config depend on nothing the viewer resolves,
-  // so they ride alongside it instead of waiting behind the auth round trip.
-  // Both are request-cached, so pages that read them again dedupe.
+  // Site config depends on nothing the viewer resolves, so it rides
+  // alongside it instead of waiting behind the auth round trip. It's
+  // request-cached, so pages that read it again dedupe.
   // loadAccessRows() rides along even though the access check below needs a
   // role this batch hasn't produced yet: the rows themselves are keyed only on
   // the user, so speculating on them here turns what was a third serial wave
@@ -22,9 +21,8 @@ export default async function DashboardLayout({
   // request cache. Staff previewing the student view short-circuit before
   // using the rows, so for them this is two parallel reads they didn't
   // strictly need — cheap, and they are not the common case.
-  const [viewer, discordEnabled, siteConfig] = await Promise.all([
+  const [viewer, siteConfig] = await Promise.all([
     getViewer(),
-    isDiscordEnabled(),
     getSiteConfig(),
     loadAccessRows(),
   ]);
@@ -60,7 +58,6 @@ export default async function DashboardLayout({
       <StudentSidebar
         role={profile.role}
         caps={caps}
-        discordEnabled={discordEnabled}
         enrolled={enrolled}
         referralsEnabled={referralsEnabled}
         preCohort={preCohort}
@@ -71,7 +68,6 @@ export default async function DashboardLayout({
           kind="student"
           role={profile.role}
           caps={caps}
-          discordEnabled={discordEnabled}
           enrolled={enrolled}
           referralsEnabled={referralsEnabled}
           preCohort={preCohort}

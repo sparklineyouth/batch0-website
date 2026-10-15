@@ -13,8 +13,8 @@
 // whichever wins the race produces identical state and the loser is a no-op.
 //
 // Everything here is idempotent. Rows are updated with guards on their
-// current status, and one-shot side effects (emails, notifications, the
-// Discord trumpet) only fire on the actual transition into paid — a Stripe
+// current status, and one-shot side effects (emails, notifications) only
+// fire on the actual transition into paid — a Stripe
 // retry, a page refresh, or both racing will not double-send.
 // ---------------------------------------------------------------------------
 
@@ -26,12 +26,9 @@ import { Templates } from "@/lib/email/templates";
 import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
 import { logAudit } from "@/lib/audit";
-import {
-  getDiscordSettings,
-  postChannelMessage,
-  postDiscordWebhook,
-  syncMemberRoles,
-} from "@/lib/discord";
+import { env } from "@/lib/env";
+import { postStaffFeed } from "@/lib/chat-post";
+import { chargeRefundedLine, enrolledLine, paymentRefundedLine } from "@/lib/staff-feed";
 import { cohortHasStarted, fmtDateOnly, todayISO } from "@/lib/pre-cohort";
 import {
   findProfileByEmail,
@@ -145,10 +142,12 @@ export type FulfillOptions = {
    */
   forceState?: PaymentState;
   /**
-   * Skip the one-shot announcements (receipt email, in-app notification,
-   * Discord trumpet). Set when backfilling historical transactions — a
+   * Skip the one-shot announcements (receipt email, in-app notification).
+   * Set when backfilling historical transactions — a
    * student shouldn't get a "welcome aboard" email for a payment they
-   * made months ago. The database is still brought fully up to date.
+   * made months ago. The database is still brought fully up to date, and
+   * the #staff feed still hears of an enrollment this run is the first to
+   * record: that line is the team's, not the student's.
    */
   silent?: boolean;
 };
@@ -321,6 +320,15 @@ async function fulfillEnrollment(
   if (settlement?.newly_enrolled) {
     if (!opts.silent) await announceEnrollment({ userId, cohortId,
       cohortName: cohortName ?? "batch0", amountCents: actualAmountCents });
+    // #staff hears of every new seat, whichever path settled it first: the
+    // webhook, the student's return from Checkout, or reconciliation (the
+    // daily cron and "Sync from Stripe" run silent, and are exactly what
+    // catches the enrollment whose webhook was missed). `silent` spares the
+    // student a stale welcome; it has nothing to say about the team's feed.
+    // newly_enrolled is settle_enrollment_payment's one-shot transition only
+    // when there is a cohort: without one it checks no enrollment and reads
+    // true on every replay, so a cohort-less payment posts nothing.
+    if (cohortId) await staffFeedEnrolled({ userId, cohortName: cohortName ?? "batch0" });
     await logAudit({ action: "payment.succeeded", targetType: "application", targetId: applicationId,
       payload: { amount_cents: actualAmountCents, stripe_session_id: session.id, stripe_payment_intent_id: paymentIntentId } });
   }
@@ -342,29 +350,9 @@ async function announceEnrollment(args: {
     const admin = createAdminClient();
     const { data: profile } = await admin
       .from("profiles")
-      .select("email, full_name, role")
+      .select("email, full_name")
       .eq("id", args.userId)
       .maybeSingle();
-
-    // Discord linkage is optional — if migration 0008 isn't applied this
-    // query throws "column does not exist" and we just skip.
-    let discordUserId: string | null = null;
-    try {
-      const { data: d, error: dErr } = await admin
-        .from("profiles")
-        .select("discord_user_id")
-        .eq("id", args.userId)
-        .maybeSingle();
-      if (!dErr && d) discordUserId = (d as any).discord_user_id ?? null;
-    } catch {
-      // ignore — column doesn't exist
-    }
-    if (discordUserId) {
-      await syncMemberRoles(
-        discordUserId,
-        (profile?.role as any) ?? "student",
-      ).catch(() => {});
-    }
 
     // Where the money actually takes them depends on the calendar: before
     // kickoff the course is still locked, so point at the kickoff page
@@ -418,35 +406,72 @@ async function announceEnrollment(args: {
       title: "You're enrolled",
       body: started
         ? `Welcome to ${args.cohortName}. Course access is unlocked.`
-        : `Welcome to ${args.cohortName}. Kickoff details, Discord, your team page, and the pre-cohort resources are open now.`,
+        : `Welcome to ${args.cohortName}. Kickoff details, Chat, your team page, and the pre-cohort resources are open now.`,
       link: started ? "/dashboard/course" : "/dashboard/kickoff",
       // One enrollment notification per student per cohort, whatever the
       // delivery path — webhook, retry, or reconciliation on return.
       dedupeKey: `enrolled:${args.cohortId ?? "no-cohort"}`,
     });
-    // Trumpet the enrollment. Prefer the bot posting into the configured
-    // announcements channel and only fall back to the legacy webhook —
-    // DISCORD_ANNOUNCEMENTS_WEBHOOK is unset in production, so the
-    // webhook-only version of this made every enrollment silently
-    // vanish. Mirrors the fallback order in
-    // app/admin/announcements/actions.ts.
-    const content = `🎉 **New enrollment** — ${profile?.full_name ?? "A new student"} just enrolled in **${args.cohortName}**!`;
-    const settings = await getDiscordSettings();
-    const posted = settings.announcementsChannelId
-      ? await postChannelMessage(settings.announcementsChannelId, { content })
-      : await postDiscordWebhook({ content });
-    if (!posted) {
-      console.error(
-        "[stripe] enrollment trumpet not delivered to Discord",
-        JSON.stringify({
-          userId: args.userId,
-          cohortId: args.cohortId,
-          announcementsChannelId: settings.announcementsChannelId || null,
-        }),
-      );
-    }
   } catch (err) {
     console.error("[stripe] enrollment announce failed", err);
+  }
+}
+
+/**
+ * The #staff feed: a seat was paid for. This used to be the Discord "New
+ * enrollment" post in #announcements; it stays with the team now, since a
+ * public channel naming each paying student (most of them minors) isn't the
+ * community's business. Only the transition into enrolled gets here, so a
+ * webhook retry or a second reconcile doesn't post twice. Never throws: the
+ * enrollment already happened.
+ */
+async function staffFeedEnrolled(args: { userId: string; cohortName: string }) {
+  try {
+    const { data: profile } = await createAdminClient()
+      .from("profiles")
+      .select("full_name")
+      .eq("id", args.userId)
+      .maybeSingle();
+    await postStaffFeed(
+      enrolledLine({ name: profile?.full_name, cohortName: args.cohortName, userId: args.userId, siteUrl: env.siteUrl }),
+    );
+  } catch (err) {
+    console.error("[stripe] staff feed (enrolled) failed", err);
+  }
+}
+
+/**
+ * The #staff feed: an enrollment payment refunded, in full or in part. The
+ * amount stays on /admin/payments (lib/staff-feed.ts). Never throws: the
+ * refund is already recorded, and a throw here would only make Stripe retry
+ * a webhook that has nothing left to do.
+ */
+async function staffFeedRefunded(args: { userId: string; partial: boolean }) {
+  try {
+    const { data: profile } = await createAdminClient()
+      .from("profiles")
+      .select("full_name")
+      .eq("id", args.userId)
+      .maybeSingle();
+    await postStaffFeed(paymentRefundedLine({ name: profile?.full_name, partial: args.partial, siteUrl: env.siteUrl }));
+  } catch (err) {
+    console.error("[stripe] staff feed (refund) failed", err);
+  }
+}
+
+/** A fee or fine refunded, for #staff (never throws: the refund already happened). */
+async function staffFeedChargeRefunded(args: { chargeId: string; userId: string }) {
+  try {
+    const admin = createAdminClient();
+    const [{ data: profile }, { data: row }] = await Promise.all([
+      admin.from("profiles").select("full_name").eq("id", args.userId).maybeSingle(),
+      admin.from("user_charges").select("kind").eq("id", args.chargeId).maybeSingle(),
+    ]);
+    await postStaffFeed(
+      chargeRefundedLine({ name: profile?.full_name, kind: row?.kind === "fine" ? "fine" : "fee", userId: args.userId, siteUrl: env.siteUrl }),
+    );
+  } catch (err) {
+    console.error("[stripe] staff feed (charge refund) failed", err);
   }
 }
 
@@ -780,6 +805,17 @@ export async function handleChargeRefunded(
       body: `${(charge.amount_refunded / 100).toFixed(2)} ${charge.currency.toUpperCase()} returned to your payment method.`,
       link: "/dashboard/billing", dedupeKey: `refund:${piId}:${charge.amount_refunded}` });
   }
+  // #staff hears of each enrollment refund once, from whichever path records
+  // it first: this webhook (a refund issued in the Stripe dashboard), an
+  // admin refund on /admin/payments or the student's page (both call this
+  // straight after Stripe accepts it, silent), or reconciliation. `changed`
+  // is apply_enrollment_refund comparing, under a row lock, with the refund
+  // already on record, so a webhook retry, a replay, or the twin of an admin
+  // refund racing its own webhook finds nothing new and posts nothing. Not
+  // gated on `silent`, which only spares the student a stale notice.
+  if (result?.changed && result.user_id) {
+    await staffFeedRefunded({ userId: result.user_id, partial: !(result.full ?? full) });
+  }
   // Fee and ticket refunds retain their quote; captured/refunded money is
   // stored independently. Re-read the current charge before calling us.
   for (const table of ["user_charges", "demo_day_tickets"] as const) {
@@ -789,7 +825,21 @@ export async function handleChargeRefunded(
     if (readError) throw new Error(readError.message);
     if (!row) continue;
     const refunded = Math.max(row.amount_refunded_cents ?? 0, charge.amount_refunded);
-    const rowChanged = refunded !== row.amount_refunded_cents;
+    // Who records this refund first: the conditional write moves the total
+    // only if nobody has yet, and Postgres lets one of two racing writers do
+    // it (the other re-checks the row and finds it moved). An admin refund
+    // (refundCharge) records its own total the same way, so this webhook,
+    // its twin, finds nothing new — one #staff line, one notice, whichever
+    // path got there first. A stale read can't tell that, which is why the
+    // write decides.
+    let rowChanged = false;
+    if (refunded > (row.amount_refunded_cents ?? 0)) {
+      const { data: won, error: claimError } = await admin.from(table)
+        .update({ amount_refunded_cents: refunded })
+        .eq("id", row.id).lt("amount_refunded_cents", refunded).select("id");
+      if (claimError) throw new Error(claimError.message);
+      rowChanged = Array.isArray(won) && won.length > 0;
+    }
     const { error: writeError } = await admin.from(table).update({
       captured_amount_cents: charge.amount_captured, captured_currency: charge.currency,
       amount_refunded_cents: refunded,
@@ -797,6 +847,11 @@ export async function handleChargeRefunded(
     }).eq("id", row.id).lte("amount_refunded_cents", refunded);
     if (writeError) throw new Error(writeError.message);
     changed ||= rowChanged;
+    // #staff hears of a fee or fine refunded wherever it was done — the
+    // Stripe dashboard included — not only from /admin/charges.
+    if (rowChanged && row.user_id && table === "user_charges") {
+      await staffFeedChargeRefunded({ chargeId: row.id, userId: row.user_id });
+    }
     if (rowChanged && row.user_id && !opts.silent) await notify({
       userId: row.user_id, type: table === "user_charges" ? "charge_refunded" : "demo_day_ticket_refunded",
       title: full ? "Payment refunded" : "Partial refund issued",
