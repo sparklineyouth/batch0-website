@@ -1930,22 +1930,27 @@ export async function resolveTicketPayments(
 // ---------------------------------------------------------------------------
 
 /**
- * Candidates for a housekeeping step: tickets in `status` whose `column` is
- * older than `before`, oldest first. Full tickets, because a resolved one is
- * announced (which needs its token for the email link).
+ * Candidates for a housekeeping step: tickets in `status` whose `column` (and
+ * `alsoBefore`, when given) is older than `before`, oldest first. Full
+ * tickets, because a resolved one is announced (which needs its token for the
+ * email link).
  */
 export async function listTicketsForHousekeeping(args: {
   status: TicketStatus;
   column: "status_changed_at" | "resolved_at" | "requester_activity_at";
   before: string;
+  /** A second clock that must be just as old, e.g. the thread's last visible message. */
+  alsoBefore?: "last_activity_at";
   limit?: number;
 }): Promise<SupportTicket[]> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  let query = admin
     .from("support_tickets")
     .select(TICKET_SELECT)
     .eq("status", args.status)
-    .lt(args.column, args.before)
+    .lt(args.column, args.before);
+  if (args.alsoBefore) query = query.lt(args.alsoBefore, args.before);
+  const { data, error } = await query
     .order(args.column, { ascending: true })
     .limit(Math.min(args.limit ?? 200, 500));
   if (error) throw systemFailure("listTicketsForHousekeeping", error);

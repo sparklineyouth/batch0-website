@@ -117,9 +117,10 @@ than locked. Its team alert carries the reference and a link only.
 
 ## Automation (`/api/cron/support-housekeeping`, daily)
 
-- **Auto-resolve**: waiting on the requester for 7 days → resolved, outcome
-  "no response", with a note on the thread and an email saying a reply
-  reopens it.
+- **Auto-resolve**: waiting on the requester for 7 days, with nothing new on
+  the thread in that time (a teammate's follow-up restarts the count) →
+  resolved, outcome "no response", with a note on the thread and an email
+  saying a reply reopens it.
 - **Auto-close**: resolved for 14 days → closed (silently). A closed request
   takes no replies; the requester opens a new one.
 - **Overdue digest**: one email to the team inbox listing requests past their
