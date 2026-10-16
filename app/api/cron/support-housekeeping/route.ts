@@ -46,9 +46,11 @@ export const maxDuration = 300;
  *     closing only means the thread stops taking replies (a new request is the
  *     way back), and nobody needs an email to say that.
  *  2. Auto-resolve. Waiting on the requester for AUTO_RESOLVE_AFTER_DAYS (7)
- *     days: resolved with outcome `no_response`, a system note on the thread
- *     saying why (AUTO_RESOLVE_NOTE), and the resolved email and bell. Cheap to
- *     be wrong about — the requester's next reply reopens it (appendReply).
+ *     days, with no visible message on the thread in that time (a teammate's
+ *     follow-up restarts the count): resolved with outcome `no_response`, a
+ *     system note on the thread saying why (AUTO_RESOLVE_NOTE), and the
+ *     resolved email and bell. Cheap to be wrong about — the requester's next
+ *     reply reopens it (appendReply).
  *  3. Overdue digest. One email to the team inbox listing every ticket past
  *     its reply target. Nothing at all on a day with none.
  *  4. Orphaned uploads. Files that went into the private bucket for a message
@@ -210,6 +212,10 @@ async function autoResolve(summary: Summary, startedAt: number): Promise<void> {
   const quiet = await listTicketsForHousekeeping({
     status: "waiting_on_requester",
     column: "status_changed_at",
+    // The thread's clock too: a teammate's follow-up on a ticket that's
+    // already waiting moves no status, so status_changed_at alone resolved it
+    // "after 7 days without a reply" as little as a day after the team wrote.
+    alsoBefore: "last_activity_at",
     before: daysBefore(startedAt, AUTO_RESOLVE_AFTER_DAYS),
     limit: AUTO_RESOLVE_PER_RUN,
   });

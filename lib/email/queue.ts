@@ -493,20 +493,35 @@ export async function fanOutScheduled(
     rows=rows.filter(r=>!seen.has(`${r.step_id}:${r.to_email.toLowerCase()}`));
   }
   let queued = 0;
+  let failed = 0;
+  let firstError = "";
   const CHUNK = 500;
   for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
     const { data, error } = await admin
       .from("email_outbox")
-      .upsert(rows.slice(i, i + CHUNK), {
+      .upsert(chunk, {
         onConflict: "dedupe_key",
         ignoreDuplicates: true,
       })
       .select("id");
     if (error) {
       console.error("[email/queue] fan-out insert failed", error.message);
+      failed += chunk.length;
+      firstError ||= error.message;
       continue;
     }
     queued += data?.length ?? 0;
+  }
+  // Thrown, not only logged: the drain records it as the automation's
+  // last_error, and "Run now" shows it. Logged and returned, a fan-out that
+  // queued nothing read as a healthy run — which is how 0052's partial dedupe
+  // index (42P10 on every insert; 0102 replaces it) kept every scheduled
+  // automation silent with nothing on the admin screen to say so.
+  if (failed > 0) {
+    throw new Error(
+      `${failed} of ${rows.length} emails couldn't be queued${queued ? ` (${queued} were)` : ""}: ${firstError}`,
+    );
   }
   return queued;
 }

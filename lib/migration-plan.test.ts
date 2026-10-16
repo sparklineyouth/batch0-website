@@ -178,32 +178,35 @@ function productionTables(upTo: number): Set<string> {
   return new Set(real.filter((m) => m.num <= upTo).flatMap((m) => createdTables(m.sql)));
 }
 
-test("plan against the real files: a production database that has everything but 0101", () => {
-  const checks = new Map(Object.keys(MIGRATION_CHECKS).map((v) => [v, v !== "0101"] as [string, boolean]));
+test("plan against the real files: a production database that has everything but 0101 and 0102", () => {
+  const notYet = new Set(["0101", "0102"]);
+  const checks = new Map(Object.keys(MIGRATION_CHECKS).map((v) => [v, !notYet.has(v)] as [string, boolean]));
   const plan = planMigrations(real, state({ checks, existingTables: productionTables(100) }));
   // 0099 and 0100 only check for an absence, and no later file proves they
   // ran, so they run again — they're idempotent; that's the safe answer.
-  assert.deepEqual(plan.filter((p) => p.status === "pending").map((p) => p.version), ["0099", "0100", "0101"]);
+  assert.deepEqual(plan.filter((p) => p.status === "pending").map((p) => p.version), ["0099", "0100", "0101", "0102"]);
   assert.equal(plan.filter((p) => p.status === "gap").length, 0);
-  // With 0101 recorded, everything is accounted for.
-  const done = planMigrations(real, state({ checks: new Map([...checks, ["0101", true]]), existingTables: new Set([...productionTables(100), "profiles", "app_roles"]) }));
+  // With 0101 and 0102 run, everything is accounted for.
+  const done = planMigrations(real, state({ checks: new Map([...checks, ["0101", true], ["0102", true]]), existingTables: new Set([...productionTables(100), "profiles", "app_roles"]) }));
   assert.deepEqual(done.filter((p) => p.status !== "unrecorded" && p.status !== "applied").map((p) => p.version), []);
 });
 
 test("plan: the newest file recorded but failing its check is an earlier draft, and runs again", () => {
+  // The files as they stood when 0101 was the newest.
+  const files = real.filter((m) => m.num <= 101);
   const all = new Set([...productionTables(100), "profiles", "app_roles"]);
-  const recorded = new Set(real.map((f) => f.version));
+  const recorded = new Set(files.map((f) => f.version));
   const passing = new Map(Object.keys(MIGRATION_CHECKS).map((v) => [v, true] as [string, boolean]));
   // Recorded and verified: nothing to do.
-  assert.deepEqual(planMigrations(real, state({ recorded, checks: passing, existingTables: all })).filter((p) => p.status !== "applied"), []);
+  assert.deepEqual(planMigrations(files, state({ recorded, checks: passing, existingTables: all })).filter((p) => p.status !== "applied"), []);
   // 0101 recorded from an earlier draft: its check fails, so it runs again.
-  const draft = planMigrations(real, state({ recorded, checks: new Map([...passing, ["0101", false]]), existingTables: all }));
+  const draft = planMigrations(files, state({ recorded, checks: new Map([...passing, ["0101", false]]), existingTables: all }));
   const pending = draft.filter((p) => p.status !== "applied");
   assert.deepEqual(pending.map((p) => [p.version, p.status]), [["0101", "pending"]]);
   assert.match(pending[0].why, /earlier draft/);
   // An older recorded file whose check fails is left alone: a later file may
   // have changed what it made on purpose.
-  const older = planMigrations(real, state({ recorded, checks: new Map([...passing, ["0095", false]]), existingTables: all }));
+  const older = planMigrations(files, state({ recorded, checks: new Map([...passing, ["0095", false]]), existingTables: all }));
   assert.deepEqual(older.filter((p) => p.status !== "applied"), []);
 });
 

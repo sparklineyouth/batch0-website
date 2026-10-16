@@ -86,6 +86,11 @@ where permissions @> array['ai_usage.view']::text[];`,
    and to_regprocedure('public.chat_counts_as_message(text, text)') is not null
    and not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'chat_reports')
    and exists (select 1 from public.site_settings where key = 'chat_history_carried') as ok;`,
+  "0102": `select exists (select 1 from pg_index ix
+               join pg_attribute a on a.attrelid = ix.indrelid and a.attnum = ix.indkey[0]
+               where ix.indrelid = to_regclass('public.email_outbox')
+                 and ix.indisunique and ix.indpred is null and ix.indnkeyatts = 1
+                 and a.attname = 'dedupe_key') as ok;`,
 };
 
 /**

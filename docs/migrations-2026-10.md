@@ -1,4 +1,4 @@
-# Migrations 0093–0101 (October 2026)
+# Migrations 0093–0102 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -50,6 +50,11 @@ check-ins, in-app files, discussions and the old recorder at once:
      people or strips their roles any more), and deleting the bot or the app
      removes nobody. Lock it when the deploy goes live (`docs/chat.md`,
      *Deploying*).
+3. **Any time: 0102.** It only swaps `email_outbox`'s partial dedupe index
+   for a plain one, and no code depends on which runs first. Until it runs,
+   every scheduled email automation fans out to nobody: the insert fails with
+   42P10 (the notifications bug 0090 §9 fixed, on the outbox) and the run is
+   recorded as an error on the automation.
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -137,6 +142,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0099 | `0099_retire_community.sql` | Discussions, team thread, reactions, lesson comments and DMs lose client write policies. Open private questions and open DM reports move into Support. Lessons that sent students to Discussions, office hours or the check-in point at Discord, Support and 1:1 calls. |
 | 0100 | `0100_admin_cleanup.sql` | Removes the retired `ai_usage.view` permission from roles and deletes leftover founder-pass self-check rows (negative serials). |
 | 0101 | `0101_chat.sql` | batch0 Chat: channels, DMs and group DMs (`chat_*` tables including `chat_mutes`, read-only policies, `chat_can_read()`, realtime on `chat_messages`, private presence and typing topics on `realtime.messages`, a trigram index for search, the private `chat-files` bucket), the starting channels plus one per cohort and team (kept, archived, when their team or cohort is deleted), old DMs and team threads carried in, `discord.manage` removed (not converted), admins kept out of other people's chat bells, and the Discord integration's tables, columns and settings dropped. See `docs/chat.md`. |
+| 0102 | `0102_email_outbox_dedupe_index.sql` | `email_outbox.dedupe_key` gets a plain unique index in place of 0052's partial one, so the scheduled-automation fan-out's `on conflict (dedupe_key)` works. Changes no data and sends nothing by itself. |
 
 ## Verify
 
@@ -207,6 +213,13 @@ select to_regclass('public.chat_channels') is not null
    and to_regprocedure('public.chat_counts_as_message(text, text)') is not null
    and not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'chat_reports')
    and exists (select 1 from public.site_settings where key = 'chat_history_carried') as ok;
+
+-- 0102
+select exists (select 1 from pg_index ix
+               join pg_attribute a on a.attrelid = ix.indrelid and a.attnum = ix.indkey[0]
+               where ix.indrelid = to_regclass('public.email_outbox')
+                 and ix.indisunique and ix.indpred is null and ix.indnkeyatts = 1
+                 and a.attname = 'dedupe_key') as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,
