@@ -10,6 +10,32 @@ of the page it links to. Holders of `settings.manage` also get one line while
 a probe finds one of migrations 0093–0100 missing (`docs/migrations-2026-10.md`
 says what it can and can't see).
 
+## Cohort readiness (`/admin/cohorts`)
+
+Each upcoming or active cohort's row has a Readiness chip ("Ready", "N to
+check", "N to fix") that opens a checklist computed on the server from the
+cohort's own rows (`lib/cohort-readiness.ts`, loaded by
+`lib/cohort-readiness-server.ts`):
+
+| Check | Fails on | Warns on |
+|---|---|---|
+| Dates | no start/end date, end before start | start passed but still Upcoming; end passed but still Active |
+| Enrollment and price | capacity under 1 | $0 price, over capacity, half-set late entry, applications closing after day one |
+| Course content | no modules or no lessons | a course week with no module, a module past the last week or with no lessons, an empty lesson |
+| Course files | a lesson video, lesson material or cohort resource file storage won't sign (the lesson page silently drops those), a material with no file | storage unreachable |
+| Assignment dates | a published deadline already past before day one, or outside the cohort's dates | none published; due before its lesson's week opens |
+| Kickoff (before day one) | a join link the kickoff page would hide | page not filled in, no time, no place/link, no session on day one |
+| Live sessions | none scheduled inside the cohort's dates | a remaining course week with no session (staff-only rehearsals don't count) |
+| Session links | an upcoming external session with no link | — |
+
+Each problem links to the editor that fixes it (the cohort form in place,
+the kickoff page, `/admin/course?module=<id>`, `/admin/resources/<id>`,
+`/admin/assignments?cohort=<id>`, `/admin/events?edit=<id>`), and only when
+the viewer holds that editor's permission. A table that fails to load shows
+"Couldn't load" rather than a false empty. `/dev/cohort-readiness` renders the
+table over fixtures. Unrelated to `docs/cohort-readiness.md`, the offline
+Winter curriculum script.
+
 ## Adding a page
 
 1. Map its path in `ADMIN_ROUTE_PERMISSIONS` (`lib/permissions.ts`). Unmapped
