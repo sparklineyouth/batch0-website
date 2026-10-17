@@ -56,6 +56,11 @@ check-ins, in-app files, discussions and the old recorder at once:
    42P10 (the notifications bug 0090 §9 fixed, on the outbox) and the run is
    recorded as an error on the automation.
 
+4. **Any time: 0107.** It only adds the `student_followups` table (no client
+   policies, no data changes). Until it runs, Student progress says
+   "Follow-ups aren't set up yet" and the Overview's attention list leaves
+   follow-ups out; everything else on both pages works.
+
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
   one again changes nothing, even after the app is in use: 0093 seeds Fall's
@@ -143,6 +148,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0100 | `0100_admin_cleanup.sql` | Removes the retired `ai_usage.view` permission from roles and deletes leftover founder-pass self-check rows (negative serials). |
 | 0101 | `0101_chat.sql` | batch0 Chat: channels, DMs and group DMs (`chat_*` tables including `chat_mutes`, read-only policies, `chat_can_read()`, realtime on `chat_messages`, private presence and typing topics on `realtime.messages`, a trigram index for search, the private `chat-files` bucket), the starting channels plus one per cohort and team (kept, archived, when their team or cohort is deleted), old DMs and team threads carried in, `discord.manage` removed (not converted), admins kept out of other people's chat bells, and the Discord integration's tables, columns and settings dropped. See `docs/chat.md`. |
 | 0102 | `0102_email_outbox_dedupe_index.sql` | `email_outbox.dedupe_key` gets a plain unique index in place of 0052's partial one, so the scheduled-automation fan-out's `on conflict (dedupe_key)` works. Changes no data and sends nothing by itself. |
+| 0107 | `0107_student_followups.sql` | `student_followups`: who on the team owns a check on a student, the next check date and a factual note (one open per student), written from the drawer on `/admin/progress` and due ones listed in the Overview's attention list. RLS on with no policies, every API privilege revoked. Changes no data and sends nothing. |
 
 ## Verify
 
@@ -220,6 +226,14 @@ select exists (select 1 from pg_index ix
                where ix.indrelid = to_regclass('public.email_outbox')
                  and ix.indisunique and ix.indpred is null and ix.indnkeyatts = 1
                  and a.attname = 'dedupe_key') as ok;
+
+-- 0107
+select to_regclass('public.student_followups') is not null
+   and exists (select 1 from pg_indexes
+               where schemaname = 'public' and tablename = 'student_followups'
+                 and indexname = 'student_followups_one_open_idx')
+   and (select relrowsecurity from pg_class
+        where oid = to_regclass('public.student_followups')) as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,

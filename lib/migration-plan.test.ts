@@ -178,17 +178,38 @@ function productionTables(upTo: number): Set<string> {
   return new Set(real.filter((m) => m.num <= upTo).flatMap((m) => createdTables(m.sql)));
 }
 
+/** Every real file's version from `num` on, in order — the files written after a given point. */
+function versionsFrom(num: number): string[] {
+  return [...new Set(real.filter((m) => m.num >= num).map((m) => m.version))];
+}
+
 test("plan against the real files: a production database that has everything but 0101 and 0102", () => {
-  const notYet = new Set(["0101", "0102"]);
+  // Nothing after 0100 has run: 0101, 0102 and every file written since.
+  const notYet = new Set(versionsFrom(101));
   const checks = new Map(Object.keys(MIGRATION_CHECKS).map((v) => [v, !notYet.has(v)] as [string, boolean]));
   const plan = planMigrations(real, state({ checks, existingTables: productionTables(100) }));
   // 0099 and 0100 only check for an absence, and no later file proves they
   // ran, so they run again — they're idempotent; that's the safe answer.
-  assert.deepEqual(plan.filter((p) => p.status === "pending").map((p) => p.version), ["0099", "0100", "0101", "0102"]);
+  assert.deepEqual(plan.filter((p) => p.status === "pending").map((p) => p.version), ["0099", "0100", ...versionsFrom(101)]);
   assert.equal(plan.filter((p) => p.status === "gap").length, 0);
-  // With 0101 and 0102 run, everything is accounted for.
-  const done = planMigrations(real, state({ checks: new Map([...checks, ["0101", true], ["0102", true]]), existingTables: new Set([...productionTables(100), "profiles", "app_roles"]) }));
+  // With all of them run, everything is accounted for.
+  const allPass = new Map(Object.keys(MIGRATION_CHECKS).map((v) => [v, true] as [string, boolean]));
+  const done = planMigrations(real, state({ checks: allPass, existingTables: new Set([...productionTables(Infinity), "profiles", "app_roles"]) }));
   assert.deepEqual(done.filter((p) => p.status !== "unrecorded" && p.status !== "applied").map((p) => p.version), []);
+});
+
+test("plan against the real files: production as of October 17 (through 0102) needs only the files after it", () => {
+  // 0107 (student follow-ups) is the first of them; its verify query is what
+  // tells the runner it hasn't run.
+  const after = versionsFrom(103);
+  assert.ok(after.includes("0107"));
+  const checks = new Map(Object.keys(MIGRATION_CHECKS).map((v) => [v, !after.includes(v)] as [string, boolean]));
+  const plan = planMigrations(real, state({ checks, existingTables: new Set([...productionTables(102), "profiles", "app_roles"]) }));
+  assert.deepEqual(plan.filter((p) => p.status === "pending").map((p) => p.version), after);
+  assert.equal(plan.filter((p) => p.status === "gap").length, 0);
+  // Once 0107's table, index and RLS are there, nothing is left.
+  const ran = planMigrations(real, state({ checks: new Map([...checks, ...after.map((v) => [v, true] as [string, boolean])]), existingTables: new Set([...productionTables(Infinity), "profiles", "app_roles"]) }));
+  assert.deepEqual(ran.filter((p) => p.status === "pending" || p.status === "gap").map((p) => p.version), []);
 });
 
 test("plan: the newest file recorded but failing its check is an earlier draft, and runs again", () => {

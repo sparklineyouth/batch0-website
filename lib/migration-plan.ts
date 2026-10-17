@@ -91,6 +91,12 @@ where permissions @> array['ai_usage.view']::text[];`,
                where ix.indrelid = to_regclass('public.email_outbox')
                  and ix.indisunique and ix.indpred is null and ix.indnkeyatts = 1
                  and a.attname = 'dedupe_key') as ok;`,
+  "0107": `select to_regclass('public.student_followups') is not null
+   and exists (select 1 from pg_indexes
+               where schemaname = 'public' and tablename = 'student_followups'
+                 and indexname = 'student_followups_one_open_idx')
+   and (select relrowsecurity from pg_class
+        where oid = to_regclass('public.student_followups')) as ok;`,
 };
 
 /**
