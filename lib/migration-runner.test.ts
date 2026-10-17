@@ -149,13 +149,6 @@ test("CONCURRENTLY runs statement by statement, outside a transaction", async ()
   assert.deepEqual((await recorded(pg)).map((r) => r.version), ["0006"]);
 });
 
-test("record: false leaves the version unrecorded (the first of two files sharing it)", async () => {
-  const { pg, db } = await setup();
-  await applyMigration(db, m("0071", "create table public.f (id int);", "a"), { history: await historyColumns(db), record: false });
-  assert.equal(await tableExists(pg, "f"), true);
-  assert.deepEqual(await recorded(pg), []);
-});
-
 test("a project that never had the CLI's history table gets one, in the CLI's shape", async () => {
   const { pg, db } = await setup(false);
   const cols = await ensureHistory(db);

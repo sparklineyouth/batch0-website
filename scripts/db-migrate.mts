@@ -54,9 +54,9 @@
  *                           NEXT_PUBLIC_SUPABASE_URL, and that's intended
  *
  * Exit codes: 0 done (or plan printed), 1 a migration failed, 2 setup problem
- * (no connection string, wrong project, bad flag, gaps found), 3 stopped at a
- * deploy gate (everything before it ran; deploy, then run it again), 4 another
- * run holds the lock.
+ * (no connection string, wrong project, bad flag, gaps found, two files with
+ * one version), 3 stopped at a deploy gate (everything before it ran; deploy,
+ * then run it again), 4 another run holds the lock.
  */
 
 import { createWriteStream, existsSync, readFileSync, type WriteStream } from "node:fs";
@@ -69,6 +69,7 @@ import {
   parseMigrationFile,
   planMigrations,
   sessionConnectionString,
+  sharedVersions,
   supabaseProjectRef,
   touchedTables,
   type MigrationFile,
@@ -414,6 +415,16 @@ async function main(): Promise<void> {
   if (dbRef) say(`  ref   ${dbRef}${appRef === dbRef ? " (matches NEXT_PUBLIC_SUPABASE_URL)" : ""}`);
 
   const migrations = await loadMigrations();
+  // Supabase records one history row per version, so a second file with a
+  // version can never be recorded, here or by the CLI (sharedVersions).
+  const shared = sharedVersions(migrations);
+  if (shared.length) {
+    fail(
+      `Two migration files share a version: ${shared.map((v) => `${v.version} (${v.files.join(", ")})`).join("; ")}.\n` +
+        "  Give one of them an unused number (docs/migrations-2026-10.md, \"Versions\") and run this again. Nothing was changed.",
+      2,
+    );
+  }
   let client: pg.Client;
   try {
     client = await connect(dbUrl);
@@ -521,16 +532,12 @@ async function main(): Promise<void> {
     const history = await ensureHistory(db);
     if (pending.length) say(`\nRunning ${pending.length} migration${pending.length === 1 ? "" : "s"}:`);
     const tty = !!process.stdout.isTTY;
-    for (let i = 0; i < pending.length; i++) {
-      const p = pending[i];
-      // A version two files share (0071) is recorded only with the last of them.
-      const record = !pending.slice(i + 1).some((q) => q.version === p.version);
+    for (const p of pending) {
       const started = Date.now();
       if (tty) process.stdout.write(`  …     ${p.file}`);
       try {
         await applyWithRetry(db, p, {
           history,
-          record,
           onRetry: (attempt, waitMs) => {
             if (tty) process.stdout.write("\n");
             say(`  wait  ${p.file}: a table it needs is busy (lock timeout); trying again in ${waitMs / 1000}s (retry ${attempt}/2)`);

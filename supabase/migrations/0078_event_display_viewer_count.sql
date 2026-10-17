@@ -1,5 +1,14 @@
 -- ============================================================================
--- 0071 — An admin-settable "shown attendees" count for a webinar.
+-- 0078 — An admin-settable "shown attendees" count for a webinar.
+--
+-- Written in September 2026 as 0071_event_display_viewer_count.sql, beside
+-- 0071_scholarships.sql. The Supabase CLI records one history row per version
+-- (its primary key), so the second 0071 could never be recorded and every
+-- push to main failed Supabase's check on it. Renamed, unchanged, into the
+-- unused 0078: it only needs public.events (0005), and no other file reads
+-- the column. Production ran it in September, so there it only needs
+-- recording (`supabase migration repair --status applied 0078`); running it
+-- again changes nothing.
 --
 -- By default a webinar hides its turnout: a viewer must not be able to tell
 -- whether they are one of three people or one of thirty (see canSeeRoster in
@@ -20,7 +29,7 @@
 -- count simply null.
 --
 -- Run in Supabase SQL Editor. Idempotent / safe to re-run.
--- Assumes 0001..0070 are applied.
+-- Assumes 0001..0070 are applied (it only needs public.events, from 0005).
 -- ============================================================================
 
 alter table public.events
