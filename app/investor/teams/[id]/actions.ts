@@ -3,7 +3,8 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertSelf } from "@/lib/server-guards";
 import { notify } from "@/lib/notifications";
-import { runAction, type ActionResult } from "@/lib/action-result";
+import { refuse, runAction, type ActionResult } from "@/lib/action-result";
+import { introRequestDecision } from "@/lib/intro-requests";
 
 async function getRole(userId: string): Promise<string | null> {
   const admin = createAdminClient();
@@ -72,31 +73,59 @@ export async function createIntroRequest(input: {
     // Admins can view the investor surface but should not file intros —
     // intros are recorded against a real investor profile.
     if (role !== "investor") {
-      throw new Error(
+      refuse(
         role === "admin"
           ? "Admins can't file intros from view-as mode — sign in as the investor."
           : "Investors only.",
       );
     }
     const admin = createAdminClient();
-    const { data: team } = await admin
-      .from("teams")
-      .select("name")
-      .eq("id", input.teamId)
-      .maybeSingle();
+    const [{ data: team }, { data: existing, error: existingErr }, { count: openCount, error: countErr }] =
+      await Promise.all([
+        admin.from("teams").select("name").eq("id", input.teamId).maybeSingle(),
+        admin
+          .from("intro_requests")
+          .select("id, status")
+          .eq("investor_id", userId)
+          .eq("team_id", input.teamId)
+          .maybeSingle(),
+        admin
+          .from("intro_requests")
+          .select("id", { count: "exact", head: true })
+          .eq("investor_id", userId)
+          .eq("status", "requested"),
+      ]);
     if (!team) {
-      throw new Error("Team not found.");
+      refuse("Team not found.");
+    }
+    if (existingErr) throw new Error(existingErr.message);
+    if (countErr) throw new Error(countErr.message);
+
+    // One investor can't flood the admin queue, and a request the team has
+    // already moved on is never reset to new (lib/intro-requests.ts).
+    const decision = introRequestDecision({ existing, openCount: openCount ?? 0 });
+    if (decision.kind === "refuse") refuse(decision.message);
+    const message = (input.message ?? "").trim().slice(0, 1000) || null;
+    if (decision.kind === "update-message") {
+      const { error } = await admin
+        .from("intro_requests")
+        .update({ message })
+        .eq("id", existing!.id)
+        // Only while it is still waiting: an admin acting on it a moment ago wins.
+        .eq("status", "requested");
+      if (error) throw new Error(error.message);
+      revalidatePath(`/investor/teams/${input.teamId}`);
+      revalidatePath("/investor/intros");
+      revalidatePath("/admin/intros");
+      return;
     }
     const { error } = await admin
       .from("intro_requests")
+      // ignoreDuplicates: a double-submit racing this one leaves the first
+      // row as it is instead of overwriting whatever the team did with it.
       .upsert(
-        {
-          investor_id: userId,
-          team_id: input.teamId,
-          message: (input.message ?? "").trim().slice(0, 1000) || null,
-          status: "requested",
-        },
-        { onConflict: "investor_id,team_id" },
+        { investor_id: userId, team_id: input.teamId, message, status: "requested" },
+        { onConflict: "investor_id,team_id", ignoreDuplicates: true },
       );
     if (error) throw new Error(error.message);
 
