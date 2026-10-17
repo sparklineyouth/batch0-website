@@ -474,6 +474,23 @@ test("enrollment flags a $0 price, half-set late entry and a close date after da
   assert.deepEqual(e.fix, { editor: "cohort", href: "/admin/cohorts" });
 });
 
+test("a running cohort's old applications close date isn't flagged", () => {
+  // Fall 2026's shape: applications closed Oct 9, weeks after the Sep 14 start,
+  // with late entry (deadline and plan) running until Oct 16.
+  const cohort = {
+    ...readyInput().cohort,
+    status: "active",
+    starts_on: "2026-09-14",
+    ends_on: "2026-11-13",
+    applications_close_at: "2026-10-09T23:59:00Z",
+    late_entry_until: "2026-10-17T03:59:59.999Z",
+    catch_up_plan: "Watch the week 1–4 recordings and book a call.",
+  };
+  const e = byId(cohortReadiness(readyInput({ cohort, now: new Date("2026-10-15T16:00:00Z") })).checks, "enrollment");
+  assert.equal(e.state, "pass");
+  assert.equal(e.detail, "$130 list · 6 of 24 seats · late entry until Oct 16.");
+});
+
 test("non-whole prices keep their cents", () => {
   const cohort = { ...readyInput().cohort, price_cents: 15099 };
   assert.match(byId(cohortReadiness(readyInput({ cohort })).checks, "enrollment").detail, /^\$150\.99 list/);

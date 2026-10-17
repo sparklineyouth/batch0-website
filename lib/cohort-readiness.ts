@@ -384,7 +384,8 @@ function enrollmentCheck(c: Ctx): ReadinessCheck {
   }
   // Once a cohort starts, admissions read late_entry_until, not
   // applications_close_at — a close date after day one is never reached.
-  if (k.applications_close_at && k.starts_on && Number.isFinite(Date.parse(k.applications_close_at))) {
+  // Only worth saying beforehand: a running cohort's close date is history.
+  if (!c.started && k.applications_close_at && k.starts_on && Number.isFinite(Date.parse(k.applications_close_at))) {
     if (easternDate(k.applications_close_at) > k.starts_on) {
       flag("warn", `Applications close ${easternDay(k.applications_close_at)}, after the ${day(k.starts_on)} start; from day one only late entry admits.`);
     }
