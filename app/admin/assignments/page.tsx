@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadCohortBoard } from "@/lib/assignments-server";
 import { cohortWeekCount, formatEastern, formatEasternDay } from "@/lib/assignments";
+import { isUuid } from "@/lib/support-access";
 import { buttonClasses } from "@/components/ui/button";
 import { AssignmentEditor, type EditorAssignment } from "./assignment-editor";
 import { CompletionMatrix } from "./completion-matrix";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 const STATUS_NOTE: Record<string, string> = { draft: "Draft", archived: "Archived" };
 
 export default async function AdminAssignmentsPage(props: {
-  searchParams: Promise<{ cohort?: string; filter?: string }>;
+  searchParams: Promise<{ cohort?: string; filter?: string; review?: string }>;
 }) {
   await requirePermission("assignments.manage");
   const searchParams = await props.searchParams;
@@ -67,6 +68,13 @@ export default async function AdminAssignmentsPage(props: {
     if (s.status !== "excused") handedIn.set(s.assignment_id, (handedIn.get(s.assignment_id) ?? 0) + 1);
   }
   const nameOf = new Map(board.students.map((s) => [s.userId, s.name || s.email || "Student"]));
+  // ?review=<assignment id>:<student id> opens that cell's review drawer —
+  // the link a "Waiting for feedback" row on the Overview carries.
+  const [reviewAssignment, reviewStudent] = (searchParams.review ?? "").split(":");
+  const initialCell =
+    isUuid(reviewAssignment) && isUuid(reviewStudent)
+      ? { assignmentId: reviewAssignment.toLowerCase(), userId: reviewStudent.toLowerCase() }
+      : null;
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -114,6 +122,7 @@ export default async function AdminAssignmentsPage(props: {
                 columns={board.columns.map((a) => ({ id: a.id, title: a.title, week: a.week, dueAt: a.due_at }))}
                 rows={board.rows.map((r) => ({ ...r, name: nameOf.get(r.userId) ?? "Student" }))}
                 missingOnly={searchParams.filter === "missing"}
+                initialCell={initialCell}
               />
             </div>
           </section>

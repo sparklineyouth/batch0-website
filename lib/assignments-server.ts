@@ -380,32 +380,47 @@ export type QueueItem = SubmissionRow & {
 };
 
 /**
+ * The PostgREST `or` filter that narrows submissions to a mentor's scope —
+ * their cohorts' assignments, or their own students. `null` = program-wide
+ * (`scope` null); "none" = an empty scope, which sees nothing. Shared by the
+ * review queue and the Overview's attention list, so the two can't disagree
+ * about whose work a mentor is waiting on.
+ */
+async function reviewScopeFilter(
+  admin: Db,
+  scope: MentorScope | null,
+): Promise<{ ok: true; filter: string | null | "none" } | { ok: false; error: unknown }> {
+  if (!scope) return { ok: true, filter: null };
+  let assignmentIds: string[] = [];
+  if (scope.cohortIds.length) {
+    const { data, error } = await admin.from("course_assignments").select("id").in("cohort_id", scope.cohortIds);
+    if (error) return { ok: false, error };
+    assignmentIds = (data ?? []).map((r) => r.id as string);
+  }
+  const halves = [
+    assignmentIds.length ? `assignment_id.in.(${assignmentIds.join(",")})` : null,
+    scope.studentIds.length ? `user_id.in.(${scope.studentIds.join(",")})` : null,
+  ].filter(Boolean);
+  return { ok: true, filter: halves.length ? halves.join(",") : "none" };
+}
+
+/**
  * Submitted work waiting on a reviewer, plus the latest reviewed. `scope`
  * null = program-wide (admin-area viewers); an empty scope sees nothing.
+ * `pendingTotal` is every waiting submission; `pending` the oldest 200.
  */
 export async function loadReviewQueue(
   admin: Db,
   scope: MentorScope | null,
-): Promise<{ ready: boolean; pending: QueueItem[]; recent: QueueItem[] }> {
-  let filter: string | null = null;
-  if (scope) {
-    let assignmentIds: string[] = [];
-    if (scope.cohortIds.length) {
-      const { data, error } = await admin.from("course_assignments").select("id").in("cohort_id", scope.cohortIds);
-      if (error) return { ...fail(error), pending: [], recent: [] };
-      assignmentIds = (data ?? []).map((r) => r.id as string);
-    }
-    const halves = [
-      assignmentIds.length ? `assignment_id.in.(${assignmentIds.join(",")})` : null,
-      scope.studentIds.length ? `user_id.in.(${scope.studentIds.join(",")})` : null,
-    ].filter(Boolean);
-    if (halves.length === 0) return { ready: true, pending: [], recent: [] };
-    filter = halves.join(",");
-  }
+): Promise<{ ready: boolean; pending: QueueItem[]; pendingTotal: number; recent: QueueItem[] }> {
+  const scoped = await reviewScopeFilter(admin, scope);
+  if (!scoped.ok) return { ...fail(scoped.error), pending: [], pendingTotal: 0, recent: [] };
+  const filter = scoped.filter;
+  if (filter === "none") return { ready: true, pending: [], pendingTotal: 0, recent: [] };
   const select = `${SUBMISSION_COLUMNS}, assignment:course_assignments!inner(id, title, week, due_at, cohort_id), student:profiles!course_assignment_submissions_user_id_fkey(full_name, email)`;
   let pendingQ = admin
     .from("course_assignment_submissions")
-    .select(select)
+    .select(select, { count: "exact" })
     .eq("status", "submitted")
     .order("submitted_at", { ascending: true })
     .limit(200);
@@ -420,14 +435,67 @@ export async function loadReviewQueue(
     recentQ = recentQ.or(filter);
   }
   const [pending, recent] = await Promise.all([pendingQ, recentQ]);
-  if (pending.error) return { ...fail(pending.error), pending: [], recent: [] };
+  if (pending.error) return { ...fail(pending.error), pending: [], pendingTotal: 0, recent: [] };
   const norm = (rows: any[] | null): QueueItem[] =>
     (rows ?? []).map((r) => ({
       ...r,
       assignment: Array.isArray(r.assignment) ? r.assignment[0] : r.assignment,
       student: (Array.isArray(r.student) ? r.student[0] : r.student) ?? { full_name: null, email: null },
     }));
-  return { ready: true, pending: norm(pending.data), recent: norm(recent.data) };
+  const items = norm(pending.data);
+  return { ready: true, pending: items, pendingTotal: pending.count ?? items.length, recent: norm(recent.data) };
+}
+
+/** A submission waiting for feedback, as the attention list shows it: no body. */
+export type FeedbackWaiting = {
+  id: string;
+  assignmentId: string;
+  userId: string;
+  submittedAt: string | null;
+  late: boolean;
+  assignment: { title: string; week: number | null; cohortId: string };
+  studentName: string | null;
+};
+
+/**
+ * The oldest `limit` submissions waiting for feedback in this scope, and how
+ * many there are — the same rows, in the same order, as the review queue's
+ * "To review" (loadReviewQueue), without reading anyone's work.
+ */
+export async function loadFeedbackQueue(
+  admin: Db,
+  scope: MentorScope | null,
+  opts: { limit: number },
+): Promise<{ ready: boolean; total: number; items: FeedbackWaiting[] }> {
+  const scoped = await reviewScopeFilter(admin, scope);
+  if (!scoped.ok) return { ...fail(scoped.error), total: 0, items: [] };
+  if (scoped.filter === "none") return { ready: true, total: 0, items: [] };
+  let q = admin
+    .from("course_assignment_submissions")
+    .select(
+      "id, assignment_id, user_id, submitted_at, late, assignment:course_assignments!inner(title, week, cohort_id), student:profiles!course_assignment_submissions_user_id_fkey(full_name, email)",
+      { count: "exact" },
+    )
+    .eq("status", "submitted")
+    .order("submitted_at", { ascending: true })
+    .limit(Math.max(1, opts.limit));
+  if (scoped.filter) q = q.or(scoped.filter);
+  const { data, error, count } = await q;
+  if (error) return { ...fail(error), total: 0, items: [] };
+  const items = ((data ?? []) as any[]).map((r): FeedbackWaiting => {
+    const a = Array.isArray(r.assignment) ? r.assignment[0] : r.assignment;
+    const st = Array.isArray(r.student) ? r.student[0] : r.student;
+    return {
+      id: r.id,
+      assignmentId: r.assignment_id,
+      userId: r.user_id,
+      submittedAt: r.submitted_at ?? null,
+      late: !!r.late,
+      assignment: { title: a?.title ?? "Assignment", week: a?.week ?? null, cohortId: a?.cohort_id ?? "" },
+      studentName: st?.full_name?.trim() || st?.email || null,
+    };
+  });
+  return { ready: true, total: count ?? items.length, items };
 }
 
 // ---------------------------------------------------------------------------

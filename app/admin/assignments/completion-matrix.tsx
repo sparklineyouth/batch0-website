@@ -27,13 +27,23 @@ export function CompletionMatrix({
   columns,
   rows,
   missingOnly: initialMissingOnly,
+  initialCell = null,
 }: {
   columns: MatrixColumn[];
   rows: MatrixStudentRow[];
   missingOnly: boolean;
+  /** A cell whose drawer is open on arrival (a deep link from the Overview). */
+  initialCell?: { assignmentId: string; userId: string } | null;
 }) {
   const [missingOnly, setMissingOnly] = useState(initialMissingOnly);
   const [cell, setCell] = useState<{ assignmentId: string; userId: string } | null>(null);
+  // Opened after mount, not as the initial state: the drawer is a portal the
+  // server never renders, so it must not be there on the hydrating pass.
+  const initialKey = initialCell ? `${initialCell.assignmentId}:${initialCell.userId}` : null;
+  useEffect(() => {
+    if (initialCell) setCell(initialCell);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialKey]);
   const shown = missingOnly ? rows.filter((r) => r.missing >= 2) : rows;
   const flagged = rows.filter((r) => r.missing >= 2).length;
 
