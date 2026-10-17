@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { historyRange, recordingOrFilter, takePage } from "@/lib/event-history";
 
 /**
  * Cached reads for the installed app.
@@ -115,9 +116,29 @@ export type AppEvent = {
   assets_shared_at?: string | null;
 };
 
+const EVENT_COLUMNS =
+  "id, title, type, description, starts_at, ends_at, location, live_mode, zoom_url, recording_url, live_started_at, live_ended_at, assets_shared_at";
+
 /**
- * Upcoming and recent events for a cohort. "Upcoming" reaches back a day so
- * a session that is running (or that a host started early) still shows.
+ * The `events read` policy's visibility, as `and` lists for PostgREST: every
+ * public event, and the enrolled events of this cohort. The service-role
+ * client bypasses that policy, so these filters are what enforce it here.
+ */
+function visibilityScopes(cohortId: string | null): string[] {
+  return cohortId
+    ? ["visibility.eq.public", `visibility.eq.enrolled,cohort_id.eq.${cohortId}`]
+    : ["visibility.eq.public"];
+}
+
+function visibleEvents(cohortId: string | null) {
+  const q = createAdminClient().from("events").select(EVENT_COLUMNS);
+  const [pub, cohort] = visibilityScopes(cohortId);
+  return cohort ? q.or(`${pub},and(${cohort})`) : q.eq("visibility", "public");
+}
+
+/**
+ * Upcoming events for a cohort. "Upcoming" reaches back a day so a session
+ * that is running (or that a host started early) still shows.
  *
  * Visibility mirrors the `events read` policy: enrolled events of this
  * cohort, and every public one.
@@ -127,43 +148,68 @@ export type AppEvent = {
  * minute ago — harmless here, but the same mistake on a shorter TTL silently
  * shows an event as upcoming after it has started. Bucketing to the minute
  * makes the key honest about what was actually fetched.
+ *
+ * Past events are getCohortRecordings' job: this used to read the five newest
+ * and the Events screen kept the recorded ones, so five recent sessions
+ * without a recording hid every older one.
  */
 export function getCohortEvents(
   scope: CohortScope,
   nowIso: string,
-): Promise<{ upcoming: AppEvent[]; past: AppEvent[] }> {
+): Promise<{ upcoming: AppEvent[] }> {
   const nowBucket = nowIso.slice(0, 16); // YYYY-MM-DDTHH:MM
   const { cohortId } = scope;
   return unstable_cache(
     async () => {
-      const admin = createAdminClient();
-      const cols =
-        "id, title, type, description, starts_at, ends_at, location, live_mode, zoom_url, recording_url, live_started_at, live_ended_at, assets_shared_at";
-      const base = () => {
-        const q = admin.from("events").select(cols);
-        return cohortId
-          ? q.or(`visibility.eq.public,and(visibility.eq.enrolled,cohort_id.eq.${cohortId})`)
-          : q.eq("visibility", "public");
-      };
       const since = new Date(new Date(nowIso).getTime() - 24 * 60 * 60_000).toISOString();
-      const [up, past] = await Promise.all([
-        base()
-          .gte("starts_at", since)
-          .order("starts_at", { ascending: true })
-          .limit(20),
-        base()
-          .lt("starts_at", nowIso)
-          .order("starts_at", { ascending: false })
-          .limit(5),
-      ]);
+      const up = await visibleEvents(cohortId)
+        .gte("starts_at", since)
+        .order("starts_at", { ascending: true })
+        .limit(20);
       if (up.error) throw new Error(up.error.message);
-      if (past.error) throw new Error(past.error.message);
-      return {
-        upcoming: (up.data ?? []) as AppEvent[],
-        past: (past.data ?? []) as AppEvent[],
-      };
+      return { upcoming: (up.data ?? []) as AppEvent[] };
     },
     ["app-events", cohortId ?? "none", nowBucket],
+    { revalidate: CONTENT_TTL, tags: scopeTags(scope) },
+  )();
+}
+
+/**
+ * One page of a cohort's past events that have something to watch, newest
+ * first (lib/event-history.ts pages it; `hasMore` says an older page exists).
+ *
+ * The recording filter is part of the query, scoped the same way as above,
+ * so paging walks every recording and nothing else. A hosted event matches
+ * once its assets are shared; whether a take really exists is a per-request
+ * read (recordedEventIds) the caller makes, so a page can come back a row or
+ * two short of what it shows — never with a recording skipped.
+ */
+export function getCohortRecordings(
+  scope: CohortScope,
+  nowIso: string,
+  page: number,
+): Promise<{ rows: AppEvent[]; hasMore: boolean }> {
+  const nowBucket = nowIso.slice(0, 16);
+  const { cohortId } = scope;
+  return unstable_cache(
+    async () => {
+      const { from, to } = historyRange(page);
+      const { data, error } = await createAdminClient()
+        .from("events")
+        .select(EVENT_COLUMNS)
+        // ONE .or(): visibility AND has-a-recording, spelled out as a flat
+        // `or` of `and`s (recordingOrFilter), so nothing rests on how two
+        // `or=` parameters combine.
+        .or(recordingOrFilter(visibilityScopes(cohortId)))
+        .lt("starts_at", nowIso)
+        .order("starts_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, to);
+      if (error) throw new Error(error.message);
+      return takePage((data ?? []) as AppEvent[]);
+    },
+    // `page` is in the key: page 2 is different rows from page 1.
+    ["app-recordings", cohortId ?? "none", nowBucket, String(page)],
     { revalidate: CONTENT_TTL, tags: scopeTags(scope) },
   )();
 }
