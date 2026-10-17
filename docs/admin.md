@@ -29,6 +29,32 @@ the same: `/admin/teams` opens on `teams.manage` or `moderation.manage` and
 shows each holder its part (the team list, the logo review queue on top); a
 team's own pages stay on `teams.manage`.
 
+## People
+
+- **Roles.** The email form at `/admin/roles`, the picker on a person's row
+  and profile, and the bulk change all go through `changeRoles`
+  (`lib/role-change-server.ts`) and one rule (`lib/role-change.ts`): nobody
+  changes their own role (full admins included), nobody assigns a role that
+  holds more than theirs, nobody changes someone whose current role holds
+  more than theirs (so only a full admin re-roles a full admin), and the site
+  always keeps one full admin. Rows the viewer can't change show a badge, not
+  a picker; a bulk change skips them and counts them as skipped. Migration
+  0103's `keep_a_full_admin` triggers hold the last rule in the database too,
+  for any writer and for two admins demoting each other at once.
+- **Moving a student** (profile → Manage → Move to a different cohort) is one
+  database transaction (`admin_move_student_cohort`, 0103): the enrollment
+  shown as current, the application it came from and their live scholarship
+  rows move together, or nothing does (a full cohort, an active checkout).
+  Someone added with "Add a person" has no application and keeps their
+  access. Earlier cohorts, other applications and payments stay put. Until
+  0103 runs the button says it needs the migration.
+- **What a profile shows.** It opens on `people.view`. Payments (amounts,
+  statuses, Stripe ids) need `payments.view`, the same as `/admin/payments`;
+  fees & fines need `charges.manage` or `payments.view`. Neither is fetched
+  for a viewer who can't see it. Each Manage control renders only for the
+  permission its action asserts (`lib/people-profile-access.ts`; a test reads
+  the actions to keep the two in step).
+
 ## Folded pages
 
 - **Pass requests** live at the top of `/admin/passes` ("Feedback requests",
