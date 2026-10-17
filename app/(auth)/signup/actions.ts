@@ -6,11 +6,14 @@ import { Templates } from "@/lib/email/templates";
 import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
 import { friendlyAuthError } from "@/lib/auth-errors";
+import { HONEYPOT_MESSAGE, honeypotTripped } from "@/lib/honeypot";
 
 type SignUpInput = {
   email: string;
   password: string;
   fullName: string;
+  /** The hidden honeypot field (lib/honeypot.ts). Empty for every person. */
+  trap?: string;
 };
 
 type SignUpResult = { ok: true } | { ok: false; error: string };
@@ -31,6 +34,17 @@ type SignUpResult = { ok: true } | { ok: false; error: string };
  * for a normal signup.
  */
 export async function signUpAction(input: SignUpInput): Promise<SignUpResult> {
+  // /apply is behind sign-in, so this form is where its anonymous traffic —
+  // and any bot working through the funnel — actually arrives. An account
+  // here is created pre-confirmed and sent a welcome email, so a script
+  // filling this form costs a junk account and a message to whatever address
+  // it typed. Refused before anything is created or sent, and logged at warn
+  // so a wave of them is visible without paging anyone. No address in the
+  // log line: it is whatever the bot typed.
+  if (honeypotTripped(input.trap)) {
+    console.warn("[signup] honeypot field was filled; no account created");
+    return { ok: false, error: HONEYPOT_MESSAGE };
+  }
   const email = input.email.trim().toLowerCase();
   const fullName = input.fullName.trim();
   const password = input.password;
