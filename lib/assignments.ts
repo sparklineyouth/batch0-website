@@ -426,6 +426,46 @@ export function buildMatrix(args: {
   });
 }
 
+export type TeamCompletion = {
+  /** Handed in, summed over the team's enrolled members. */
+  done: number;
+  /** Released and not excused, summed the same way. */
+  due: number;
+  /** Past due with nothing in, summed. */
+  missing: number;
+  /** Whole-number done/due, or null while nothing has come due. */
+  percent: number | null;
+  /** Members with a row on the cohort's board — enrolled in the team's cohort. */
+  counted: number;
+};
+
+/**
+ * One team's share of its cohort's completion matrix: the number on the
+ * admin team page that says how far along the team is, for whoever is
+ * judging readiness before Demo Day.
+ *
+ * Summed over pairs, not averaged over people: three of four in for one
+ * student and none of four for another is three of eight, which is what the
+ * team has actually handed in. A member with no row (a mentor added to the
+ * team, or someone not enrolled in its cohort) owes nothing and is left out
+ * rather than counted as zero.
+ */
+export function teamCompletion(rows: readonly MatrixRow[], memberIds: readonly string[]): TeamCompletion {
+  const members = new Set(memberIds);
+  let done = 0;
+  let due = 0;
+  let missing = 0;
+  let counted = 0;
+  for (const row of rows) {
+    if (!members.has(row.userId)) continue;
+    counted++;
+    done += row.done;
+    due += row.due;
+    missing += row.missing;
+  }
+  return { done, due, missing, counted, percent: due > 0 ? Math.round((done / due) * 100) : null };
+}
+
 // ---------------------------------------------------------------------------
 // Admin form
 // ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ import {
   seriesWeeks,
   statusLabel,
   studentGroup,
+  teamCompletion,
   validateSubmission,
 } from "./assignments.ts";
 
@@ -214,6 +215,17 @@ test("matrix: audience, excusal, missing counts", () => {
   assert.equal(ana.done, 0);
   assert.equal(ana.due, 4);
   assert.equal(rows.filter((r) => r.missing >= 2).length, 1);
+
+  // The admin team page's number: pairs summed over the team, so Ana's 0 of 4
+  // and Ben's 1 of 2 are 1 of 6 — and a member with no row (a mentor on the
+  // team, someone outside its cohort) is left out, not counted as zero.
+  assert.deepEqual(teamCompletion(rows, ["ana", "ben", "mentor"]), {
+    done: 1, due: 6, missing: 3, counted: 2, percent: 17,
+  });
+  assert.deepEqual(teamCompletion(rows, ["ben"]), { done: 1, due: 2, missing: 0, counted: 1, percent: 50 });
+  // Nobody enrolled, or nothing released yet: no percentage to show.
+  assert.equal(teamCompletion(rows, ["mentor"]).percent, null);
+  assert.equal(teamCompletion([], ["ana"]).counted, 0);
 });
 
 test("admin form normalisation", () => {
