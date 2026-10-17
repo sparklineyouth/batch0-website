@@ -13,12 +13,21 @@ import {
   CheckCircle,
   CircleDashed,
   Receipt,
+  ChevronDown,
 } from "lucide-react";
 import { getStudentAccess } from "@/lib/access";
 import { fmtDateOnly } from "@/lib/pre-cohort";
 import { FLOW_STAGES } from "@/lib/flows";
 import { sortCategories } from "@/lib/resource-categories";
+import {
+  PRE_COHORT_SHELF,
+  matchesResourceQuery,
+  parseResourceQuery,
+  parseResourceShelf,
+  resourcesHref,
+} from "@/lib/resource-search";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
+import { ResourceSearch } from "./resource-search";
 
 export const metadata = { title: "Resources · batch0" };
 
@@ -34,15 +43,19 @@ function fmtBytes(n: number | null) {
   return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-export default async function DashboardResourcesPage() {
+export default async function DashboardResourcesPage(props: {
+  searchParams: Promise<{ q?: string | string[]; shelf?: string | string[] }>;
+}) {
   const user = await requireUser();
+  const searchParams = await props.searchParams;
   const profile = await getProfile();
   const access = await getStudentAccess(profile?.role ?? "student");
 
   // Enrolled-only, in two views:
   //  - full: enrolled with a started cohort (admins report enrolled from
-  //    getStudentAccess, so they preview this) — everything, with
-  //    pre-cohort items grouped in their own section up top.
+  //    getStudentAccess, so they preview this) — everything, with the
+  //    pre-cohort items folded into one closed "Before day one" block at
+  //    the foot of the page.
   //  - pre-cohort section only: enrolled but the cohort hasn't started.
   //  - locked: everyone else. Acceptance alone opens nothing — the seat
   //    has to be paid for first (RLS in migration 0046 matches).
@@ -79,23 +92,62 @@ export default async function DashboardResourcesPage() {
         .eq("user_id", user.id),
     ]);
 
-  const flows = (flowRows ?? []).filter((f: any) => f.status === "published");
+  const allFlows = (flowRows ?? []).filter((f: any) => f.status === "published");
   const progressByFlow = new Map(
     (progressRows ?? []).map((p: any) => [p.flow_id, p]),
   );
 
-  const preCohortRows = (resources ?? []).filter(
+  const allPreCohort = (resources ?? []).filter(
     (r: any) => r.pre_cohort === true,
   );
-  const regularRows = (resources ?? []).filter(
+  const allRegular = (resources ?? []).filter(
     (r: any) => r.pre_cohort !== true,
   );
+
+  // ---- The search row (lib/resource-search.ts) ----
+  // It narrows what RLS already returned; it never fetches anything more, and
+  // every row still opens through /open/[id]. Shelves are the headings the
+  // page has: the pre-cohort block (only beside other shelves), then the
+  // categories in page order.
+  const hasPreCohort = allFlows.length > 0 || allPreCohort.length > 0;
+  const shelfOf = (r: any): string => (r as any).category || "general";
+  const allCategories = sortCategories(allRegular.map(shelfOf));
+  const shelves = fullAccess
+    ? [
+        ...(hasPreCohort ? [{ value: PRE_COHORT_SHELF, label: "Pre-cohort" }] : []),
+        ...allCategories.map((c) => ({ value: c, label: c })),
+      ]
+    : [];
+  const q = parseResourceQuery(searchParams.q);
+  const shelf = parseResourceShelf(
+    searchParams.shelf,
+    shelves.map((x) => x.value),
+  );
+  const filtering = !!q || !!shelf;
+  const inPreShelf = !shelf || shelf === PRE_COHORT_SHELF;
+  const flows = inPreShelf
+    ? allFlows.filter((f: any) => matchesResourceQuery([f.title, f.tagline], q))
+    : [];
+  const preCohortRows = inPreShelf
+    ? allPreCohort.filter((r: any) =>
+        matchesResourceQuery([r.title, r.description, r.category], q),
+      )
+    : [];
+  const regularRows =
+    shelf === PRE_COHORT_SHELF
+      ? []
+      : allRegular.filter(
+          (r: any) =>
+            (!shelf || shelfOf(r) === shelf) &&
+            matchesResourceQuery([r.title, r.description, shelfOf(r)], q),
+        );
+  const matchCount = flows.length + preCohortRows.length + regularRows.length;
 
   // Mint short signed URLs for the storage-backed entries we actually
   // render (RLS already filtered reads; this keeps pre-cohort students
   // from getting URLs for anything outside their section).
   const admin = createAdminClient();
-  const paths = (fullAccess ? resources ?? [] : preCohortRows)
+  const paths = [...preCohortRows, ...(fullAccess ? regularRows : [])]
     .map((r: any) => r.storage_path)
     .filter(Boolean) as string[];
   const signed = new Map<string, string>();
@@ -110,7 +162,7 @@ export default async function DashboardResourcesPage() {
 
   const byCategory = new Map<string, any[]>();
   for (const r of regularRows) {
-    const cat = (r as any).category || "general";
+    const cat = shelfOf(r);
     const arr = byCategory.get(cat) ?? [];
     arr.push(r);
     byCategory.set(cat, arr);
@@ -119,6 +171,28 @@ export default async function DashboardResourcesPage() {
   const categories = sortCategories(byCategory.keys());
 
   const startDate = fmtDateOnly(access.cohortStartsOn);
+
+  // Everything before day one: the Before One worksheets and the pre-cohort
+  // resources. It is the whole page until kickoff, so it leads there.
+  const preCohortMaterial = (
+    <PreCohortMaterial
+      flows={flows}
+      progressByFlow={progressByFlow}
+      rows={preCohortRows}
+      signed={signed}
+      // Before kickoff the empty section explains itself; after it, or with a
+      // search narrowing it to nothing, an empty heading is just noise.
+      showEmpty={!fullAccess && !filtering}
+    />
+  );
+  // After kickoff it is finished business: one closed line at the foot of
+  // the page instead of the first screen, with the worksheet tally so nothing
+  // unfinished is hidden without a trace. A search that matches inside it
+  // opens it, so a result is never behind a click.
+  const flowsDone = allFlows.filter((f: any) => progressByFlow.get(f.id)?.completed_at).length;
+  const showPreCohort = fullAccess
+    ? (filtering ? flows.length + preCohortRows.length > 0 : hasPreCohort)
+    : true;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -129,10 +203,103 @@ export default async function DashboardResourcesPage() {
           : `A head start before kickoff${startDate ? ` on ${startDate}` : ""}.`}
       </p>
 
-      {/* Before One — the interactive pre-cohort system. Flows are
-          admin-curated in /admin/flows; progress is per-student. */}
+      {((resources?.length ?? 0) > 0 || allFlows.length > 0) && (
+        <div className="mt-8">
+          <ResourceSearch initialQuery={q} shelf={shelf} shelves={shelves} />
+          {filtering && (
+            <p className="mt-3 text-xs text-ink-faint" role="status">
+              {matchCount === 0
+                ? q
+                  ? `Nothing matches “${q}”.`
+                  : "Nothing on this shelf."
+                : `${matchCount} ${matchCount === 1 ? "match" : "matches"}.`}{" "}
+              <Link href={resourcesHref({})} className="text-phosphor-ink hover:underline">
+                Clear
+              </Link>
+            </p>
+          )}
+        </div>
+      )}
+
+      {!fullAccess && showPreCohort && <div className="mt-10">{preCohortMaterial}</div>}
+
+      <div className="mt-10 space-y-8">
+        {fullAccess &&
+          categories.map((cat) => (
+            <div key={cat}>
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
+                {cat}
+              </h2>
+              <ResourceList rows={byCategory.get(cat) ?? []} signed={signed} />
+            </div>
+          ))}
+
+        {fullAccess && (resources?.length ?? 0) === 0 && allFlows.length === 0 && (
+          <Card>
+            <p className="text-sm text-ink-soft">
+              Nothing here yet — staff haven't uploaded any resources.
+            </p>
+          </Card>
+        )}
+
+        {fullAccess && showPreCohort && (
+          <details
+            open={filtering}
+            // A named group: the worksheet cards inside are `group`s of their
+            // own, and a bare one here would light every card on hover.
+            className="group/before rounded-xl border border-line bg-paper open:bg-transparent"
+          >
+            <summary className="press flex cursor-pointer list-none items-center gap-3 px-5 py-4 hover:bg-wash [&::-webkit-details-marker]:hidden">
+              <Sparkles className="h-4 w-4 shrink-0 text-phosphor-ink" aria-hidden />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-ink">Before day one</span>
+                <span className="mt-0.5 block text-xs text-ink-faint">
+                  {[
+                    allFlows.length > 0
+                      ? `${flowsDone} of ${allFlows.length} worksheet${allFlows.length === 1 ? "" : "s"} done`
+                      : null,
+                    allPreCohort.length > 0
+                      ? `${allPreCohort.length} pre-cohort resource${allPreCohort.length === 1 ? "" : "s"}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              </span>
+              <ChevronDown
+                className="h-4 w-4 shrink-0 text-ink-faint transition-transform group-open/before:rotate-180"
+                aria-hidden
+              />
+            </summary>
+            <div className="px-5 pb-6">{preCohortMaterial}</div>
+          </details>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Before One (the interactive pre-cohort worksheets, admin-curated in
+ * /admin/flows, progress per student) and the pre-cohort resources.
+ */
+function PreCohortMaterial({
+  flows,
+  progressByFlow,
+  rows,
+  signed,
+  showEmpty,
+}: {
+  flows: any[];
+  progressByFlow: Map<string, any>;
+  rows: any[];
+  signed: Map<string, string>;
+  showEmpty: boolean;
+}) {
+  return (
+    <div className="space-y-10">
       {flows.length > 0 && (
-        <section className="mt-10">
+        <section>
           <div className="rounded-xl border border-phosphor/25 bg-phosphor/[0.04] p-5">
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-phosphor-ink">
               Before One
@@ -224,44 +391,22 @@ export default async function DashboardResourcesPage() {
         </section>
       )}
 
-      <div className="mt-10 space-y-8">
-        {/* Pre-cohort section — the only section pre-cohort students see,
-            and a labeled subsection for everyone else. */}
-        {(preCohortRows.length > 0 || !fullAccess) && (
-          <div>
-            <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
-              <Sparkles className="h-3.5 w-3.5" /> Pre-cohort resources
-            </h2>
-            {preCohortRows.length === 0 ? (
-              <Card>
-                <p className="text-sm text-ink-soft">
-                  Nothing here yet.
-                </p>
-              </Card>
-            ) : (
-              <ResourceList rows={preCohortRows} signed={signed} />
-            )}
-          </div>
-        )}
-
-        {fullAccess &&
-          categories.map((cat) => (
-            <div key={cat}>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
-                {cat}
-              </h2>
-              <ResourceList rows={byCategory.get(cat) ?? []} signed={signed} />
-            </div>
-          ))}
-
-        {fullAccess && (resources?.length ?? 0) === 0 && (
-          <Card>
-            <p className="text-sm text-ink-soft">
-              Nothing here yet — staff haven't uploaded any resources.
-            </p>
-          </Card>
-        )}
-      </div>
+      {(rows.length > 0 || showEmpty) && (
+        <div>
+          <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
+            <Sparkles className="h-3.5 w-3.5" /> Pre-cohort resources
+          </h2>
+          {rows.length === 0 ? (
+            <Card>
+              <p className="text-sm text-ink-soft">
+                Nothing here yet.
+              </p>
+            </Card>
+          ) : (
+            <ResourceList rows={rows} signed={signed} />
+          )}
+        </div>
+      )}
     </div>
   );
 }
