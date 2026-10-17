@@ -350,6 +350,9 @@ export async function POST(req: Request) {
   const stream = new ReadableStream({
     async start(controller) {
       let assembled = "";
+      // Set once the assistant message is in ai_messages: a failure after
+      // that (quota accrual, the title update) didn't cost the student a reply.
+      let saved = false;
       let usage:
         | {
             input_tokens?: number;
@@ -417,7 +420,7 @@ export async function POST(req: Request) {
         const cacheRead = usage?.cache_read_input_tokens ?? 0;
 
         // Persist the assistant message + its token cost.
-        await admin.from("ai_messages").insert({
+        const { error: saveError } = await admin.from("ai_messages").insert({
           conversation_id: conversationId,
           role: "assistant",
           content: assembled,
@@ -426,6 +429,8 @@ export async function POST(req: Request) {
           cache_creation_tokens: cacheCreation,
           cache_read_tokens: cacheRead,
         });
+        if (saveError) console.error("[ai-chat] reply not saved", saveError.message);
+        else saved = true;
 
         // Accrue against the monthly quota; this also issues a fee
         // charge for any overage portion of this request.
@@ -465,9 +470,26 @@ export async function POST(req: Request) {
             .eq("id", conversationId);
         }
       } catch (err: any) {
-        controller.enqueue(
-          encoder.encode(`\n\n[error: ${err?.message ?? "stream failed"}]`),
-        );
+        // A reply that dies mid-stream saves nothing past the user's message:
+        // not the partial text, not its tokens (PRODUCTION_READINESS.md, P3
+        // #7). This line is the only trace it leaves — it used to leave none
+        // on the server at all. The student gets a plain instruction instead
+        // of the provider's raw error JSON; what streamed before the failure
+        // stays on their screen above it. A failure after the reply was saved
+        // (quota accrual, the title) costs them nothing, so it says nothing.
+        console.error("[ai-chat] stream failed", {
+          conversationId,
+          streamedChars: assembled.length,
+          saved,
+          error: err?.message ?? String(err),
+        });
+        if (!saved) {
+          controller.enqueue(
+            encoder.encode(
+              `\n\n_The reply was cut off by an error on our side and wasn't saved. Send your message again._`,
+            ),
+          );
+        }
       } finally {
         controller.close();
       }
