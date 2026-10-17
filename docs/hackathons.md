@@ -20,10 +20,12 @@ Two migrations, applied around the deploy (expand → deploy → contract):
    policy (the new code writes only through validated server actions) and
    stamps any entry the old code wrote in the gap.
 
-Both are idempotent. `supabase db push` refuses in this repo (two `0071_*`
-files share a version, and 0085/0086 on the live database came from another
-branch), so apply with `supabase db query --linked -f …` and record the
-version in `supabase_migrations.schema_migrations`.
+Both are idempotent. Apply each with `supabase db query --linked -f …`, then
+record it with `supabase migration repair --status applied <version> --linked`
+(or run `npm run db:migrate`, which does both). Supabase's GitHub integration
+also applies any file production hasn't recorded as soon as it reaches
+`main`, so a contract step like 0088 has to reach `main` after the deploy it
+waits for (`docs/migrations-2026-10.md`, *Versions*).
 
 ## Running one
 

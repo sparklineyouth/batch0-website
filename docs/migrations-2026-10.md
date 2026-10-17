@@ -225,3 +225,47 @@ select exists (select 1 from pg_index ix
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,
 `docs/recording.md`, `docs/batch0-live.md`, `docs/calls.md`,
 `docs/webinars.md`, `docs/chat.md`, `docs/admin.md`.
+
+## Versions
+
+A file's version is the four digits before its first `_`, and no two files
+may share one. The Supabase CLI (`supabase db push`, `supabase migration
+repair`) and Supabase's GitHub integration key a file by its version and
+record it in `supabase_migrations.schema_migrations`, whose primary key is the
+version.
+
+- **A shared version can't be recorded.** From 2026-09-20 two files were 0071
+  (`0071_scholarships.sql` and the webinar viewer count). The second one's
+  history INSERT fails and rolls the file back: `supabase db push` refused
+  (it wanted `--include-all`, which then fails that way), and the Supabase
+  check failed on every push to `main`. Scholarships kept 0071: production's
+  history row for 0071 is that file, and 0072 has to run after it. The viewer
+  count, which only needs `public.events`, is now
+  `0078_event_display_viewer_count.sql`, renamed with its SQL unchanged.
+  Production ran it in September, so it is only recorded there, once, from a
+  checkout that has the file (repair reads its name and statements from it):
+
+  ```sh
+  supabase migration repair --status applied 0078 --linked
+  supabase migration list --linked   # every row has both Local and Remote
+  ```
+
+- **Tests keep it that way.** `npm test` fails when two files share a version
+  or when name order and number order disagree (`lib/migration-plan.test.ts`);
+  `npm run db:migrate` refuses to plan with a shared version; and
+  `npm run test:migrations-replay-db` (in CI) replays every file onto an empty
+  database the way the CLI does: its statement splitter, its order, its
+  history rows.
+- **Supabase's GitHub integration applies migrations to production.** On
+  every push to `main` it runs the CLI against the production project (the
+  *Supabase Preview* check), files numbered below the newest recorded one
+  included. The shared 0071 stopped it at `0071_scholarships.sql` every time
+  (rolled back, so nothing changed). With every version unique and 0078
+  recorded, it applies any file production hasn't recorded as soon as that
+  file reaches `main`, typically before Vercel has finished deploying the
+  code. An additive file is fine there (the code treats a missing table or
+  column as "not set up yet"). A file that removes what the live code reads
+  (a contract step like 0088, or 0101) must reach `main` only once that code
+  is live, in a pull request of its own. To keep applying everything by hand
+  instead, turn the integration's production deploys off in Supabase →
+  Project Settings → Integrations → GitHub.
