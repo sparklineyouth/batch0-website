@@ -9,11 +9,13 @@ import { Search, X, UserMinus } from "lucide-react";
 import {
   searchStudentsForInvite,
   inviteStudent,
-  inviteStudentByEmail,
+  inviteStudentsByEmail,
   cancelInvite,
   removeTeamMember,
+  type EmailInviteOutcome,
 } from "./actions";
 import { getActionError } from "@/lib/action-error";
+import { MAX_INVITES_PER_PASTE, parseInviteEmails } from "@/lib/team-invites";
 import { FounderPassBadge } from "@/components/founder-pass-badge";
 
 type Member = {
@@ -63,6 +65,13 @@ export function TeamMembersTab({
   const [message, setMessage] = useState("");
   const [emailInput, setEmailInput] = useState("");
   const [emailMessage, setEmailMessage] = useState("");
+  // What the last send did, address by address.
+  const [emailReport, setEmailReport] = useState<{
+    results: EmailInviteOutcome[];
+    invalid: string[];
+    overflow: string[];
+  } | null>(null);
+  const pastedCount = parseInviteEmails(emailInput).emails.length;
 
   async function doSearch() {
     setErr(undefined);
@@ -103,15 +112,30 @@ export function TeamMembersTab({
 
   function sendEmailInvite() {
     setErr(undefined);
+    setEmailReport(null);
     start(async () => {
       try {
-        await inviteStudentByEmail({
+        const result = await inviteStudentsByEmail({
           teamId: team.id,
-          email: emailInput,
+          emails: emailInput,
           message: emailMessage,
         });
-        setEmailInput("");
-        setEmailMessage("");
+        if (!result.ok) {
+          setErr(result.error);
+          return;
+        }
+        const report = result.data!;
+        setEmailReport(report);
+        // Leave only what still needs doing in the box — the addresses that
+        // failed, didn't parse, or didn't fit — so fixing one is an edit,
+        // not a retype.
+        const left = [
+          ...report.results.filter((r) => !r.ok).map((r) => r.email),
+          ...report.invalid,
+          ...report.overflow,
+        ];
+        setEmailInput(left.join("\n"));
+        if (left.length === 0) setEmailMessage("");
         router.refresh();
       } catch (e: any) {
         setErr(getActionError(e));
@@ -215,18 +239,21 @@ export function TeamMembersTab({
         {mode === "email" && (
           <div className="mt-4 space-y-3">
             <div>
-              <Label htmlFor="invite-email">Their batch0 email</Label>
-              <Input
+              <Label htmlFor="invite-email">Their batch0 emails</Label>
+              <Textarea
                 id="invite-email"
-                type="email"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
-                placeholder="teammate@school.edu"
+                placeholder={"teammate@school.edu\nanother@school.edu"}
                 autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                rows={2}
               />
               <p className="mt-1 text-[11px] text-ink-faint">
-                They need a batch0 account first. If they haven't signed
-                up yet, send them the apply link.
+                One or several, up to {MAX_INVITES_PER_PASTE}, separated by
+                commas or new lines. They need a batch0 account first. If
+                they haven't signed up yet, send them the apply link.
               </p>
             </div>
             <div>
@@ -246,8 +273,31 @@ export function TeamMembersTab({
               onClick={sendEmailInvite}
               disabled={pending || emailInput.trim().length === 0}
             >
-              {pending ? "Sending…" : "Send invite"}
+              {pending ? "Sending…" : pastedCount > 1 ? `Send ${pastedCount} invites` : "Send invite"}
             </Button>
+            {emailReport && (
+              <ul className="space-y-1 text-xs" aria-live="polite">
+                {emailReport.results.map((r) => (
+                  <li
+                    key={r.email}
+                    className={r.ok ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}
+                  >
+                    {r.ok ? `Invited ${r.email}` : `${r.email}: ${r.error}`}
+                  </li>
+                ))}
+                {emailReport.invalid.map((email) => (
+                  <li key={email} className="text-red-700 dark:text-red-300">
+                    {email}: that doesn&apos;t look like a valid email.
+                  </li>
+                ))}
+                {emailReport.overflow.length > 0 && (
+                  <li className="text-ink-soft">
+                    Not sent yet (one send invites up to {MAX_INVITES_PER_PASTE}):{" "}
+                    {emailReport.overflow.join(", ")}
+                  </li>
+                )}
+              </ul>
+            )}
           </div>
         )}
 
