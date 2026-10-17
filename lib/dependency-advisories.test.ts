@@ -81,7 +81,7 @@ const VULNERABLE: Record<string, { from: string; below: string; advisory: string
   ],
   postcss: [{ from: "0.0.0", below: "8.5.23", advisory: "GHSA-fxqj-rqcc-2cmp, GHSA-r28c-9q8g-f849" }],
   "source-map-js": [{ from: "1.0.0", below: "1.2.2", advisory: "GHSA-68fv-2mgg-jv7q" }],
-  "brace-expansion": [{ from: "4.0.0", below: "5.0.12", advisory: "GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7" }],
+  "brace-expansion": [{ from: "4.0.0", below: "5.0.12", advisory: "GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p" }],
   "fast-uri": [{ from: "3.0.0", below: "3.1.8", advisory: "GHSA-hrr3-gc8f-f4qj" }],
   // No sprintf-js release fixes GHSA-hp3w-g68c-fv3c; it only arrives through
   // argparse 1.x, which the js-yaml override below replaces.
