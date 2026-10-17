@@ -23,6 +23,48 @@ export type ActionContext = {
 };
 
 /**
+ * A rule saying no to what the person asked for — "That time is in the
+ * past.", "Tell us what's wrong so we can act on it." — as opposed to
+ * something going wrong.
+ *
+ * runAction hands both back the same way, as `{ ok: false, error }` the form
+ * shows inline. The difference is the log: a failure is logged at error level
+ * so it reaches Vercel's error view and Sentry, while a refusal is the action
+ * working as designed and is not logged at all. Before this existed every
+ * validation message was a production "error" — an admin picking a past time
+ * on /admin/calls, a student sending an empty report — and the real faults
+ * were buried among them.
+ *
+ * Use it only for messages written for the person. A database error or an
+ * unexpected state stays a plain `throw new Error(...)`, so it keeps being
+ * logged.
+ *
+ * Branded rather than matched with `instanceof`, so the check holds however
+ * the bundler splits this module between chunks.
+ */
+export class ActionRefusal extends Error {
+  readonly refusal = true as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "ActionRefusal";
+  }
+}
+
+/** Throw an ActionRefusal: `if (bad) refuse("Pick a time in the future.")`. */
+export function refuse(message: string): never {
+  throw new ActionRefusal(message);
+}
+
+export function isRefusal(err: unknown): err is ActionRefusal {
+  return (
+    !!err &&
+    typeof err === "object" &&
+    (err as { refusal?: unknown }).refusal === true &&
+    typeof (err as { message?: unknown }).message === "string"
+  );
+}
+
+/**
  * Run a server-action body and convert any thrown Error into a
  * structured failure result. Logs the underlying error server-side so
  * it shows up in Vercel function logs / Sentry regardless of whether
@@ -49,6 +91,8 @@ export async function runAction<T>(
     // 15.x already emits "NEXT_HTTP_ERROR_FALLBACK;404" for notFound()
     // rather than the "NEXT_NOT_FOUND" older code looked for.
     unstable_rethrow(err);
+    // A refusal is the answer, not a fault: hand it back, log nothing.
+    if (isRefusal(err)) return { ok: false, error: err.message };
     const message =
       err instanceof Error && err.message
         ? err.message

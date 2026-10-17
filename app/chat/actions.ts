@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActor } from "@/lib/server-guards";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { notifyMany } from "@/lib/notifications";
-import { runAction, type ActionResult } from "@/lib/action-result";
+import { refuse, runAction, type ActionResult } from "@/lib/action-result";
 import { logAudit, logAuditMany } from "@/lib/audit";
 import { env } from "@/lib/env";
 import {
@@ -91,6 +91,11 @@ import {
  * mode, too long. The actor and every rule are re-derived on every call; a
  * page guard protects none of this.
  *
+ * Those rules say no with `refuse(...)`, not a thrown Error: the person reads
+ * the same message, but slow mode or an empty report is not a production
+ * error and stays out of the error log. A database error keeps being thrown,
+ * and logged (lib/action-result.ts).
+ *
  * The reads the client polls are GET routes (app/chat/api/*): Next runs
  * server actions one at a time, so a poll made as an action would hold up the
  * send typed right after it. The read actions below share those routes'
@@ -128,17 +133,17 @@ const NOT_AVAILABLE = "That channel isn't available.";
  */
 function cleanBody(raw: unknown, { allowEmpty = false } = {}): string {
   if (typeof raw === "string" && raw.length > MESSAGE_MAX * 2) {
-    throw new Error(`That message is too long (max ${MESSAGE_MAX.toLocaleString()} characters).`);
+    refuse(`That message is too long (max ${MESSAGE_MAX.toLocaleString()} characters).`);
   }
   const b = typeof raw === "string" ? raw.replace(/\r\n?/g, "\n").replace(/^\n+/, "").trimEnd() : "";
-  if (!b && !allowEmpty) throw new Error("Write a message first.");
-  if (b.length > MESSAGE_MAX) throw new Error(`That message is too long (max ${MESSAGE_MAX.toLocaleString()} characters).`);
+  if (!b && !allowEmpty) refuse("Write a message first.");
+  if (b.length > MESSAGE_MAX) refuse(`That message is too long (max ${MESSAGE_MAX.toLocaleString()} characters).`);
   return b;
 }
 
 async function rateLimit(kind: string, userId: string, limit: number, windowSeconds: number, message: string) {
   const rl = await checkRateLimit({ kind, identifier: userId, limit, windowSeconds });
-  if (!rl.ok) throw new Error(message);
+  if (!rl.ok) refuse(message);
 }
 
 // ---------------------------------------------------------------------------
@@ -157,7 +162,7 @@ export async function fetchAttention(): Promise<{ n: number; userId: string | nu
 export async function fetchChannel(target: ChannelTarget): Promise<ChannelPayload> {
   const r = await readerNow();
   const payload = await buildChannelPayload(await getChatViewer(r.userId, r.caps), target);
-  if (!payload) throw new Error(NOT_AVAILABLE);
+  if (!payload) refuse(NOT_AVAILABLE);
   return payload;
 }
 
@@ -170,26 +175,26 @@ export async function fetchMessages(
   opts: { before?: string; beforeId?: string; around?: string } = {},
 ): Promise<MessagesPayload> {
   const page = await readMessages(await readerNow(), channelId, opts);
-  if (!page) throw new Error(NOT_AVAILABLE);
+  if (!page) refuse(NOT_AVAILABLE);
   return page;
 }
 
 /** Messages by id — the realtime path hands the client ids it then hydrates. */
 export async function fetchMessagesById(channelId: string, ids: string[]): Promise<MessagesByIdPayload> {
   const found = await readMessagesById(await readerNow(), channelId, Array.isArray(ids) ? ids : []);
-  if (!found) throw new Error(NOT_AVAILABLE);
+  if (!found) refuse(NOT_AVAILABLE);
   return found;
 }
 
 export async function fetchMembers(channelId: string): Promise<ChatPerson[]> {
   const people = await readMembers(await readerNow(), channelId);
-  if (!people) throw new Error(NOT_AVAILABLE);
+  if (!people) refuse(NOT_AVAILABLE);
   return people;
 }
 
 export async function fetchPins(channelId: string): Promise<MessagesByIdPayload> {
   const pins = await readPins(await readerNow(), channelId);
-  if (!pins) throw new Error(NOT_AVAILABLE);
+  if (!pins) refuse(NOT_AVAILABLE);
   return pins;
 }
 
@@ -223,7 +228,7 @@ export async function searchChannelPeople(channelId: string, q: string): Promise
   if (!query) return [];
   await rateLimit("chat-mention-search", r.userId, 60, 60, "Too many lookups in a row. Give it a second.");
   const found = await openChannelFor(String(channelId ?? ""), r.userId, r.caps);
-  if (!found) throw new Error(NOT_AVAILABLE);
+  if (!found) refuse(NOT_AVAILABLE);
   return searchChannelPeopleIn(found.channel, query);
 }
 
@@ -242,15 +247,15 @@ export async function fetchBlockedPeople(): Promise<ChatPerson[]> {
  */
 async function resolveDm(viewer: ChatViewer, rawTo: string): Promise<{ channelId: string; created: boolean }> {
   const toUserId = asUuid(rawTo);
-  if (!toUserId || toUserId === viewer.userId) throw new Error("Pick someone to message.");
+  if (!toUserId || toUserId === viewer.userId) refuse("Pick someone to message.");
   const key = dmKey(viewer.userId, toUserId);
   const existing = await findDm(key);
   if (existing) return { channelId: await healDmMembers(existing.id, viewer.userId, toUserId), created: false };
   const person = await getPerson(toUserId);
-  if (!person) throw new Error("That person isn't available.");
+  if (!person) refuse("That person isn't available.");
   const allowed = await canStartConversation(viewer, person);
-  if (!allowed.ok) throw new Error(allowed.reason);
-  if (await isBlockedBetween(viewer.userId, toUserId)) throw new Error("You can't send messages to this person.");
+  if (!allowed.ok) refuse(allowed.reason);
+  if (await isBlockedBetween(viewer.userId, toUserId)) refuse("You can't send messages to this person.");
   // The mute and fine locks, before the row exists: otherwise a locked
   // account could still push empty conversations into other people's inboxes.
   await assertNotLocked(viewer, person);
@@ -306,8 +311,8 @@ async function healDmMembers(channelId: string, me: string, other: string): Prom
  */
 async function assertNotLocked(viewer: ChatViewer, dmWith: ChatPerson | null = null): Promise<void> {
   const locks = await personalLocks(viewer, dmWith);
-  if (locks.muted) throw new Error(MUTED_REASON);
-  if (locks.fined) throw new Error(FINE_REASON);
+  if (locks.muted) refuse(MUTED_REASON);
+  if (locks.fined) refuse(FINE_REASON);
 }
 
 /**
@@ -337,7 +342,7 @@ async function postVerdict(viewer: ChatViewer, channel: ChannelRow, reported: bo
     personalLocks(viewer, other),
   ]);
   const verdict = canPost(channel, viewer, { reported, blocked, otherPresent, safeguarded, ...locks });
-  if (!verdict.ok) throw new Error(verdict.reason);
+  if (!verdict.ok) refuse(verdict.reason);
   return { otherId };
 }
 
@@ -345,7 +350,7 @@ async function postVerdict(viewer: ChatViewer, channel: ChannelRow, reported: bo
 async function assertCanPost(viewer: ChatViewer, channel: ChannelRow, reported: boolean): Promise<void> {
   await postVerdict(viewer, channel, reported);
   const wait = slowModeWait(channel, viewer, await lastSentAt(channel.id, viewer.userId), Date.now());
-  if (wait > 0) throw new Error(`Slow mode is on. You can post again in ${wait}s.`);
+  if (wait > 0) refuse(`Slow mode is on. You can post again in ${wait}s.`);
 }
 
 /**
@@ -392,7 +397,7 @@ export async function sendMessage(input: SendInput): Promise<ActionResult<{ chan
       // first message that would create the DM can't carry any.
       const to = asUuid(input.toUserId);
       if (hasFiles && (!to || to === viewer.userId || !(await findDm(dmKey(viewer.userId, to))))) {
-        throw new Error("Attach the files again: the conversation they were for isn't there.");
+        refuse("Attach the files again: the conversation they were for isn't there.");
       }
       // The block, safeguarding, mute and fine checks run inside resolveDm;
       // the new-conversation rate limit only when a row is actually created.
@@ -402,21 +407,21 @@ export async function sendMessage(input: SendInput): Promise<ActionResult<{ chan
       // but the viewer was resolved before that.
       if (!viewer.memberOf.includes(channelId)) viewer.memberOf = [...viewer.memberOf, channelId];
     }
-    if (!channelId) throw new Error("Pick a channel or a person first.");
+    if (!channelId) refuse("Pick a channel or a person first.");
 
     const found = await getChannelForViewer(channelId, viewer);
-    if (!found) throw new Error(NOT_AVAILABLE);
+    if (!found) refuse(NOT_AVAILABLE);
     const { channel, reported } = found;
     await assertCanPost(viewer, channel, reported);
 
     const files = await verifyChatUploads(input.attachments, channel.id, viewer.userId);
-    if (!files.ok) throw new Error(files.error);
+    if (!files.ok) refuse(files.error);
 
     let replyTo: { id: string; senderId: string | null; kind: string } | null = null;
     if (input.replyToId) {
       const target = await getMessageRow(input.replyToId);
       if (!target || target.channel_id !== channel.id || target.deleted_at) {
-        throw new Error("The message you're replying to is gone.");
+        refuse("The message you're replying to is gone.");
       }
       replyTo = { id: target.id, senderId: target.sender_id ?? null, kind: target.kind };
     }
@@ -479,11 +484,11 @@ export async function editMessage(messageId: string, rawBody: string): Promise<A
   return runAction({ name: "chat.edit" }, async () => {
     const viewer = await viewerNow();
     const row = await getMessageRow(messageId);
-    if (!row) throw new Error("That message is gone.");
+    if (!row) refuse("That message is gone.");
     const found = await getChannelForViewer(row.channel_id, viewer);
-    if (!found) throw new Error(NOT_AVAILABLE);
+    if (!found) refuse(NOT_AVAILABLE);
     if (!canEditMessage({ senderId: row.sender_id, kind: row.kind, deletedAt: row.deleted_at }, viewer)) {
-      throw new Error("You can only edit your own messages.");
+      refuse("You can only edit your own messages.");
     }
     await postVerdict(viewer, found.channel, found.reported);
     const hasFiles = Array.isArray(row.attachments) && row.attachments.length > 0;
@@ -511,7 +516,7 @@ export async function editMessage(messageId: string, rawBody: string): Promise<A
       .is("deleted_at", null);
     if (error) throw new Error(error.message);
     const [message] = await getMessages([row.id]);
-    if (!message) throw new Error("That message is gone.");
+    if (!message) refuse("That message is gone.");
     return { message };
   });
 }
@@ -526,11 +531,11 @@ export async function deleteMessage(messageId: string): Promise<ActionResult> {
   return runAction({ name: "chat.delete" }, async () => {
     const viewer = await viewerNow();
     const row = await getMessageRow(messageId);
-    if (!row || row.deleted_at) throw new Error("That message is already gone.");
+    if (!row || row.deleted_at) refuse("That message is already gone.");
     const found = await getChannelForViewer(row.channel_id, viewer);
-    if (!found) throw new Error("That message is already gone.");
+    if (!found) refuse("That message is already gone.");
     if (!canDeleteMessage({ senderId: row.sender_id, kind: row.kind, deletedAt: row.deleted_at }, found.channel, viewer)) {
-      throw new Error("You can only delete your own messages.");
+      refuse("You can only delete your own messages.");
     }
     const { data, error } = await createAdminClient()
       .from("chat_messages")
@@ -546,7 +551,7 @@ export async function deleteMessage(messageId: string): Promise<ActionResult> {
       .is("deleted_at", null)
       .select("id");
     if (error) throw new Error(error.message);
-    if (!data?.length) throw new Error("That message is already gone.");
+    if (!data?.length) refuse("That message is already gone.");
     if (row.sender_id !== viewer.userId) {
       await logAudit({
         action: "chat.message_remove",
@@ -561,12 +566,12 @@ export async function deleteMessage(messageId: string): Promise<ActionResult> {
 export async function toggleReaction(messageId: string, emoji: string): Promise<ActionResult<{ reactions: ReactionMap }>> {
   return runAction({ name: "chat.react" }, async () => {
     const viewer = await viewerNow();
-    if (!isAllowedReaction(emoji)) throw new Error("Pick a reaction from the list.");
+    if (!isAllowedReaction(emoji)) refuse("Pick a reaction from the list.");
     const row = await getMessageRow(messageId);
-    if (!row || row.deleted_at) throw new Error("That message is gone.");
+    if (!row || row.deleted_at) refuse("That message is gone.");
     const found = await getChannelForViewer(row.channel_id, viewer);
-    if (!found) throw new Error(NOT_AVAILABLE);
-    if (found.channel.archivedAt) throw new Error("This channel is archived. It's read-only now.");
+    if (!found) refuse(NOT_AVAILABLE);
+    if (found.channel.archivedAt) refuse("This channel is archived. It's read-only now.");
     if (found.channel.kind !== "channel") {
       // In a DM or group a reaction is a message; a frozen one takes none.
       await postVerdict(viewer, found.channel, found.reported);
@@ -589,7 +594,7 @@ export async function toggleReaction(messageId: string, emoji: string): Promise<
         .select("emoji", { count: "exact", head: true })
         .eq("message_id", row.id);
       if (countErr) throw new Error(countErr.message);
-      if ((count ?? 0) >= 200) throw new Error("That message has all the reactions it can hold.");
+      if ((count ?? 0) >= 200) refuse("That message has all the reactions it can hold.");
       const { error } = await admin
         .from("chat_reactions")
         .upsert(key, { onConflict: "message_id,user_id,emoji", ignoreDuplicates: true });
@@ -609,12 +614,12 @@ export async function togglePin(messageId: string): Promise<ActionResult<{ pinne
   return runAction({ name: "chat.pin" }, async () => {
     const viewer = await viewerNow();
     const row = await getMessageRow(messageId);
-    if (!row || row.deleted_at || row.kind !== "message") throw new Error("That message is gone.");
+    if (!row || row.deleted_at || row.kind !== "message") refuse("That message is gone.");
     const found = await getChannelForViewer(row.channel_id, viewer);
-    if (!found) throw new Error(NOT_AVAILABLE);
-    if (!canPin(found.channel, viewer)) throw new Error("Only the batch0 team pins messages here.");
+    if (!found) refuse(NOT_AVAILABLE);
+    if (!canPin(found.channel, viewer)) refuse("Only the batch0 team pins messages here.");
     if (found.channel.kind !== "channel") await postVerdict(viewer, found.channel, found.reported);
-    else if (found.channel.archivedAt) throw new Error("This channel is archived. It's read-only now.");
+    else if (found.channel.archivedAt) refuse("This channel is archived. It's read-only now.");
     await rateLimit("chat-pin", viewer.userId, 20, 600, "That's a lot of pinning. Try again in a few minutes.");
     const admin = createAdminClient();
     const pinning = !row.pinned_at;
@@ -625,7 +630,7 @@ export async function togglePin(messageId: string): Promise<ActionResult<{ pinne
         .eq("channel_id", row.channel_id)
         .not("pinned_at", "is", null);
       if (countErr) throw new Error(countErr.message);
-      if ((count ?? 0) >= 50) throw new Error("This channel has 50 pins. Unpin one first.");
+      if ((count ?? 0) >= 50) refuse("This channel has 50 pins. Unpin one first.");
     }
     const { error } = await admin
       .from("chat_messages")
@@ -660,7 +665,7 @@ export async function markRead(channelId: string, upTo?: string): Promise<Action
   return runAction({ name: "chat.read" }, async () => {
     const r = await readerNow();
     const found = await openChannelFor(String(channelId ?? ""), r.userId, r.caps);
-    if (!found) throw new Error(NOT_AVAILABLE);
+    if (!found) refuse(NOT_AVAILABLE);
     const { channel, viewer } = found;
     // A moderator reading a reported DM is not a party to it.
     if (channel.kind !== "channel" && !isParticipant(channel, viewer)) return { changed: false };
@@ -711,9 +716,9 @@ export async function markAllRead(): Promise<ActionResult<{ count: number }>> {
 export async function setNotify(channelId: string, pref: NotifyPref | null): Promise<ActionResult> {
   return runAction({ name: "chat.notify" }, async () => {
     const viewer = await viewerNow();
-    if (pref !== null && pref !== "all" && pref !== "mentions" && pref !== "none") throw new Error("Pick a setting.");
+    if (pref !== null && pref !== "all" && pref !== "mentions" && pref !== "none") refuse("Pick a setting.");
     const found = await getChannelForViewer(channelId, viewer);
-    if (!found) throw new Error(NOT_AVAILABLE);
+    if (!found) refuse(NOT_AVAILABLE);
     const { error } = await createAdminClient()
       .from("chat_reads")
       .upsert({ channel_id: found.channel.id, user_id: viewer.userId, notify: pref }, { onConflict: "channel_id,user_id" });
@@ -726,7 +731,7 @@ export async function closeConversation(channelId: string): Promise<ActionResult
   return runAction({ name: "chat.close" }, async () => {
     const viewer = await viewerNow();
     const found = await getChannelForViewer(channelId, viewer);
-    if (!found || found.channel.kind === "channel") throw new Error(NOT_AVAILABLE);
+    if (!found || found.channel.kind === "channel") refuse(NOT_AVAILABLE);
     const { error } = await createAdminClient()
       .from("chat_reads")
       .upsert(
@@ -752,14 +757,14 @@ async function assertGroupable(viewer: ChatViewer, ids: string[], existing: stri
   const out: ChatPerson[] = [];
   for (const id of ids) {
     const person = people.get(id);
-    if (!person) throw new Error("Someone you picked isn't available.");
+    if (!person) refuse("Someone you picked isn't available.");
     const reach = await canReach(viewer, person);
-    if (!reach.ok) throw new Error(`${person.name} isn't available.`);
+    if (!reach.ok) refuse(`${person.name} isn't available.`);
     // Same answer whichever side blocked: blocks are never announced.
-    if (await isBlockedBetween(viewer.userId, id)) throw new Error(`${person.name} isn't available.`);
+    if (await isBlockedBetween(viewer.userId, id)) refuse(`${person.name} isn't available.`);
     out.push(person);
   }
-  if (!(await membershipAllowed([...existing, ...ids]))) throw new Error(SAFEGUARD_REASON);
+  if (!(await membershipAllowed([...existing, ...ids]))) refuse(SAFEGUARD_REASON);
   return out;
 }
 
@@ -770,7 +775,7 @@ export async function createGroup(input: { userIds: string[]; name?: string | nu
       (id) => id !== viewer.userId,
     );
     const verdict = canStartGroup(viewer, ids.length);
-    if (!verdict.ok) throw new Error(verdict.reason);
+    if (!verdict.ok) refuse(verdict.reason);
     if (ids.length === 1) {
       // One other person is a DM, not a group.
       const dm = await resolveDm(viewer, ids[0]);
@@ -806,7 +811,7 @@ export async function addToGroup(channelId: string, userIds: string[]): Promise<
   return runAction({ name: "chat.group_add" }, async () => {
     const viewer = await viewerNow();
     const found = await getChannelForViewer(channelId, viewer);
-    if (!found || found.channel.kind !== "group" || !isParticipant(found.channel, viewer)) throw new Error(NOT_AVAILABLE);
+    if (!found || found.channel.kind !== "group" || !isParticipant(found.channel, viewer)) refuse(NOT_AVAILABLE);
     const group = found.channel.id;
     await assertNotLocked(viewer);
     await rateLimit("chat-group-admin", viewer.userId, 10, 600, "Too many group changes in a row. Try again in a few minutes.");
@@ -816,7 +821,7 @@ export async function addToGroup(channelId: string, userIds: string[]): Promise<
     );
     if (ids.length === 0) return;
     if (current.length + ids.length > GROUP_MAX_MEMBERS) {
-      throw new Error(`A group holds up to ${GROUP_MAX_MEMBERS} people.`);
+      refuse(`A group holds up to ${GROUP_MAX_MEMBERS} people.`);
     }
     const people = await assertGroupable(viewer, ids, current);
     // A moderator added to a reported group would become a party to its next
@@ -825,7 +830,7 @@ export async function addToGroup(channelId: string, userIds: string[]): Promise<
     // a reported group through its reports instead.
     const moderators = await listModeratorIds();
     if (ids.some((id) => moderators.includes(id)) && (await countChannelReports(group)) > 0) {
-      throw new Error("batch0 staff can't be added to this group.");
+      refuse("batch0 staff can't be added to this group.");
     }
     const { error } = await createAdminClient()
       .from("chat_members")
@@ -843,7 +848,7 @@ export async function leaveGroup(channelId: string): Promise<ActionResult> {
   return runAction({ name: "chat.group_leave" }, async () => {
     const viewer = await viewerNow();
     const found = await getChannelForViewer(channelId, viewer);
-    if (!found || found.channel.kind !== "group" || !isParticipant(found.channel, viewer)) throw new Error(NOT_AVAILABLE);
+    if (!found || found.channel.kind !== "group" || !isParticipant(found.channel, viewer)) refuse(NOT_AVAILABLE);
     const group = found.channel.id;
     // Asked before leaving, and an error stops here: a failed count must
     // never read as "no reports" and take a reported group's evidence with it.
@@ -871,7 +876,7 @@ export async function renameGroup(channelId: string, rawName: string): Promise<A
   return runAction({ name: "chat.group_rename" }, async () => {
     const viewer = await viewerNow();
     const found = await getChannelForViewer(channelId, viewer);
-    if (!found || found.channel.kind !== "group" || !isParticipant(found.channel, viewer)) throw new Error(NOT_AVAILABLE);
+    if (!found || found.channel.kind !== "group" || !isParticipant(found.channel, viewer)) refuse(NOT_AVAILABLE);
     const name = String(rawName ?? "").trim().slice(0, GROUP_NAME_MAX) || null;
     if (name === found.channel.name) return;
     // A rename posts a line everyone sees, so it obeys the same freeze.
@@ -897,9 +902,9 @@ export async function blockPerson(userId: string): Promise<ActionResult> {
   return runAction({ name: "chat.block" }, async () => {
     const actor = await requireActor();
     const id = asUuid(userId);
-    if (!id) throw new Error("That person isn't available.");
-    if (id === actor.userId) throw new Error("You can't block yourself.");
-    if (!(await getPerson(id))) throw new Error("That person isn't available.");
+    if (!id) refuse("That person isn't available.");
+    if (id === actor.userId) refuse("You can't block yourself.");
+    if (!(await getPerson(id))) refuse("That person isn't available.");
     const { error } = await createAdminClient()
       .from("chat_blocks")
       .upsert({ blocker_id: actor.userId, blocked_id: id }, { onConflict: "blocker_id,blocked_id", ignoreDuplicates: true });
@@ -911,7 +916,7 @@ export async function unblockPerson(userId: string): Promise<ActionResult> {
   return runAction({ name: "chat.unblock" }, async () => {
     const actor = await requireActor();
     const id = asUuid(userId);
-    if (!id) throw new Error("That person isn't available.");
+    if (!id) refuse("That person isn't available.");
     const { error } = await createAdminClient()
       .from("chat_blocks")
       .delete()
@@ -932,8 +937,8 @@ async function fileReport(
   rawReason: string,
 ): Promise<ReportOutcome> {
   const reason = String(rawReason ?? "").trim();
-  if (!reason) throw new Error("Tell us what's wrong so we can act on it.");
-  if (reason.length > REPORT_REASON_MAX) throw new Error("That's too long — a sentence or two is plenty.");
+  if (!reason) refuse("Tell us what's wrong so we can act on it.");
+  if (reason.length > REPORT_REASON_MAX) refuse("That's too long — a sentence or two is plenty.");
   await rateLimit("chat-report", viewer.userId, 10, 3600, "You've filed several reports just now. Try again later.");
   // Everything that can fail runs before the report exists: one that's in
   // the table but told to nobody would sit there unseen.
@@ -1000,10 +1005,10 @@ export async function reportMessage(input: { messageId: string; reason: string }
   return runAction({ name: "chat.report_message" }, async () => {
     const viewer = await viewerNow();
     const row = await getMessageRow(input.messageId);
-    if (!row) throw new Error("That message is gone.");
+    if (!row) refuse("That message is gone.");
     const found = await getChannelForViewer(row.channel_id, viewer);
-    if (!found) throw new Error(NOT_AVAILABLE);
-    if (found.channel.kind !== "channel" && !isParticipant(found.channel, viewer)) throw new Error(NOT_AVAILABLE);
+    if (!found) refuse(NOT_AVAILABLE);
+    if (found.channel.kind !== "channel" && !isParticipant(found.channel, viewer)) refuse(NOT_AVAILABLE);
     return fileReport(viewer, found.channel, { id: row.id, senderId: row.sender_id ?? null }, input.reason);
   });
 }
@@ -1013,7 +1018,7 @@ export async function reportConversation(input: { channelId: string; reason: str
   return runAction({ name: "chat.report_conversation" }, async () => {
     const viewer = await viewerNow();
     const found = await getChannelForViewer(input.channelId, viewer);
-    if (!found || !isParticipant(found.channel, viewer)) throw new Error(NOT_AVAILABLE);
+    if (!found || !isParticipant(found.channel, viewer)) refuse(NOT_AVAILABLE);
     return fileReport(viewer, found.channel, null, input.reason);
   });
 }
@@ -1034,13 +1039,13 @@ export async function flagForTeam(messageId: string, note: string): Promise<Acti
   return runAction({ name: "chat.flag" }, async () => {
     const viewer = await viewerNow();
     const row = await getMessageRow(messageId);
-    if (!row || row.deleted_at) throw new Error("That message is gone.");
+    if (!row || row.deleted_at) refuse("That message is gone.");
     const found = await getChannelForViewer(row.channel_id, viewer);
-    if (!found) throw new Error(NOT_AVAILABLE);
+    if (!found) refuse(NOT_AVAILABLE);
     if (found.channel.kind !== "channel") {
-      throw new Error("In a private conversation, use Report to bring the batch0 team in.");
+      refuse("In a private conversation, use Report to bring the batch0 team in.");
     }
-    if (row.kind !== "message") throw new Error("Pick a message to ask about.");
+    if (row.kind !== "message") refuse("Pick a message to ask about.");
     const text = String(note ?? "").replace(/\s+/g, " ").trim().slice(0, FLAG_NOTE_MAX);
     await rateLimit("chat-flag", viewer.userId, 5, 3600, "You've asked the team a few times just now. They'll see it — try again later.");
     const moderators = (await listModeratorIds()).filter((id) => id !== viewer.userId);
@@ -1071,7 +1076,7 @@ export async function mintUploads(
   return runAction({ name: "chat.mint" }, async () => {
     const viewer = await viewerNow();
     const found = await getChannelForViewer(channelId, viewer);
-    if (!found) throw new Error(NOT_AVAILABLE);
+    if (!found) refuse(NOT_AVAILABLE);
     await assertCanPost(viewer, found.channel, found.reported);
     // The limit counts files, not calls: one call stages up to five.
     const count = Math.min(Array.isArray(files) ? files.length : 0, CHAT_MAX_FILES);

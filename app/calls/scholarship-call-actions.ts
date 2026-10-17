@@ -6,7 +6,7 @@ import { getStudentAccess } from "@/lib/access";
 import { logAudit } from "@/lib/audit";
 import { notifyMany } from "@/lib/notifications";
 import { listInterviewTeamIds } from "@/lib/interview-requests";
-import { runAction, type ActionResult } from "@/lib/action-result";
+import { refuse, runAction, type ActionResult } from "@/lib/action-result";
 import { callCreditsForUser, loadWindowCohort } from "@/lib/scholarships";
 import { callTimeProblem, scholarshipCallWindow } from "@/lib/scholarship-window";
 
@@ -28,17 +28,17 @@ export async function requestScholarshipCall(input: {
 
     const access = await getStudentAccess(actor.role);
     if (actor.role !== "student" || access.staff) {
-      throw new Error("Only students book scholarship calls.");
+      refuse("Only students book scholarship calls.");
     }
     if (!access.enrolled) {
-      throw new Error("Scholarship calls open once you're enrolled.");
+      refuse("Scholarship calls open once you're enrolled.");
     }
 
     const admin = createAdminClient();
     const now = new Date();
     const held = await callCreditsForUser(admin, actor.userId, now);
     if (!held) {
-      throw new Error("You don't hold a scholarship that includes mentor calls.");
+      refuse("You don't hold a scholarship that includes mentor calls.");
     }
     // A legacy award with no cohort borrows the student's current one.
     const cohortId = held.cohortId ?? access.cohortId;
@@ -47,34 +47,34 @@ export async function requestScholarshipCall(input: {
         ? held.window
         : scholarshipCallWindow(await loadWindowCohort(admin, cohortId), now);
     if (!callWindow.open) {
-      throw new Error(callWindow.reason);
+      refuse(callWindow.reason);
     }
     if (held.credits.remaining <= 0) {
-      throw new Error(
+      refuse(
         `You've used all ${held.credits.granted} of your scholarship calls.`,
       );
     }
 
     const preferredAt = new Date(input.preferredAt);
     if (Number.isNaN(preferredAt.getTime())) {
-      throw new Error("Pick a time that works for you.");
+      refuse("Pick a time that works for you.");
     }
     if (preferredAt.getTime() < now.getTime()) {
-      throw new Error("Pick a time in the future.");
+      refuse("Pick a time in the future.");
     }
     const preferredProblem = callTimeProblem(preferredAt, callWindow, "preferred");
-    if (preferredProblem) throw new Error(preferredProblem);
+    if (preferredProblem) refuse(preferredProblem);
     let altAt: Date | null = null;
     if (input.altAt) {
       altAt = new Date(input.altAt);
       if (Number.isNaN(altAt.getTime())) {
-        throw new Error("That backup time isn't valid.");
+        refuse("That backup time isn't valid.");
       }
       if (altAt.getTime() < now.getTime()) {
-        throw new Error("Your backup time is in the past.");
+        refuse("Your backup time is in the past.");
       }
       const altProblem = callTimeProblem(altAt, callWindow, "backup");
-      if (altProblem) throw new Error(altProblem);
+      if (altProblem) refuse(altProblem);
     }
 
     const { data: created, error } = await admin
@@ -94,10 +94,10 @@ export async function requestScholarshipCall(input: {
     if (error) {
       // interview_requests_one_open_per_student (0061): one ask at a time.
       if (error.code === "23505") {
-        throw new Error("You already have a request waiting. Withdraw it to ask again.");
+        refuse("You already have a request waiting. Withdraw it to ask again.");
       }
       if (/scholarship_application_id/i.test(error.message)) {
-        throw new Error("Scholarship calls aren't switched on yet.");
+        refuse("Scholarship calls aren't switched on yet.");
       }
       throw new Error(error.message);
     }

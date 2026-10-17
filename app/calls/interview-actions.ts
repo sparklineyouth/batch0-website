@@ -5,7 +5,7 @@ import { assertPermission, requireActor } from "@/lib/server-guards";
 import { getStudentAccess } from "@/lib/access";
 import { getInterviewRequest, listInterviewTeamIds } from "@/lib/interview-requests";
 import { logAudit } from "@/lib/audit";
-import { runAction, type ActionResult } from "@/lib/action-result";
+import { refuse, runAction, type ActionResult } from "@/lib/action-result";
 import {
   callDurationProblem,
   callStartProblem,
@@ -39,13 +39,13 @@ function revalidate() {
 /** Parse the student's proposed times: a preferred one, and an optional backup. */
 function proposedTimes(input: { preferredAt: string; altAt?: string | null }, now: Date) {
   const preferredAt = new Date(input.preferredAt);
-  if (Number.isNaN(preferredAt.getTime())) throw new Error("Pick a time that works for you.");
-  if (preferredAt.getTime() < now.getTime()) throw new Error("Pick a time in the future.");
+  if (Number.isNaN(preferredAt.getTime())) refuse("Pick a time that works for you.");
+  if (preferredAt.getTime() < now.getTime()) refuse("Pick a time in the future.");
   let altAt: Date | null = null;
   if (input.altAt) {
     altAt = new Date(input.altAt);
-    if (Number.isNaN(altAt.getTime())) throw new Error("That backup time isn't valid.");
-    if (altAt.getTime() < now.getTime()) throw new Error("Your backup time is in the past.");
+    if (Number.isNaN(altAt.getTime())) refuse("That backup time isn't valid.");
+    if (altAt.getTime() < now.getTime()) refuse("Your backup time is in the past.");
   }
   return { preferredAt, altAt };
 }
@@ -60,7 +60,7 @@ export async function requestInterview(input: {
     const actor = await requireActor();
     const access = await getStudentAccess(actor.role);
     if (actor.role !== "student" || !canRequestTeamCall(access)) {
-      throw new Error("1:1 requests open once you're enrolled.");
+      refuse("1:1 requests open once you're enrolled.");
     }
     const { preferredAt, altAt } = proposedTimes(input, new Date());
     const note = input.note?.trim() || null;
@@ -81,7 +81,7 @@ export async function requestInterview(input: {
     if (error) {
       // interview_requests_one_open_per_student
       if (error.code === "23505") {
-        throw new Error("You already have a request waiting. Withdraw it to ask again.");
+        refuse("You already have a request waiting. Withdraw it to ask again.");
       }
       throw new Error(error.message);
     }
@@ -139,7 +139,7 @@ export async function cancelInterviewRequest(id: string): Promise<ActionResult> 
       .select("id");
     if (error) throw new Error(error.message);
     if (!updated || updated.length === 0) {
-      throw new Error("That request was already booked or withdrawn.");
+      refuse("That request was already booked or withdrawn.");
     }
     await logAudit({
       action: "interview_request.cancelled",
@@ -175,14 +175,14 @@ async function scheduleNow(input: ScheduleInput): Promise<{ callInviteId: string
   const admin = createAdminClient();
 
   const req = await getInterviewRequest(input.id);
-  if (!req) throw new Error("That request no longer exists.");
-  if (req.status !== "requested") throw new Error("That request has already been handled.");
+  if (!req) refuse("That request no longer exists.");
+  if (req.status !== "requested") refuse("That request has already been handled.");
 
   const startsAt = new Date(input.startsAt);
   const timeProblem = callStartProblem(startsAt);
-  if (timeProblem) throw new Error(timeProblem);
+  if (timeProblem) refuse(timeProblem);
   const durationProblem = callDurationProblem(input.durationMinutes);
-  if (durationProblem) throw new Error(durationProblem);
+  if (durationProblem) refuse(durationProblem);
   const duration = Math.round(input.durationMinutes);
 
   // Tolerant: null on a database without 0071, which is an ordinary request.
@@ -207,7 +207,7 @@ async function scheduleNow(input: ScheduleInput): Promise<{ callInviteId: string
     .select("id")
     .single();
   if (inviteErr) {
-    if (inviteErr.code === "23505") throw new Error("You already have a call with them at that time.");
+    if (inviteErr.code === "23505") refuse("You already have a call with them at that time.");
     throw new Error(inviteErr.message);
   }
   const inviteId = invite!.id as string;
@@ -293,7 +293,7 @@ export async function declineInterviewRequest(id: string): Promise<ActionResult>
     const actor = await assertPermission("calls.invite");
     const admin = createAdminClient();
     const req = await getInterviewRequest(id);
-    if (!req) throw new Error("That request no longer exists.");
+    if (!req) refuse("That request no longer exists.");
 
     const { data: updated, error } = await admin
       .from("interview_requests")
@@ -302,7 +302,7 @@ export async function declineInterviewRequest(id: string): Promise<ActionResult>
       .eq("status", "requested")
       .select("id");
     if (error) throw new Error(error.message);
-    if (!updated || updated.length === 0) throw new Error("That request has already been handled.");
+    if (!updated || updated.length === 0) refuse("That request has already been handled.");
 
     await logAudit({
       action: "interview_request.declined",
