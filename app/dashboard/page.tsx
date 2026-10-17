@@ -18,11 +18,12 @@ import { formatEastern } from "@/lib/assignments";
 import { listInvitesForInvitee } from "@/lib/calls";
 import {
   HOME_EVENT_COLUMNS,
-  dueSoon,
-  pickNextCall,
-  pickNextEvent,
+  homeNeeds,
+  moreDueLabel,
   type HomeEventRow,
+  type NextUpItem,
 } from "@/lib/needs-you";
+import type { CallInvite } from "@/lib/live";
 import { getSiteConfig } from "@/lib/site-config";
 import type { Role } from "@/lib/types";
 import {
@@ -149,29 +150,18 @@ export default async function DashboardHome() {
       right: <ChargePayButton chargeId={c.id} />,
     });
   }
-  const event = pickNextEvent(events, now, { preCohort: access.preCohort });
-  const call = pickNextCall(calls, now);
-  const eventRow: NeedsRow | null = event && {
-    key: `event-${event.id}`,
-    icon: CalendarDays,
-    title: event.title,
-    meta: event.live ? "Live now" : <LocalTime value={event.startsAt} mode="datetime-short" />,
-    href: event.join?.href ?? event.href,
-    external: event.join?.external,
-    right: event.join ? <JoinPill /> : null,
-  };
-  const callRow: NeedsRow | null = call && {
-    key: `call-${call.invite.id}`,
-    icon: Video,
-    title: `1:1 with ${call.invite.hostName}`,
-    meta: <LocalTime value={call.invite.startsAt} mode="datetime-short" />,
-    href: call.joinable ? `/dashboard/calls/${call.invite.id}/live` : "/dashboard/calls",
-    right: call.joinable ? <JoinPill /> : null,
-  };
-  if (callRow && call?.joinable) rows.push(callRow);
-  if (eventRow && event?.join) rows.push(eventRow);
-  const owed = dueSoon(assignments.items, now);
-  for (const { assignment: a, status } of owed.items) {
+  // The same picks the installed app's home makes (lib/needs-you.ts): rooms
+  // open now, then owed work ranked so today's deadline beats old late work,
+  // then what opens next.
+  const needs = homeNeeds({
+    access,
+    assignments: assignments.items,
+    events,
+    calls,
+    now,
+  });
+  for (const item of needs.open) rows.push(nextUpRow(item));
+  for (const { assignment: a, status } of needs.due.items) {
     rows.push({
       key: `assignment-${a.id}`,
       icon: ClipboardList,
@@ -181,22 +171,18 @@ export default async function DashboardHome() {
       right: <StatusChip status={status} />,
     });
   }
-  if (owed.more > 0) {
+  if (needs.due.more > 0) {
     rows.push({
       key: "assignments-more",
       icon: ClipboardList,
-      title: `${owed.more} more assignment${owed.more === 1 ? "" : "s"} due`,
+      title: moreDueLabel(needs.due.more),
       meta: "All assignments",
       href: "/dashboard/assignments",
     });
   }
-  // Not open yet: whichever starts first leads.
-  const later: { row: NeedsRow; at: string }[] = [];
-  if (eventRow && event && !event.join) later.push({ row: eventRow, at: event.startsAt });
-  if (callRow && call && !call.joinable) later.push({ row: callRow, at: call.invite.startsAt });
-  later.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  for (const { row } of later) rows.push(row);
-  if (!event && access.demoDayTicket && !access.enrolled) {
+  for (const item of needs.later) rows.push(nextUpRow(item));
+  const hasEvent = [...needs.open, ...needs.later].some((i) => i.kind === "event");
+  if (!hasEvent && access.demoDayTicket && !access.enrolled) {
     rows.push({
       key: "demo-day-ticket",
       icon: Ticket,
@@ -283,6 +269,31 @@ type NeedsRow = {
   external?: boolean;
   right?: ReactNode;
 };
+
+/** A 1:1 or an event, as a "Needs you" row. */
+function nextUpRow(item: NextUpItem<CallInvite>): NeedsRow {
+  if (item.kind === "call") {
+    const { invite, joinable } = item.call;
+    return {
+      key: item.key,
+      icon: Video,
+      title: `1:1 with ${invite.hostName}`,
+      meta: <LocalTime value={invite.startsAt} mode="datetime-short" />,
+      href: joinable ? `/dashboard/calls/${invite.id}/live` : "/dashboard/calls",
+      right: joinable ? <JoinPill /> : null,
+    };
+  }
+  const { event } = item;
+  return {
+    key: item.key,
+    icon: CalendarDays,
+    title: event.title,
+    meta: event.live ? "Live now" : <LocalTime value={event.startsAt} mode="datetime-short" />,
+    href: event.join?.href ?? event.href,
+    external: event.join?.external,
+    right: event.join ? <JoinPill /> : null,
+  };
+}
 
 function NeedsItem({ row }: { row: NeedsRow }) {
   const Icon = row.icon;
