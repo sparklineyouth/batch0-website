@@ -1,10 +1,8 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPermission } from "@/lib/server-guards";
-import { logAudit, logAuditMany } from "@/lib/audit";
-import { getRole } from "@/lib/roles";
-import { covers } from "@/lib/permissions";
+import { changeRoles } from "@/lib/role-change-server";
+import type { ActionResult } from "@/lib/action-result";
 import type { Role } from "@/lib/types";
 
 /**
@@ -14,126 +12,60 @@ import type { Role } from "@/lib/types";
  *
  * Note what this action does NOT require: an application, an acceptance, a
  * cohort, or a payment. Somebody signs up, an admin picks their role, done.
+ *
+ * Who may change whose role is decided in one place for this, the bulk change
+ * and the email form at /admin/roles (lib/role-change.ts): nobody re-roles
+ * themselves, nobody hands out or takes away access they don't hold, and
+ * somebody always keeps full access. The permission guard still throws (a
+ * caller without people.roles gets a 500, which scripts/e2e-roles.mts relies
+ * on); the refusals an admin has to act on come back as results, because a
+ * thrown message is replaced with a generic one in production builds
+ * (lib/action-result.ts).
  */
-async function guardRoleChange(role: Role) {
+export async function changeUserRole(userId: string, role: Role): Promise<ActionResult> {
   const actor = await assertPermission("people.roles");
-  const target = await getRole(role);
-  if (!target) throw new Error(`"${role}" isn't a role.`);
-  // You can't hand out access you don't hold yourself — the same rule the
-  // roles page enforces. Full admins hold the wildcard and skip it.
-  if (!covers(actor.caps, target.permissions)) {
-    throw new Error(
-      `You can't assign "${target.label}" — it holds permissions you don't have.`,
-    );
-  }
-  return actor;
-}
-
-export async function changeUserRole(userId: string, role: Role) {
-  const actor = await guardRoleChange(role);
-  const actorId = actor.userId;
-  // Nobody re-roles themselves. Previously this only blocked an admin
-  // downgrading their own admin bit; now that any role can carry
-  // `people.roles`, self-service in either direction is a way to escape the
-  // "can't grant what you don't hold" rule above.
-  if (userId === actorId && role !== actor.role) {
-    throw new Error("You can't change your own role. Ask another admin.");
-  }
-  const admin = createAdminClient();
-  // The previous role, for the audit trail.
-  const { data: prev } = await admin
-    .from("profiles")
-    .select("role, email")
-    .eq("id", userId)
-    .single();
-  const { error } = await admin
-    .from("profiles")
-    .update({ role })
-    .eq("id", userId);
-  if (error) throw new Error(error.message);
-  await logAudit({
-    action: "user.role_changed",
-    targetType: "profile",
-    targetId: userId,
-    payload: { from: prev?.role ?? null, to: role, email: prev?.email },
-  });
+  const res = await changeRoles({ actor, userIds: [userId], role });
+  if (res.error !== null) return { ok: false, error: res.error };
+  const refused = res.skipped[0] ?? res.failed[0];
+  if (refused) return { ok: false, error: refused.reason };
 
   revalidatePath("/admin/students");
   revalidatePath(`/admin/students/${userId}`);
   revalidatePath("/admin/roles");
+  return { ok: true };
 }
 
 /**
- * Set-based counterpart of changeUserRole: one read, one update, one audit
- * insert for the whole batch, however many users are picked. The per-user
- * loop it replaces issued ~6 round trips per user and timed out near the
- * 200-user cap. Guard semantics are identical to the single-user path: an
- * invalid role or a role the actor can't cover fails the whole batch, while
- * the actor's own id is skipped (nobody re-roles themselves) and reported
- * as such.
+ * Set-based counterpart of changeUserRole, through the same rule: one read,
+ * one update per current role (usually one), one audit insert for the whole
+ * batch, however many users are picked. A destination the actor can't hand
+ * out fails the whole batch (`error`); the actor's own account, anyone whose
+ * role holds more than the actor's, and anyone already in the role are
+ * skipped and counted as such.
  */
 export async function bulkChangeUserRole(input: {
   userIds: string[];
   role: Role;
-}): Promise<{ succeeded: number; failed: number; skipped: number }> {
-  const actor = await guardRoleChange(input.role);
-  const actorId = actor.userId;
+}): Promise<{ succeeded: number; failed: number; skipped: number; error?: string }> {
+  const actor = await assertPermission("people.roles");
   if (input.userIds.length === 0) {
     return { succeeded: 0, failed: 0, skipped: 0 };
   }
   if (input.userIds.length > 200) {
-    throw new Error("Cap bulk role changes at 200 users per run.");
+    return { succeeded: 0, failed: 0, skipped: 0, error: "Cap bulk role changes at 200 users per run." };
   }
 
-  const targetIds = input.userIds.filter((id) => id !== actorId);
-  const skipped = input.userIds.length - targetIds.length;
-  if (targetIds.length === 0) {
-    revalidatePath("/admin/students");
-    return { succeeded: 0, failed: 0, skipped };
+  const res = await changeRoles({ actor, userIds: input.userIds, role: input.role });
+  if (res.error !== null) {
+    return { succeeded: 0, failed: 0, skipped: 0, error: res.error };
   }
 
-  const admin = createAdminClient();
-
-  // One read for the whole batch, feeding the audit trail (previous role). A
-  // failed read is non-fatal: the update below still runs and the audit
-  // records `from: null`, exactly as the per-user path behaved when its
-  // prev-role select came back empty.
-  const { data: targets } = await admin
-    .from("profiles")
-    .select("id, role, email")
-    .in("id", targetIds);
-  const prevById = new Map<string, { role: Role | null; email: string | null }>(
-    ((targets ?? []) as any[]).map((t) => [t.id as string, t]),
-  );
-
-  // One write for the whole batch. An id with no profiles row matches
-  // nothing and still counts as succeeded — the same outcome as the
-  // per-user path, where a zero-row update isn't an error.
-  const { error } = await admin
-    .from("profiles")
-    .update({ role: input.role })
-    .in("id", targetIds);
-  if (error) {
-    revalidatePath("/admin/students");
-    return { succeeded: 0, failed: targetIds.length, skipped };
-  }
-
-  await logAuditMany(
-    actor,
-    targetIds.map((id) => ({
-      action: "user.role_changed",
-      targetType: "profile",
-      targetId: id,
-      payload: {
-        from: prevById.get(id)?.role ?? null,
-        to: input.role,
-        email: prevById.get(id)?.email,
-      },
-    })),
-  );
-
-  for (const id of targetIds) revalidatePath(`/admin/students/${id}`);
+  for (const c of res.changed) revalidatePath(`/admin/students/${c.id}`);
   revalidatePath("/admin/students");
   revalidatePath("/admin/roles");
-  return { succeeded: targetIds.length, failed: 0, skipped };
+  return {
+    succeeded: res.changed.length,
+    failed: res.failed.length,
+    skipped: res.skipped.length,
+  };
 }

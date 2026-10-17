@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
 import { getRole } from "@/lib/roles";
+import { changeRoles } from "@/lib/role-change-server";
 import {
   PERMISSION_BY_KEY,
   ROLE_SLUG_PATTERN,
@@ -297,6 +298,11 @@ export async function deleteRole(
  * This is the "you don't apply for a role, you're given one" path: the person
  * signs up like anyone else, and an admin hands them the role afterwards. No
  * application, no cohort, no payment involved.
+ *
+ * The change itself goes through the same rule as the People pages
+ * (lib/role-change.ts). This form used to exempt full admins from "you can't
+ * change your own role", which let a sole admin demote themselves and leave
+ * the site with nobody holding full access.
  */
 export async function grantRoleByEmail(
   email: string,
@@ -308,7 +314,8 @@ export async function grantRoleByEmail(
     const role = await getRole(slug);
     if (!role) throw new Error("That role doesn't exist.");
     // Same escalation rule as role editing: you can't hand out more than you
-    // hold. Blocks `people.roles` alone from being a route to full admin.
+    // hold. Checked again by changeRoles; here so the message comes before
+    // the email lookup, as it always has.
     if (!covers(actor.caps, role.permissions)) {
       throw new Error(
         `You can't assign "${role.label}" — it holds permissions you don't have.`,
@@ -333,22 +340,16 @@ export async function grantRoleByEmail(
     if (profile.role === slug) {
       throw new Error(`${clean} already holds the ${role.label} role.`);
     }
-    if (profile.id === actor.userId && !actor.caps.superAdmin) {
-      throw new Error("You can't change your own role.");
-    }
 
-    const { error } = await admin
-      .from("profiles")
-      .update({ role: slug })
-      .eq("id", profile.id);
-    if (error) throw new Error(error.message);
-
-    await logAudit({
-      action: "user.role_changed",
-      targetType: "profile",
-      targetId: profile.id,
-      payload: { from: profile.role, to: slug, email: profile.email, via: "roles_page" },
+    const res = await changeRoles({
+      actor,
+      userIds: [profile.id],
+      role: slug,
+      via: "roles_page",
     });
+    if (res.error !== null) throw new Error(res.error);
+    const refused = res.skipped[0] ?? res.failed[0];
+    if (refused) throw new Error(refused.reason);
 
     revalidatePath("/admin/roles");
     revalidatePath("/admin/students");
