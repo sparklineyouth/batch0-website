@@ -20,6 +20,12 @@ const BASE = "https://batch0.org";
 // `lastModified` is a real crawl signal (Google + AI crawlers use it to spot
 // fresh content); `priority`/`changeFrequency` are ignored by Google, so blog
 // entries carry only accurate lastmod dates from each post's frontmatter.
+// Hourly, like /blog. Publishing regenerates it at once (revalidatePath in the
+// admin blog actions); this is for a build that couldn't reach the database,
+// which lists the committed posts only (lib/blog.ts, OnBlogDbFailure) and
+// would otherwise keep that list until the next deploy.
+export const revalidate = 3600;
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
   const posts = await getAllPostsMeta();
