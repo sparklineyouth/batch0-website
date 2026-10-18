@@ -1,4 +1,4 @@
-# Migrations 0093–0106 (October 2026)
+# Migrations 0093–0107 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -81,6 +81,12 @@ check-ins, in-app files, discussions and the old recorder at once:
    texting isn't set up; after it runs, texting is still inert until someone
    saves a sending number and credentials at `/admin/sms/settings`.
 
+8. **Any time: 0107.** It only adds the `student_followups` table (no client
+   policies, no data changes). Until it runs, Student progress says
+   "Follow-ups aren't set up yet", the Overview's attention list leaves
+   follow-ups out, and `settings.manage` holders see "run migration 0107" on
+   the Overview; everything else on both pages works.
+
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
   one again changes nothing, even after the app is in use: 0093 seeds Fall's
@@ -150,9 +156,9 @@ check-ins, in-app files, discussions and the old recorder at once:
   Discord linking can't save. Fix forward instead. Before any of them has
   run, rolling back is safe.
 - People with `settings.manage` see one line on `/admin`, *Database update
-  needed: run migrations 0093–0101*, while a probe finds one missing
+  needed: run migration(s) …* naming the ones missing, while a probe finds one
   (`lib/pending-migrations.ts`, cached 5 minutes). It checks the new tables and
-  columns of 0093–0096 and 0101, and the retired permission keys 0099, 0100
+  columns of 0093–0096, 0101 and 0107, and the retired permission keys 0099, 0100
   and 0101 strip from roles. The policy changes in 0097–0099 are invisible to it: the line
   going away does not prove those ran, so run the verify queries below.
 
@@ -173,6 +179,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0104 | `0104_chat_client_ids.sql` | `chat_messages.client_id` (the composer's id for a message, kept by every Retry), unique per sender, readable by signed-in readers so Realtime's echo carries it: a resend of a message that went through gets the original back instead of posting it twice. Plus a partial index on deleted messages, `(channel_id, deleted_at desc, id desc)`, for *Report a deleted message*. Changes no data. See `docs/chat.md`. |
 | 0105 | `0105_assignment_drafts.sql` | `course_assignment_drafts`: a student's private, autosaved unsubmitted assignment work, readable by its owner only (no staff policy), with a version that only goes up (a submit empties the row instead of deleting it). `save_course_assignment_draft()` re-checks access on every save and refuses one from a tab holding an older version; `clear_course_assignment_draft()` empties it after a submit. Both service role only. Adds only; changes no existing data. |
 | 0106 | `0106_sms_messaging.sql` | Texting: `messaging_consent` (consent per number, no promotional consent on a student's number), the append-only `messaging_consent_log`, `sms_outbox`, `sms_campaigns`, `sms_events`, and the `sms_settings` singleton seeded with no credentials. Service-role only (RLS on, no policies, no grants). Creates only new tables, changes no data, and sends nothing: texting stays off until a number and credentials are saved. See `docs/sms.md`. |
+| 0107 | `0107_student_followups.sql` | `student_followups`: who on the team owns a check on a student, the next check date and a factual note (one open per student), written from the drawer on `/admin/progress` and due ones listed in the Overview's attention list. RLS on with no policies, every API privilege revoked. Changes no data and sends nothing. |
 
 ## Verify
 
@@ -306,6 +313,14 @@ select to_regclass('public.messaging_consent') is not null
                where tgname = 'messaging_consent_log_no_update'
                  and tgrelid = to_regclass('public.messaging_consent_log'))
    and exists (select 1 from public.sms_settings where id) as ok;
+
+-- 0107
+select to_regclass('public.student_followups') is not null
+   and exists (select 1 from pg_indexes
+               where schemaname = 'public' and tablename = 'student_followups'
+                 and indexname = 'student_followups_one_open_idx')
+   and (select relrowsecurity from pg_class
+        where oid = to_regclass('public.student_followups')) as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,

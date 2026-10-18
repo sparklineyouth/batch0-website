@@ -144,6 +144,12 @@ where permissions @> array['ai_usage.view']::text[];`,
                where tgname = 'messaging_consent_log_no_update'
                  and tgrelid = to_regclass('public.messaging_consent_log'))
    and exists (select 1 from public.sms_settings where id) as ok;`,
+  "0107": `select to_regclass('public.student_followups') is not null
+   and exists (select 1 from pg_indexes
+               where schemaname = 'public' and tablename = 'student_followups'
+                 and indexname = 'student_followups_one_open_idx')
+   and (select relrowsecurity from pg_class
+        where oid = to_regclass('public.student_followups')) as ok;`,
 };
 
 /**

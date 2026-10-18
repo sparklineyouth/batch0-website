@@ -27,13 +27,23 @@ export function CompletionMatrix({
   columns,
   rows,
   missingOnly: initialMissingOnly,
+  initialCell = null,
 }: {
   columns: MatrixColumn[];
   rows: MatrixStudentRow[];
   missingOnly: boolean;
+  /** A cell whose drawer is open on arrival (a deep link from the Overview). */
+  initialCell?: { assignmentId: string; userId: string } | null;
 }) {
   const [missingOnly, setMissingOnly] = useState(initialMissingOnly);
   const [cell, setCell] = useState<{ assignmentId: string; userId: string } | null>(null);
+  // Opened after mount, not as the initial state: the drawer is a portal the
+  // server never renders, so it must not be there on the hydrating pass.
+  const initialKey = initialCell ? `${initialCell.assignmentId}:${initialCell.userId}` : null;
+  useEffect(() => {
+    if (initialCell) setCell(initialCell);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialKey]);
   const shown = missingOnly ? rows.filter((r) => r.missing >= 2) : rows;
   const flagged = rows.filter((r) => r.missing >= 2).length;
 
@@ -173,6 +183,11 @@ function ReviewPanel({ assignmentId, userId }: { assignmentId: string; userId: s
             </span>
           )}
         </div>
+        {!data.enrolled && (
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+            No longer in this cohort. What they handed in can still be reviewed.
+          </p>
+        )}
       </div>
       {s && (s.body || s.link_url) ? (
         <div className="border-t border-line pt-4">
@@ -192,9 +207,12 @@ function ReviewPanel({ assignmentId, userId }: { assignmentId: string; userId: s
       )}
       <div className="flex items-center justify-between gap-3 border-t border-line pt-4">
         <FieldError>{error}</FieldError>
-        <Button variant="secondary" size="sm" disabled={pending} onClick={() => excuse(!excused)}>
-          {excused ? "Undo excuse" : "Excuse"}
-        </Button>
+        {/* setExcused works on the cohort's roster, which they've left. */}
+        {data.enrolled && (
+          <Button variant="secondary" size="sm" disabled={pending} onClick={() => excuse(!excused)}>
+            {excused ? "Undo excuse" : "Excuse"}
+          </Button>
+        )}
       </div>
     </div>
   );

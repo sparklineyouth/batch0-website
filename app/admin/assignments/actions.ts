@@ -332,6 +332,13 @@ export type ReviewCell = {
   assignment: { id: string; title: string; week: number | null; due_at: string | null };
   submission: SubmissionRow | null;
   status: DerivedStatus;
+  /**
+   * False when the student has left this assignment's cohort (moved, or
+   * removed from the program) after handing the work in. It still waits for
+   * feedback — the review queues count it — so the drawer shows and reviews
+   * it; only excusing, a matter for the cohort, is off.
+   */
+  enrolled: boolean;
 };
 
 /** What the review drawer shows for one matrix cell. */
@@ -359,13 +366,17 @@ export async function loadReviewCell(input: {
         .eq("user_id", input.userId)
         .maybeSingle(),
     ]);
-    if (!enrollment || !profile) throw new Error("That student isn't in this cohort.");
     const submission = (sub ?? null) as SubmissionRow | null;
+    // Handed-in work outlives the enrollment it was handed in under: the
+    // Overview's "Waiting for feedback" rows link here for it, and refusing
+    // would leave it waiting with no way to clear it.
+    if (!profile || (!enrollment && !submission)) throw new Error("That student isn't in this cohort.");
     return {
       student: { id: profile.id, name: profile.full_name, email: profile.email },
       assignment: { id: a.id, title: a.title, week: a.week, due_at: a.due_at },
       submission,
-      status: deriveStatus({ opensAt: a.opens_at, dueAt: a.due_at, enrolledAt: enrollment.enrolled_at, submission }),
+      status: deriveStatus({ opensAt: a.opens_at, dueAt: a.due_at, enrolledAt: enrollment?.enrolled_at ?? null, submission }),
+      enrolled: !!enrollment,
     };
   });
 }

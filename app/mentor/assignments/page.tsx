@@ -19,7 +19,7 @@ export default async function MentorAssignmentsPage() {
   // Same scope as the review action: program-wide for assignments.manage,
   // otherwise the mentor's own cohorts and students.
   const scope = can(caps, "assignments.manage") ? null : await mentorScope(admin, mentor.id);
-  const { ready, pending, recent } = await loadReviewQueue(admin, scope);
+  const { ready, pending, pendingTotal, recent } = await loadReviewQueue(admin, scope);
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -27,7 +27,9 @@ export default async function MentorAssignmentsPage() {
 
       <section className="mt-8">
         <h2 className="font-mono text-xs uppercase tracking-wider text-ink-faint">
-          To review{pending.length ? ` · ${pending.length}` : ""}
+          {/* Every waiting submission, not just the 200 listed: the admin
+              Overview's attention list counts the same queue. */}
+          To review{pendingTotal ? ` · ${pendingTotal}` : ""}
         </h2>
         {!ready || pending.length === 0 ? (
           <p className="mt-3 border-y border-line py-8 text-center text-sm text-ink-soft">
@@ -36,7 +38,8 @@ export default async function MentorAssignmentsPage() {
         ) : (
           <ul className="mt-3 divide-y divide-line border-y border-line">
             {pending.map((s) => (
-              <li key={s.id} className="py-5">
+              // The anchor the Overview's attention rows link to (#submission-<id>).
+              <li key={s.id} id={`submission-${s.id}`} className="scroll-mt-24 py-5">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <p className="text-[15px] text-ink">
                     <Link href={`/mentor/students/${s.user_id}`} className="font-medium hover:underline">

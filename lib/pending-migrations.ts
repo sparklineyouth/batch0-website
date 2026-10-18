@@ -1,11 +1,12 @@
 /**
- * Which of the October 2026 migrations (0093–0101) this database is missing.
+ * Which of the October 2026 migrations (0093–0101, 0107) this database is
+ * missing.
  *
  * Production gets the code before the migrations are run by hand, so the admin
  * overview shows one line while any probe says one is missing. Two kinds:
  *
  *   - schema: read one new table or column with `limit 0`; "does not exist"
- *     means its migration hasn't run (0093–0096, 0101).
+ *     means its migration hasn't run (0093–0096, 0101, 0107).
  *   - leftover: look for one row the migration removes; finding one means it
  *     hasn't run (0099, 0100 and 0101 strip retired permission keys from roles).
  *
@@ -20,7 +21,19 @@ import { isMissingSchemaError } from "./schema-ready.ts";
 
 export const MIGRATIONS_DOC = "docs/migrations-2026-10.md";
 
-export const PENDING_MIGRATIONS_NOTICE = `Database update needed: run migrations 0093–0101 (${MIGRATIONS_DOC})`;
+/**
+ * The one line the overview shows, naming what this database is missing —
+ * not a fixed range, which would send someone to run migrations that are
+ * already applied, or that don't exist yet.
+ */
+export function pendingMigrationsNotice(missing: readonly string[]): string {
+  const list = [...missing].sort();
+  const names =
+    list.length <= 1
+      ? `migration ${list[0] ?? ""}`.trim()
+      : `migrations ${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+  return `Database update needed: run ${names} (${MIGRATIONS_DOC})`;
+}
 
 export type MigrationProbe = {
   migration: string;
@@ -61,6 +74,8 @@ export const MIGRATION_PROBES: readonly MigrationProbe[] = [
     columns: "slug",
     leftover: { column: "permissions", values: ["discord.manage"] },
   },
+  // Student follow-ups on /admin/progress and the Overview's attention list.
+  { migration: "0107", table: "student_followups", columns: "id, owner_id, next_check_on, status" },
 ];
 
 /** What one probe saw: the query's error, and whether a leftover row came back. */

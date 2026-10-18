@@ -7,8 +7,48 @@ reply, overdue assignments for `assignments.manage`) and one revenue number — 
 refunds (`netRevenueCents` in `lib/revenue-ledger.ts`, which the phone home at
 `/app/admin` shows too). Each block shows only to roles holding the permission
 of the page it links to. Holders of `settings.manage` also get one line while
-a probe finds one of migrations 0093–0100 missing (`docs/migrations-2026-10.md`
-says what it can and can't see).
+a probe finds one of the October migrations missing (0093–0101 and 0107; the
+line names which, and `docs/migrations-2026-10.md` says what the probes can
+and can't see).
+
+### Needs attention
+
+Under the inbox row, one short list (at most 8 rows) of work waiting on the
+team, each with a reason, an age, an owner and one action that opens the
+source record (`lib/attention.ts`, providers in `lib/attention-server.ts`).
+Four sources, each shown only to people who can open the page its rows open
+(the route gate in `ADMIN_ROUTE_PERMISSIONS` itself, so `support.manage`
+without `support.view` doesn't get Support rows it couldn't follow), and
+checked before anything is read:
+
+| Source | Key | Row opens | Count agrees with |
+|---|---|---|---|
+| Support requests needing a reply (overdue, due soon, unassigned) | `support.view` | `/admin/support/<id>` | Support's *Needs reply* tab |
+| Submissions waiting for feedback | `assignments.manage` (everyone's) or `mentor.panel` (their own cohorts and students) | the review drawer on `/admin/assignments`, or `/mentor/assignments#submission-<id>` | the mentor queue's *To review*, or *Waiting for feedback* on `/admin/assignments` |
+| Open chat reports | `chat.manage` | `/admin/chat/reports/<id>` | `/admin/chat`'s open reports |
+| Follow-ups due today or earlier | `people.view` | the follow-up drawer on `/admin/progress` | *Follow-ups due* on `/admin/progress` |
+
+Rows are derived from the sources on every render, never stored: replying,
+reviewing, closing a report or a follow-up (or moving its date) is what takes
+a row off. Every source keeps its most pressing row, then the rest go to the
+most overdue. Confidential support requests are never rows, for anyone; a
+viewer with `support.sensitive` gets one line saying how many are waiting,
+linking to Support. Chat reports naming the viewer stay out, as on
+`/admin/chat`; one the viewer filed is counted but left for another
+moderator, with a line saying so. "Nothing is waiting on the team" appears
+only when every source counts zero and none failed. A source whose read fails
+(a timeout, not a missing table) is named under the list, never dropped or
+shown as empty; a source whose migration hasn't run is simply absent.
+Opening the Overview sends nothing and marks nothing read.
+
+Handed-in work from a student who has since left the cohort (moved, or removed
+from the program) still waits for feedback, and the review drawer opens and
+reviews it; only *Excuse*, which acts on the cohort's roster, is off.
+
+A new source (unanswered chat questions, say) is one more provider: a key in
+`AttentionSourceKey`, its permission in `ATTENTION_PERMITTED`, a loader in
+`ATTENTION_PROVIDERS`, and a row builder. `/dev/attention` previews the list
+with fixtures (404 on production).
 
 ## Cohort readiness (`/admin/cohorts`)
 
@@ -102,6 +142,22 @@ team's own pages stay on `teams.manage`.
 - **Student progress** (`/admin/progress`) counts handed-in assignments and
   challenge entries as activity, like a student's own page, so nobody who
   only submitted work is listed as never started.
+- **Follow-ups** live on Student progress (migration 0107): a drawer per
+  student with an owner, the next check date and a factual note, so two
+  people don't chase the same student. One open follow-up per student; the
+  Follow-up column shows who has it. Reading needs `people.view`; starting,
+  changing, closing or owning one needs `people.manage` too. Only a person
+  starts one (nothing turns inactivity into a follow-up), and nothing about
+  one is sent to anyone. Due ones are listed at the top of the page and in the
+  Overview's attention list. Edits name the version they started from, so a
+  second person's save never silently replaces the first's. An owner whose
+  role no longer holds those keys keeps the follow-up until someone edits it;
+  the drawer then asks for a new owner rather than offering them. A read that
+  fails says "Couldn't load follow-ups", never "not set up yet".
+- **Assignments** (`/admin/assignments`) lists the longest-waiting
+  submissions across every cohort under *Waiting for feedback*, with the exact
+  count, each opening its review drawer — the same read as the Overview's
+  Feedback source.
 
 ## Retired (October 2026)
 
