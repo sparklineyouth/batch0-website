@@ -10,6 +10,14 @@ import { stripe } from "@/lib/stripe";
 import { handleChargeRefunded } from "@/lib/stripe-fulfillment";
 import { purgeChatContentFor } from "@/lib/chat-purge";
 import { env } from "@/lib/env";
+import { isMissingSchemaError } from "@/lib/schema-ready";
+import {
+  COHORT_MOVE_NOT_READY,
+  cohortMoveFailureMessage,
+  cohortMoveRefusalMessage,
+  parseCohortMoveResult,
+} from "@/lib/cohort-move";
+import { PROFILE_ACTION_PERMISSIONS } from "@/lib/people-profile-access";
 import type { ActionResult } from "@/lib/action-result";
 
 async function fetchTargetProfile(userId: string) {
@@ -30,7 +38,7 @@ async function fetchTargetProfile(userId: string) {
  * by re-accepting them or moving them back into a cohort.
  */
 export async function removeFromProgram(userId: string, reason: string) {
-  const { userId: actorId } = await assertPermission("people.manage");
+  const { userId: actorId } = await assertPermission(PROFILE_ACTION_PERMISSIONS.removeFromProgram);
   if (userId === actorId) throw new Error("Use a separate admin to remove yourself.");
   const target = await fetchTargetProfile(userId);
 
@@ -99,23 +107,37 @@ export async function removeFromProgram(userId: string, reason: string) {
 }
 
 /**
- * Scholarship rows that move with a student: every one not yet finished with.
- * Declined and withdrawn rows stay on the cohort they were decided in, since
- * they're a record of what happened there.
- */
-const MOVABLE_SCHOLARSHIP_STATUSES = ["draft", "submitted", "under_review", "awarded"];
-
-/**
- * Move a student to a different cohort. Updates their latest active
- * application, restamps their live scholarship rows, and replaces the
- * enrollment row.
+ * Move a student to a different cohort: their enrollment, the application it
+ * belongs to, and their live scholarship rows, as one transaction in the
+ * database (admin_move_student_cohort, migration 0103 — the file explains
+ * what moves and what deliberately doesn't).
+ *
+ * This used to be five separate writes from here, including "delete every
+ * enrollment, then insert one back if the latest application is paid". A
+ * student added with "Add a person" has no application, so they were left
+ * with no enrollment at all; so was anyone whose newest application was a
+ * draft; and a failed insert (a full cohort) still reported success. Now a
+ * refusal or a failed write changes nothing, and the audit row and the
+ * student's notification are written only after the move has committed.
+ *
+ * `fromCohortId` is the cohort the profile showed them in. If they're no
+ * longer there (someone else moved them), nothing moves.
+ *
+ * Picking the cohort a student has paid for when they're enrolled nowhere
+ * (what the old action's failed insert left behind) restores that enrollment
+ * rather than refusing with "already in": `data.restored` says which it was,
+ * and the student is told their place is back, not that they moved.
  *
  * Returns a result rather than throwing for the refusals an admin has to act
  * on, because a thrown message is replaced with a generic one in production
  * builds (lib/action-result.ts).
  */
-export async function moveToCohort(userId: string, cohortId: string): Promise<ActionResult> {
-  const { userId: actorId } = await assertPermission("people.manage");
+export async function moveToCohort(
+  userId: string,
+  cohortId: string,
+  fromCohortId: string | null = null,
+): Promise<ActionResult<{ restored: boolean }>> {
+  const { userId: actorId } = await assertPermission(PROFILE_ACTION_PERMISSIONS.moveCohort);
   if (!cohortId) return { ok: false, error: "Pick a cohort." };
   const target = await fetchTargetProfile(userId);
 
@@ -127,130 +149,59 @@ export async function moveToCohort(userId: string, cohortId: string): Promise<Ac
     .maybeSingle();
   if (!cohort) return { ok: false, error: "That cohort doesn't exist." };
 
-  const { data: app } = await admin
-    .from("applications")
-    .select("id, cohort_id, status")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  // Their scholarship rows move with them, BEFORE anything else changes, so a
-  // refusal here leaves the student exactly where they were.
-  //
-  // A scholarship follows the dates of the cohort on its row: the call window,
-  // the one-at-a-time rule, seat counts, the checkout discount lookup and the
-  // guest tickets' Demo Day all read scholarship_applications.cohort_id. Left
-  // on the old cohort, a deferred student's award would lock their mentor
-  // calls when the old cohort ended, although they're enrolled in the new one
-  // with calls unused, and would stop blocking a second award in the new one.
-  // Only rows on the cohort the application is leaving move. A returning
-  // student's award from an earlier cohort belongs to that cohort.
-  const fromCohortId: string | null = app?.cohort_id ?? null;
-  let movedScholarshipIds: string[] = [];
-  if (fromCohortId && fromCohortId !== cohortId) {
-    // The partial unique index (user_id, cohort_id) WHERE status='awarded'
-    // (0071) allows one award per student per cohort, so an award can't move
-    // into a cohort where they already hold one. Checked up front to say so
-    // plainly; the index still catches a race below.
-    const { data: awards, error: awardsErr } = await admin
-      .from("scholarship_applications")
-      .select("cohort_id")
-      .eq("user_id", userId)
-      .eq("status", "awarded")
-      .in("cohort_id", [fromCohortId, cohortId]);
-    if (awardsErr) {
-      return {
-        ok: false,
-        error: `Couldn't check their scholarships before moving them: ${awardsErr.message}`,
-      };
-    }
-    const heldIn = new Set(((awards ?? []) as Array<{ cohort_id: string }>).map((a) => a.cohort_id));
-    if (heldIn.has(fromCohortId) && heldIn.has(cohortId)) {
-      return {
-        ok: false,
-        error: `They hold a scholarship award in their current cohort and another in ${cohort.name}, and a student holds one award per cohort. Revoke one of the two awards, then move them.`,
-      };
-    }
-
-    const { data: moved, error: moveErr } = await admin
-      .from("scholarship_applications")
-      .update({ cohort_id: cohortId })
-      .eq("user_id", userId)
-      .eq("cohort_id", fromCohortId)
-      .in("status", MOVABLE_SCHOLARSHIP_STATUSES)
-      .select("id");
-    if (moveErr) {
-      return {
-        ok: false,
-        error: /duplicate key|unique constraint/i.test(moveErr.message)
-          ? `They already hold a scholarship award in ${cohort.name}, and a student holds one award per cohort. Revoke one of the two awards, then move them.`
-          : `Couldn't move their scholarship applications to ${cohort.name}, so nothing was moved: ${moveErr.message}`,
-      };
-    }
-    movedScholarshipIds = ((moved ?? []) as Array<{ id: string }>).map((r) => r.id);
+  const { data, error } = await admin.rpc("admin_move_student_cohort", {
+    p_user_id: userId,
+    p_to_cohort_id: cohortId,
+    p_from_cohort_id: fromCohortId || null,
+  });
+  if (error) {
+    // Deployed before 0103 ran: refuse plainly rather than fall back to the
+    // old writes, which are the bug.
+    if (isMissingSchemaError(error)) return { ok: false, error: COHORT_MOVE_NOT_READY };
+    console.error("[moveToCohort] move rolled back:", error.message);
+    return { ok: false, error: cohortMoveFailureMessage(error.message, cohort.name) };
   }
+  const result = parseCohortMoveResult(data);
+  if (!result.ok) return { ok: false, error: cohortMoveRefusalMessage(result, cohort.name) };
 
-  if (app) {
-    const { error: appErr } = await admin
-      .from("applications")
-      .update({ cohort_id: cohortId })
-      .eq("id", app.id);
-    if (appErr) {
-      // Put the scholarship rows back so they still agree with the
-      // application, which stayed where it was.
-      if (movedScholarshipIds.length > 0) {
-        const { error: undoErr } = await admin
-          .from("scholarship_applications")
-          .update({ cohort_id: fromCohortId })
-          .in("id", movedScholarshipIds);
-        if (undoErr) {
-          console.error("[moveToCohort] scholarship restamp undo failed:", undoErr.message);
-        }
-      }
-      return { ok: false, error: `Couldn't move their application: ${appErr.message}` };
-    }
-  }
-
-  // Drop existing enrollments (any cohort) and recreate against the
-  // new one if the application is paid/enrolled.
-  await admin.from("enrollments").delete().eq("user_id", userId);
-  if (app && (app.status === "paid" || app.status === "enrolled")) {
-    await admin.from("enrollments").insert({
-      user_id: userId,
-      cohort_id: cohortId,
-      application_id: app.id,
-    });
-  }
-
+  // Committed. Only now does anything outside the database hear about it.
   await logAudit({
     action: "user.moved_to_cohort",
     targetType: "profile",
     targetId: userId,
     payload: {
       email: target.email,
-      from_cohort_id: app?.cohort_id ?? null,
+      from_cohort_id: result.fromCohortId,
       to_cohort_id: cohortId,
+      application_id: result.applicationId,
+      // moved | created (a paid application's missing enrollment, in the new
+      // cohort) | restored (the same, put back where it was paid for: from
+      // and to are the same cohort) | none
+      enrollment: result.enrollment,
       // The cohort the scholarship rows were restamped from, and which ones.
-      from_scholarship_cohort: movedScholarshipIds.length > 0 ? fromCohortId : null,
-      scholarship_application_ids: movedScholarshipIds,
+      from_scholarship_cohort:
+        result.scholarshipApplicationIds.length > 0 ? result.fromCohortId : null,
+      scholarship_application_ids: result.scholarshipApplicationIds,
       actor_id: actorId,
     },
   });
 
+  const restored = result.enrollment === "restored";
   await notify({
     userId,
     type: "moved_to_cohort",
-    title: `Moved to ${cohort.name}`,
-    body: "An admin has moved you to a different cohort.",
+    title: restored ? `You're back in ${cohort.name}` : `Moved to ${cohort.name}`,
+    body: restored
+      ? "An admin has restored your place in your cohort."
+      : "An admin has moved you to a different cohort.",
     link: "/dashboard",
   });
 
   revalidatePath(`/admin/students/${userId}`);
   revalidatePath("/admin/students");
   revalidatePath("/admin/applications");
-  if (movedScholarshipIds.length > 0) revalidatePath("/admin/scholarships/applications");
-  return { ok: true };
+  if (result.scholarshipApplicationIds.length > 0) revalidatePath("/admin/scholarships/applications");
+  return { ok: true, data: { restored } };
 }
 
 /**
@@ -259,7 +210,7 @@ export async function moveToCohort(userId: string, cohortId: string): Promise<Ac
  * we just trigger it).
  */
 export async function sendPasswordResetForUser(userId: string) {
-  await assertPermission("people.manage");
+  await assertPermission(PROFILE_ACTION_PERMISSIONS.passwordReset);
   const target = await fetchTargetProfile(userId);
   if (!target.email) throw new Error("User has no email on file");
 
@@ -326,7 +277,7 @@ export async function deleteUserAccount(userId: string, reason: string) {
  * Stripe, mark the payment row refunded, withdraw the application only when no replacement payment retains access.
  */
 export async function refundLatestPayment(userId: string, reason: string) {
-  await assertPermission("payments.manage");
+  await assertPermission(PROFILE_ACTION_PERMISSIONS.refund);
   const target = await fetchTargetProfile(userId);
 
   const admin = createAdminClient();

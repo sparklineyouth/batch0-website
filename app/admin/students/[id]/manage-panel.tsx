@@ -12,6 +12,7 @@ import {
   refundLatestPayment,
 } from "./actions";
 import { getActionError } from "@/lib/action-error";
+import type { ProfileAction } from "@/lib/people-profile-access";
 import {
   KeyRound,
   ArrowRightLeft,
@@ -24,13 +25,21 @@ type Action = "remove" | "move" | "reset" | "refund" | "delete" | null;
 
 export function ManagePanel({
   userId,
+  allowed,
   isSelf,
   isAdminTarget,
   hasRefundable,
   cohorts,
   currentCohortId,
+  enrolledCohortId,
 }: {
   userId: string;
+  /**
+   * Which controls this viewer gets, from lib/people-profile-access.ts: the
+   * same permission keys the actions assert, so nothing renders that the
+   * server would refuse.
+   */
+  allowed: Record<ProfileAction, boolean>;
   /** Some actions are disabled when the admin is looking at themselves. */
   isSelf: boolean;
   /** Deleting an admin is blocked server-side; mirror that in the UI. */
@@ -39,6 +48,8 @@ export function ManagePanel({
   hasRefundable: boolean;
   cohorts: { id: string; name: string }[];
   currentCohortId: string | null;
+  /** The cohort of the enrollment shown as current; the move refuses if it changed. */
+  enrolledCohortId: string | null;
 }) {
   const router = useRouter();
   const [action, setAction] = useState<Action>(null);
@@ -63,14 +74,19 @@ export function ManagePanel({
           await removeFromProgram(userId, reason);
           setOkMsg("Removed from program.");
         } else if (action === "move") {
-          // Returns its refusals (a scholarship award that can't move with
-          // them) so the admin reads the real reason, not a masked one.
-          const res = await moveToCohort(userId, targetCohort);
+          // Returns its refusals (a full cohort, an award that can't move
+          // with them) so the admin reads the real reason, not a masked one.
+          // Any refusal means nothing moved.
+          const res = await moveToCohort(userId, targetCohort, enrolledCohortId);
           if (!res.ok) {
             setError(res.error);
             return;
           }
-          setOkMsg("Moved to selected cohort.");
+          setOkMsg(
+            res.data?.restored
+              ? "Their enrollment in that cohort is back."
+              : "Moved to selected cohort.",
+          );
         } else if (action === "reset") {
           await sendPasswordResetForUser(userId);
           setOkMsg("Password reset email sent.");
@@ -96,54 +112,64 @@ export function ManagePanel({
   return (
     <>
       <div className="grid gap-2 sm:grid-cols-2">
-        <ActionButton
-          icon={KeyRound}
-          label="Send password reset"
-          hint="Emails a reset link."
-          onClick={() => {
-            setAction("reset");
-            setReason("");
-          }}
-          disabled={isSelf}
-        />
-        <ActionButton
-          icon={ArrowRightLeft}
-          label="Move to a different cohort"
-          hint="Re-enrolls if paid."
-          onClick={() => setAction("move")}
-        />
-        <ActionButton
-          icon={UserMinus}
-          tone="warn"
-          label="Remove from program"
-          hint="Withdraws application + enrollment."
-          onClick={() => setAction("remove")}
-          disabled={isSelf}
-        />
-        <ActionButton
-          icon={Undo2}
-          tone="warn"
-          label="Refund latest payment"
-          hint={
-            hasRefundable
-              ? "Refunds via Stripe + resets application to accepted."
-              : "No succeeded payment available."
-          }
-          onClick={() => setAction("refund")}
-          disabled={!hasRefundable}
-        />
-        <ActionButton
-          icon={Trash2}
-          tone="danger"
-          label="Delete account"
-          hint={
-            isAdminTarget
-              ? "Demote from admin first."
-              : "Removes auth user + all associated rows."
-          }
-          onClick={() => setAction("delete")}
-          disabled={isSelf || isAdminTarget}
-        />
+        {allowed.passwordReset && (
+          <ActionButton
+            icon={KeyRound}
+            label="Send password reset"
+            hint="Emails a reset link."
+            onClick={() => {
+              setAction("reset");
+              setReason("");
+            }}
+            disabled={isSelf}
+          />
+        )}
+        {allowed.moveCohort && (
+          <ActionButton
+            icon={ArrowRightLeft}
+            label="Move to a different cohort"
+            hint="Their enrollment and application move with them."
+            onClick={() => setAction("move")}
+          />
+        )}
+        {allowed.removeFromProgram && (
+          <ActionButton
+            icon={UserMinus}
+            tone="warn"
+            label="Remove from program"
+            hint="Withdraws application + enrollment."
+            onClick={() => setAction("remove")}
+            disabled={isSelf}
+          />
+        )}
+        {allowed.refund && (
+          <ActionButton
+            icon={Undo2}
+            tone="warn"
+            label="Refund latest payment"
+            hint={
+              hasRefundable
+                ? "Refunds via Stripe + resets application to accepted."
+                : "No succeeded payment available."
+            }
+            onClick={() => setAction("refund")}
+            disabled={!hasRefundable}
+          />
+        )}
+        {allowed.deleteAccount && (
+          <ActionButton
+            icon={Trash2}
+            tone="danger"
+            label="Delete account"
+            hint={
+              isAdminTarget
+                ? "Demote from admin first."
+                : "Removes auth user + all associated rows."
+            }
+            onClick={() => setAction("delete")}
+            disabled={isSelf || isAdminTarget}
+          />
+        )}
       </div>
       {okMsg && (
         <p className="mt-3 text-xs text-emerald-700 dark:text-emerald-300">{okMsg}</p>
@@ -177,9 +203,12 @@ export function ManagePanel({
               ))}
             </Select>
             <p className="mt-3 text-xs text-ink-soft">
-              Their latest application moves to this cohort. If they were
-              paid/enrolled, the enrollment is re-created against the new
-              cohort.
+              Their current enrollment moves to this cohort, with the
+              application it came from and their open scholarship
+              applications. Someone added without an application keeps their
+              access. Earlier cohorts and other applications stay as they
+              are. If anything can&apos;t move (the cohort is full, say),
+              nothing does.
             </p>
             {error && <FieldError>{error}</FieldError>}
           </>

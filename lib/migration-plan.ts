@@ -23,7 +23,10 @@
 export type MigrationFile = {
   /** "0101_chat.sql" */
   file: string;
-  /** "0101" — what the Supabase CLI records. Two files can share one (0071). */
+  /**
+   * "0101" — what the Supabase CLI records, and the primary key of its
+   * history table, so no two files may share one (sharedVersions).
+   */
   version: string;
   num: number;
   sql: string;
@@ -39,7 +42,18 @@ export type PlannedMigration = MigrationFile & { status: MigrationStatus; why: s
  * fails if the two drift apart.
  */
 export const MIGRATION_CHECKS: Readonly<Record<string, string>> = {
-  "0093": `select to_regclass('public.course_assignments') is not null
+  // Production got 0078's column and check by hand but never its column
+  // comment, so the comment is what tells "0078 ran" apart: without it the
+  // check fails and 0078 runs (it's idempotent), rather than being recorded
+  // as live because later files ran.
+  "0078": `select exists (select 1 from pg_attribute a
+               where a.attrelid = to_regclass('public.events')
+                 and a.attname = 'display_viewer_count' and not a.attisdropped
+                 and col_description(a.attrelid, a.attnum) is not null)
+   and exists (select 1 from pg_constraint
+               where conrelid = to_regclass('public.events')
+                 and conname = 'events_display_viewer_count_check') as ok;`,
+  "0093":`select to_regclass('public.course_assignments') is not null
    and to_regclass('public.course_assignment_targets') is not null
    and to_regclass('public.course_assignment_submissions') is not null as ok;`,
   "0094": `select to_regclass('public.team_drive_links') is not null
@@ -91,6 +105,11 @@ where permissions @> array['ai_usage.view']::text[];`,
                where ix.indrelid = to_regclass('public.email_outbox')
                  and ix.indisunique and ix.indpred is null and ix.indnkeyatts = 1
                  and a.attname = 'dedupe_key') as ok;`,
+  "0103": `select to_regprocedure('public.admin_move_student_cohort(uuid, uuid, uuid)') is not null
+   and exists (select 1 from pg_trigger
+               where tgrelid = to_regclass('public.profiles') and tgname = 'keep_a_full_admin')
+   and exists (select 1 from pg_trigger
+               where tgrelid = to_regclass('public.app_roles') and tgname = 'keep_a_full_admin_role') as ok;`,
   "0104": `select exists (select 1 from information_schema.columns
                where table_schema = 'public' and table_name = 'chat_messages'
                  and column_name = 'client_id')
@@ -140,6 +159,84 @@ export function parseMigrationFile(file: string, sql: string): MigrationFile | n
 
 export function sortMigrations<T extends Pick<MigrationFile, "num" | "file">>(files: readonly T[]): T[] {
   return [...files].sort((a, b) => a.num - b.num || a.file.localeCompare(b.file));
+}
+
+/**
+ * Versions more than one file claims. The Supabase CLI, and Supabase's GitHub
+ * integration (which runs it against production on every push to main), keys
+ * a file by the digits before its first underscore and records it with an
+ * INSERT into supabase_migrations.schema_migrations, whose primary key is that
+ * version. A second file with the same one can never be recorded: its INSERT
+ * fails and the file rolls back, on a fresh database and on production alike.
+ * Until October 2026 0071 was shared (scholarships and the webinar viewer
+ * count, now 0078), and every push to main failed Supabase's check on it.
+ */
+export function sharedVersions(files: readonly Pick<MigrationFile, "file" | "version">[]): { version: string; files: string[] }[] {
+  const byVersion = new Map<string, string[]>();
+  for (const f of files) byVersion.set(f.version, [...(byVersion.get(f.version) ?? []), f.file]);
+  return Array.from(byVersion, ([version, names]) => ({ version, files: names.sort() }))
+    .filter((v) => v.files.length > 1)
+    .sort((a, b) => a.version.localeCompare(b.version));
+}
+
+/**
+ * Versions of `files` whose file isn't on main yet. `mainFiles` is the file
+ * names in main's supabase/migrations; null when that couldn't be read, and
+ * then nothing is held back.
+ *
+ * Supabase's GitHub integration compares production's history with main's
+ * files on every push to main, and a recorded version main has no file for
+ * stops it before it runs anything ("Remote migration versions not found in
+ * local migrations directory"), push after push, until that file lands. So a
+ * branch's migration may be run by hand before it merges, but it's recorded
+ * only once it's on main: until then the integration runs it again when it
+ * lands (every file is idempotent) and records it itself. Matched by name: a
+ * main file with the same version under another name is a different file.
+ */
+export function versionsNotOnMain(files: readonly Pick<MigrationFile, "file" | "version">[], mainFiles: ReadonlySet<string> | null): Set<string> {
+  if (!mainFiles) return new Set();
+  return new Set(files.filter((f) => !mainFiles.has(f.file)).map((f) => f.version));
+}
+
+/**
+ * The migration files a pull request adds (or renames into place), from
+ * GitHub's list of its files ({ filename, status }).
+ */
+export function addedMigrationFiles(prFiles: readonly { filename: string; status: string }[]): string[] {
+  const dir = "supabase/migrations/";
+  return prFiles
+    .filter((f) => (f.status === "added" || f.status === "renamed" || f.status === "copied") && f.filename.startsWith(dir))
+    .map((f) => f.filename.slice(dir.length))
+    .filter((name) => parseMigrationFile(name, "") !== null);
+}
+
+/** A file holding a version somewhere else: on main, or added by another open pull request. */
+export type VersionClaim = { file: string; where: string };
+
+/**
+ * Files a branch adds whose version is already held, under another name, on
+ * main or by another open pull request. sharedVersions catches a shared
+ * version once both files are in one checkout, but a pull request's checks
+ * run against main as it was then: two branches that each take the next free
+ * number (how 0071 came to be shared) both pass, both merge, and on the
+ * second merge Supabase's integration fails that file's history INSERT and
+ * rolls it back, so its schema never reaches production while Vercel deploys
+ * its code. Comparing against the other open pull requests catches the pair
+ * while both are open: whichever runs its checks second fails. The same file
+ * on two branches (a stacked pull request) is no conflict.
+ */
+export function versionConflicts(added: readonly string[], claims: readonly VersionClaim[]): { file: string; version: string; claimedBy: VersionClaim }[] {
+  const out: { file: string; version: string; claimedBy: VersionClaim }[] = [];
+  for (const file of added) {
+    const ours = parseMigrationFile(file, "");
+    if (!ours) continue;
+    for (const claim of claims) {
+      if (claim.file !== file && parseMigrationFile(claim.file, "")?.version === ours.version) {
+        out.push({ file, version: ours.version, claimedBy: claim });
+      }
+    }
+  }
+  return out;
 }
 
 type Piece = { kind: "code" | "string" | "comment"; text: string; nested: boolean };
@@ -354,8 +451,7 @@ export const ABSENCE_CHECKS: ReadonlySet<string> = new Set(["0097", "0099", "010
 /**
  * Decide, file by file, from that file's OWN evidence:
  *
- *   recorded        in supabase_migrations (for a version two files share,
- *                   a file that creates tables also needs them to exist)
+ *   recorded        in supabase_migrations
  *   positive check  its verify query passes (or fails: pending)
  *   own tables      every table it creates exists (that no later file drops)
  *
@@ -367,14 +463,19 @@ export const ABSENCE_CHECKS: ReadonlySet<string> = new Set(["0097", "0099", "010
  * "applied" is a GAP: the history skipped it. The runner stops on gaps
  * instead of guessing — running an old, non-idempotent file late can do
  * damage, and recording it unrun would hide the hole forever.
+ *
+ * Files that share a version are refused outright: a recorded version
+ * couldn't say which of them ran, and Supabase can't record both anyway.
  */
 export function planMigrations(files: readonly MigrationFile[], state: DbState): PlannedMigration[] {
+  const shared = sharedVersions(files);
+  if (shared.length) {
+    throw new Error(`Migration files share a version: ${shared.map((v) => `${v.version} (${v.files.join(", ")})`).join("; ")}`);
+  }
   const sorted = sortMigrations(files);
   const hasCheck = (v: string) => Object.prototype.hasOwnProperty.call(MIGRATION_CHECKS, v);
   const missingFor = (v: string) => (CHECK_REQUIRES[v] ?? []).filter((t) => !state.existingTables.has(t));
   const checkPasses = (v: string) => state.checks.get(v) === true && missingFor(v).length === 0;
-  const versionCount = new Map<string, number>();
-  for (const f of sorted) versionCount.set(f.version, (versionCount.get(f.version) ?? 0) + 1);
 
   // Tables each file creates that no later file drops: those must still exist if it ran.
   const droppedAfter: Set<string>[] = sorted.map(() => new Set());
@@ -388,8 +489,6 @@ export function planMigrations(files: readonly MigrationFile[], state: DbState):
     const tables = ownTables[i];
     const tablesSay = tables.length ? tables.every((t) => state.existingTables.has(t)) : null;
     if (state.recorded?.has(f.version)) {
-      // A shared version proves only that one of its files ran.
-      if ((versionCount.get(f.version) ?? 0) > 1 && tablesSay === false) return false;
       // The newest file is recorded but its verify query fails: an earlier
       // draft of it ran (a branch's migration, edited since). Nothing after
       // it can depend on the draft, and the October files are idempotent, so
@@ -433,17 +532,17 @@ export function planMigrations(files: readonly MigrationFile[], state: DbState):
       }
       return { ...f, status: "pending" as const, why: "nothing shows it has run" };
     }
-    // Its own evidence says it hasn't run.
+    // Its own evidence says it hasn't run. (A recorded file only gets here
+    // as the newest one, recorded from an earlier draft: see own().)
     const missingTables = ownTables[i].filter((t) => !state.existingTables.has(t));
     const why = hasCheck(f.version)
       ? state.recorded?.has(f.version)
         ? "recorded, but its verify query fails: an earlier draft of it ran, so it runs again"
         : "its verify query fails"
-      : state.recorded?.has(f.version)
-        ? `recorded, but its tables are missing (${missingTables.join(", ")}) — version ${f.version} is shared`
-        : `its tables are missing (${missingTables.join(", ")})`;
-    // Out of order: a later file ran. The October files (verify queries) are
-    // idempotent and documented to run out of order, so they're plain pending.
+      : `its tables are missing (${missingTables.join(", ")})`;
+    // Out of order: a later file ran. The files with verify queries (0078 and
+    // the October files) are idempotent and documented to run out of order,
+    // so they're plain pending.
     if (laterRan[i] && !hasCheck(f.version)) return { ...f, status: "gap" as const, why: `${why}, though later files ran` };
     return { ...f, status: "pending" as const, why };
   });

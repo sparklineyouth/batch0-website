@@ -15,6 +15,8 @@
     "test:profile-privileges-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-profile-privileges-db.mts",
     "test:call-cohosts-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-call-cohosts-db.mts",
     "test:calls-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-calls-rls-db.mts",
+    "test:migrations-replay-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-migrations-replay-db.mts",
+    "check:migration-versions": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-migration-versions.mts",
     "db:migrate": "node --env-file-if-exists=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/db-migrate.mts",
     "seo-doctor": "node --env-file-if-exists=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/seo-doctor.mts",
     "onshape-doctor": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/onshape-doctor.mts",
@@ -34,7 +36,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.1",
-    "@next/third-parties": "15.5.25",
+    "@next/third-parties": "15.5.28",
     "@sentry/nextjs": "^10.52.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.46.1",
@@ -42,12 +44,12 @@
     "@vercel/speed-insights": "^2.0.0",
     "gray-matter": "^4.0.3",
     "lucide-react": "^0.468.0",
-    "next": "15.5.25",
+    "next": "15.5.28",
     "next-themes": "^0.4.6",
-    "nodemailer": "^9.1.0",
+    "nodemailer": "^10.1.2",
     "pdfjs-dist": "6.3.289",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "rehype-autolink-headings": "^7.1.0",
     "rehype-external-links": "^3.0.0",
     "rehype-sanitize": "^6.0.0",
@@ -66,7 +68,6 @@
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
     "@types/node": "^20",
-    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.23.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
@@ -75,13 +76,16 @@
     "playwright": "^1.61.1",
     "png-to-ico": "^3.0.2",
     "postcss": "^8.4.47",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.5",
     "tailwindcss": "^3.4.13",
     "typescript": "^5.6.2"
   },
   "overrides": {
     "next": {
       "postcss": "8.5.28"
+    },
+    "js-yaml": {
+      "argparse": "2.0.1"
     }
   }
 }

@@ -7,6 +7,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { PaymentResult } from "@/components/payment-result";
 import { settleCheckoutSession } from "@/lib/settle-checkout";
 import { fmtDateOnly } from "@/lib/pre-cohort";
+import { PRE_COHORT_RESOURCES_HREF } from "@/lib/resource-search";
 import {
   ArrowRight,
   CheckCircle,
@@ -114,8 +115,10 @@ export default async function EnrolledPage(
             title="Start your team"
             body="Up to 4 teammates. Start any time."
           />
+          {/* The pre-cohort shelf, so an enrollee after kickoff lands on
+              Before One itself, open, not on the whole library. */}
           <NextStep
-            href="/dashboard/resources"
+            href={PRE_COHORT_RESOURCES_HREF}
             icon={FolderArchive}
             title="Before One"
             body="Pre-cohort worksheets."
