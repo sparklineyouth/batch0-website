@@ -54,6 +54,7 @@ export function SidePanel({
   onOpenThread,
   blocked = [],
   onUnanswered,
+  unansweredSeq = 0,
 }: {
   panel: Exclude<Panel, null>;
   viewer: ChatViewerInfo;
@@ -74,6 +75,8 @@ export function SidePanel({
   blocked?: readonly string[];
   /** #help's open-question count, as a list or a settled question just read it: the header's badge. */
   onUnanswered?: (channelId: string, n: number) => void;
+  /** Moves when a #help question changed live (0112): an open Unanswered list reads itself again. */
+  unansweredSeq?: number;
 }) {
   const title =
     panel === "members"
@@ -205,6 +208,7 @@ export function SidePanel({
                 onOpenThread={onOpenThread}
                 blocked={blocked}
                 onTotal={(n) => onUnanswered?.(channel.id, n)}
+                refreshKey={unansweredSeq}
               />
             ) : (
               <SearchPanel channel={channel} people={people} channelNames={channelNames} onJump={onJump} addPeople={addPeople} />
@@ -480,6 +484,7 @@ function Unanswered({
   onOpenThread,
   blocked,
   onTotal,
+  refreshKey,
 }: {
   channel: ChannelInfo;
   people: Record<string, ChatPerson>;
@@ -488,16 +493,24 @@ function Unanswered({
   onOpenThread?: (rootId: string) => void;
   blocked: readonly string[];
   onTotal: (n: number) => void;
+  /** A question changed live (0112): read the list again, keeping this one on screen meanwhile. */
+  refreshKey: number;
 }) {
   const [list, setList] = useState<ChatMessage[] | null>(null);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const totalRef = useRef(onTotal);
   totalRef.current = onTotal;
+  /** The channel the list on screen is for: another one starts from the spinner. */
+  const shownFor = useRef<string | null>(null);
   useEffect(() => {
     let live = true;
-    setList(null);
-    setError(null);
+    const fresh = shownFor.current !== channel.id;
+    shownFor.current = channel.id;
+    if (fresh) {
+      setList(null);
+      setError(null);
+    }
     chatApi
       .unanswered(channel.id)
       .then((r) => {
@@ -505,13 +518,15 @@ function Unanswered({
         addPeople(r.people);
         setList(r.questions);
         setTotal(r.total);
+        setError(null);
         totalRef.current(r.total);
       })
-      .catch(() => live && setError(READ_FAILED));
+      // A live re-read that fails keeps the list it had; the first read says so.
+      .catch(() => live && fresh && setError(READ_FAILED));
     return () => {
       live = false;
     };
-  }, [channel.id, addPeople]);
+  }, [channel.id, addPeople, refreshKey]);
   if (error) return <p className="p-4 text-xs text-red-600 dark:text-red-400" role="alert">{error}</p>;
   if (!list) return <div className="flex justify-center p-6"><Loader2 className="h-4 w-4 animate-spin text-ink-faint" /></div>;
   if (list.length === 0) {

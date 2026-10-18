@@ -7,6 +7,7 @@ import {
 import {
   THREAD_BELL_FRESH_MS,
   aboutHref,
+  adoptThreadState,
   aboutTitle,
   askAboutHref,
   bellFresh,
@@ -20,6 +21,7 @@ import {
   isAutoQuestion,
   isFollowing,
   isQuestionChannel,
+  openQuestionDelta,
   parseAbout,
   questionTransition,
   quoteVerdict,
@@ -140,6 +142,24 @@ test("a reply seen twice — its live insert, the send's own answer, a page that
   assert.equal(showsThread(undefined), false);
   assert.equal(showsThread({ replyCount: 0, lastReplyAt: null, question: null, answerId: null }), false);
   assert.equal(showsThread({ replyCount: 0, lastReplyAt: null, question: "open", answerId: null }), true, "an unanswered question shows, replies or not");
+});
+
+test("a thread read again after it changed live (0112) takes the server's question, and keeps the replies this screen counted", () => {
+  const local: ThreadSummary = { replyCount: 3, lastReplyAt: "2026-10-17T10:06:00.000Z", question: "open", answerId: null };
+  // The read went out before the third reply was counted: the count stays the screen's.
+  const fetched: ThreadSummary = { replyCount: 2, lastReplyAt: "2026-10-17T10:05:00.000Z", question: "answered", answerId: REPLY };
+  assert.deepEqual(adoptThreadState(local, fetched), { ...local, question: "answered", answerId: REPLY });
+  assert.equal(adoptThreadState(local, { ...local }), local, "nothing changed: the same summary back");
+  // Unmarked, no replies left to show: the server sends no summary at all.
+  assert.deepEqual(adoptThreadState(local, undefined), { ...local, question: null, answerId: null });
+  assert.equal(adoptThreadState(undefined, undefined), undefined);
+  assert.deepEqual(adoptThreadState(undefined, fetched), fetched, "a root the screen had no summary for takes the server's");
+  // #help's Unanswered count, by what the question was and is.
+  assert.equal(openQuestionDelta(local, fetched), -1);
+  assert.equal(openQuestionDelta(fetched, local), 1);
+  assert.equal(openQuestionDelta(undefined, local), 1, "made a question");
+  assert.equal(openQuestionDelta(local, undefined), -1, "said not to be one");
+  assert.equal(openQuestionDelta(local, { ...local, answerId: null }), 0);
 });
 
 const cand = (userId: string, over: Partial<ThreadBellCandidate> = {}): ThreadBellCandidate => ({

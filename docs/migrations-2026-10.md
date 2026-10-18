@@ -1,4 +1,4 @@
-# Migrations 0093–0111 (October 2026)
+# Migrations 0093–0112 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -120,6 +120,22 @@ check-ins, in-app files, discussions and the old recorder at once:
    settlement for that student can deadlock with it. **If 0103 ever runs
    again after 0111, run 0111 again**: 0103 re-creates the old locks
    (0111's verify query notices).
+12. **Any time after 0110: 0112.** A thread's question and help request
+   change live (`docs/chat.md`, *Realtime*). It adds
+   `chat_messages.thread_changed_at`, readable by the channel's readers,
+   and two triggers that set it on a thread's root message: on
+   `chat_threads` when the question's state, its accepted answer or the
+   help request changes, and on `support_tickets` when a linked ticket's
+   status or owner changes. Realtime already carries `chat_messages`, so
+   the open channel hears the root's UPDATE and reads the thread again
+   through the GET routes; neither table goes on Realtime, and no policy
+   changes. A root another transaction is writing at that moment is
+   skipped rather than waited for (no new lock order), and a deleted root
+   is never stamped. No existing data changes. Either order works: the
+   code still running ignores a column it doesn't know, and the new code
+   without 0112 refreshes on the 30-second resync as before. **If 0101 ever
+   runs again, run 0104, 0110 and 0112 after it**: 0101's table-level
+   revoke takes the column's grant away (0112's verify query notices).
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -228,6 +244,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0109 | `0109_intro_requests_server_writes.sql` | Investor intro requests lose their client write policies and table write privileges (an investor's own JWT could file requests past the five-waiting cap, or set their row back to `requested` or on to `wired`); writes go through server actions. Reads are unchanged except `admin_notes`, which only the service role reads now. Changes no rows. |
 | 0110 | `0110_chat_threads.sql` | Chat threads and #help's questions: `chat_messages.thread_root_id` (one level, a reply's root always in its own channel by a `(thread_root_id, channel_id)` foreign key, readable by the channel's readers for Realtime), `chat_threads` (live reply count, #help's open/answered state with an accepted answer that must be a live reply in that thread, the thread's one Support help request, the course item a question is about), `chat_thread_events` (append-only audit of every question transition, written by trigger), and `chat_thread_follows` (who hears about replies). Deleting the accepted answer reopens its question in the same statement. Thread replies are left out of channel summaries and unread counts (two 0101 functions replaced, bodies otherwise unchanged). New tables are service role only. Changes no existing data. See `docs/chat.md`. |
 | 0111 | `0111_hardening.sql` | `admin_move_student_cohort()` re-created with its profile lock taken FOR NO KEY UPDATE instead of FOR UPDATE: two moves of one student still run one at a time, but foreign key checks on that profile (any insert that references the student) no longer wait for a move. It also locks the destination cohort before the enrollment and the application, as the checkout and settlement functions do (0080, 0081), so a Stripe settlement for that student can't deadlock with a move. Otherwise 0103's function unchanged; changes no data. |
+| 0112 | `0112_chat_thread_live.sql` | `chat_messages.thread_changed_at`, a stamp readable by the channel's readers, set on a thread's root by trigger when its question's state or accepted answer changes or its help request is linked, unlinked, or changes status or owner in Support (`chat_threads_stamp_root`, `support_tickets_stamp_thread`; the latter skipped where `support_tickets` doesn't exist). Realtime's existing `chat_messages` feed carries it, and the client reads the thread again through the GET routes: other screens see a question settled or a help request worked at once instead of on the 30-second resync. Never for a reply's count or the course item; a deleted root, or one another transaction holds, isn't stamped. No table joins the publication and no policy changes. Changes no existing data. See `docs/chat.md`. |
 
 ## Verify
 
@@ -401,6 +418,18 @@ select exists (select 1 from pg_proc
                where oid = to_regprocedure('public.admin_move_student_cohort(uuid, uuid, uuid)')
                  and prosrc like '%from public.profiles where id = p_user_id for no key update;%'
                  and prosrc like '%from public.cohorts where id = p_to_cohort_id for update;%') as ok;
+
+-- 0112
+select exists (select 1 from pg_trigger
+               where tgrelid = to_regclass('public.chat_threads') and tgname = 'chat_threads_stamp_root')
+   and (to_regclass('public.support_tickets') is null
+        or exists (select 1 from pg_trigger
+                   where tgrelid = to_regclass('public.support_tickets') and tgname = 'support_tickets_stamp_thread'))
+   -- Readers may select the stamp (Realtime sends it): re-running 0101 takes that away.
+   and exists (select 1 from information_schema.column_privileges
+               where table_schema = 'public' and table_name = 'chat_messages'
+                 and column_name = 'thread_changed_at' and grantee = 'authenticated'
+                 and privilege_type = 'SELECT') as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,

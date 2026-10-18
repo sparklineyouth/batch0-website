@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { isAfter, isUuid, toggleReaction as applyToggle } from "@/lib/chat-access";
-import { bumpThread, dropThreadReply, isAutoQuestion } from "@/lib/chat-threads-rules";
+import { adoptThreadState, bumpThread, dropThreadReply, isAutoQuestion, openQuestionDelta } from "@/lib/chat-threads-rules";
 import { plainText } from "@/lib/chat-format";
 import { mergeMessages, reconcilePage, settledBy } from "@/lib/chat-view";
 import type { ChannelTarget } from "@/lib/chat-payload";
@@ -24,7 +24,19 @@ import { useMessageFeed, usePing, usePresence, useTyping, pingDelay, type LiveRo
 import { ChatReadError, NOT_AVAILABLE, READ_FAILED, chatApi, dropQueuedPush, holdChatUrl, serverSaidNo, tracked, writeChatUrl } from "./api";
 import type { ChatPerson, ChannelPayload, ChatViewerInfo, Panel, SidebarData, SidebarItem, UiMessage } from "./types";
 import { OFFLINE, newClientId, resultError } from "./util";
-import { applyUpdate, bumpSidebarRow, has, isThreadReply, localOnly, pendingTwin, sameMessage, toQuote, toUiMessage, withoutMessage } from "./live-rows";
+import {
+  applyUpdate,
+  bumpSidebarRow,
+  has,
+  isThreadReply,
+  localOnly,
+  pendingTwin,
+  sameMessage,
+  threadStampNews,
+  toQuote,
+  toUiMessage,
+  withoutMessage,
+} from "./live-rows";
 import { createThreadBus } from "./thread-bus";
 import { createThreadOutbox } from "./thread-outbox";
 import type { RootPatch } from "./thread-panel";
@@ -86,6 +98,8 @@ export function ChatApp({
   const [error, setError] = useState<string | null>(initialError);
   // A link to a thread (a thread bell) opens it in the side pane (0110).
   const [panel, setPanel] = useState<Panel>(() => (initialPayload?.channel && initialPayload.openThread ? "thread" : null));
+  const panelRef = useRef(panel);
+  panelRef.current = panel;
   /** The open thread: its channel, the message it hangs off, and a reply to show. */
   const [thread, setThreadState] = useState<{ channelId: string; rootId: string; focusId: string | null } | null>(() =>
     initialPayload?.channel && initialPayload.openThread
@@ -107,6 +121,10 @@ export function ChatApp({
   useEffect(() => threadOutbox.subscribe(() => setUnsentThreads(threadOutbox.failedRoots())), [threadOutbox]);
   /** #help questions this tab has counted live, so an echo and a send's own answer count one once. */
   const countedQuestions = useRef(new Set<string>());
+  /** The thread stamp (0112) this tab last acted on, by root: one read per change, however many UPDATEs carry it. */
+  const threadStamps = useRef(new Map<string, string>());
+  /** Bumped when a #help question changed live: an open Unanswered list reads itself again. */
+  const [questionsSeq, setQuestionsSeq] = useState(0);
   // A phone shows one pane. It opens on the list unless the link named a
   // conversation (or one that failed, so its error is what shows).
   const [mobilePane, setMobilePane] = useState<"list" | "channel">(() =>
@@ -994,8 +1012,48 @@ export function ChatApp({
     [setPayload],
   );
 
+  /**
+   * A thread's question or help request changed on another screen: 0112
+   * stamped its root, and the open channel's Realtime carried the UPDATE.
+   * The stamp says only that; what changed is read again through the GET
+   * routes, which check the channel and the root as always: the root's
+   * summary for the feed, the pane if it shows that thread, and #help's
+   * Unanswered count and list. Everyone reading the channel heard the same
+   * stamp at the same moment, so the reads are spread over a second or so.
+   */
+  const threadChanged = useCallback(
+    (cid: string, rootId: string) => {
+      setTimeout(() => {
+        if (channelIdRef.current !== cid) return;
+        threadBus.emit({ kind: "changed", rootId });
+        const help = !!payloadRef.current?.channel?.questionChannel;
+        // An open Unanswered list reads itself again, and sets the count from what it read.
+        const listed = help && panelRef.current === "unanswered";
+        if (help) setQuestionsSeq((n) => n + 1);
+        const before = messagesRef.current.find((m) => m.id === rootId);
+        if (!before) {
+          // Not on screen: nothing to patch, but #help's count may have moved.
+          if (help && !listed) void resync();
+          return;
+        }
+        void chatApi
+          .messagesById(cid, [rootId])
+          .then((res) => {
+            if (channelIdRef.current !== cid) return;
+            addPeople(res.people);
+            const fetched = (res.messages as UiMessage[]).find((m) => m.id === rootId)?.thread;
+            const delta = help && !listed ? openQuestionDelta(before.thread, fetched) : 0;
+            if (delta) setUnanswered(cid, (n) => n + delta);
+            patchRoot(rootId, (t) => adoptThreadState(t, fetched));
+          })
+          .catch(() => undefined /* the next resync catches up */);
+      }, 150 + Math.random() * 1_350);
+    },
+    [addPeople, patchRoot, resync, setUnanswered, threadBus],
+  );
+
   const onUpdate = useCallback(
-    (row: LiveRow) => {
+    (row: LiveRow, committedAt: string | null = null) => {
       if (!row?.id) return;
       touch(row.id);
       // A thread reply's edit, reaction or delete is the pane's; a delete
@@ -1005,6 +1063,8 @@ export function ChatApp({
         threadBus.emit({ kind: "update", row });
         return;
       }
+      // Its thread's question or help request changed (0112): read it again.
+      if (threadStampNews(threadStamps.current, row, committedAt)) threadChanged(row.channel_id, row.id);
       // The root itself changed: the pane shows it too.
       if (threadRef.current?.rootId === row.id) threadBus.emit({ kind: "update", row });
       if (row.deleted_at) deleted.current.add(row.id);
@@ -1035,7 +1095,7 @@ export function ChatApp({
         }
       }
     },
-    [refreshSidebar, replyGone, setMessages, setPinned, setSidebar, threadBus, touch],
+    [refreshSidebar, replyGone, setMessages, setPinned, setSidebar, threadBus, threadChanged, touch],
   );
 
   const connectedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1566,6 +1626,7 @@ export function ChatApp({
           onOpenThread={openThread}
           blocked={sidebar.blocked}
           onUnanswered={setUnanswered}
+          unansweredSeq={questionsSeq}
           thread={
             shownPanel === "thread" && thread
               ? {

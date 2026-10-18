@@ -9,11 +9,11 @@ and no categories.
 | --- | --- |
 | `/chat` | The app: channels and conversations on the left, the open one in the middle, members / pins / search / a thread / #help's Unanswered list on the right. One pane at a time on a phone. In every role's nav, with an unread badge. |
 | `/chat?c=<id>` | Open a channel, DM or group (where chat bells link). Add `&m=<message>` to open around one message and flash it (a thread reply opens its thread at it). Add `&thread=<message>` to open that message's thread in the side pane (where thread bells link). |
-| `/chat?ask=lesson:<id>` | "Ask about this" from a lesson or assignment page (`assignment:<id>`): #help, with the item linked in the composer when the viewer can open it. |
+| `/chat?ask=lesson:<id>` | "Ask about this" from a lesson or assignment page (`assignment:<id>`), on the web or the installed app's assignment screen: #help, with the item linked in the composer when the viewer can open it. |
 | `/chat?to=<user>` | Open a DM with someone. It's a draft until the first message. |
 | `/chat?team=<team>` | A team's channel (the Team page's "Team chat" chip). |
 | `/admin/chat` | Channels (create, edit, archive, delete, extra members) and the report queue. Needs `chat.manage`. |
-| `/admin/chat/reports/<id>` | One report: the reason, the message with every earlier version and file, the transcript around it (earlier versions included), and mute controls. |
+| `/admin/chat/reports/<id>` | One report: the reason, the message with every earlier version and file, the transcript around it (earlier versions included; thread replies indented and marked with the message they answer), and mute controls. |
 | `/community-guidelines` | The rules, public: linked from the chat sidebar, the report dialog, the FAQ and the terms. |
 
 `/chat` is top-level, not under `/dashboard`, for the same reason
@@ -267,9 +267,13 @@ enter the feed. DMs and groups have no threads.
   timestamp are neither skipped nor repeated. Live, the open channel's one
   Realtime subscription hands a reply to the pane by its `thread_root_id`
   (granted to readers for exactly this) over a small bus, and bumps the
-  root's count once per reply (`bumpThread`). The pane reconciles with the
-  newest page every 30 seconds and on a reconnect, and the page's deleted
-  set keeps a stale page from bringing a deleted reply back. A send carries
+  root's count once per reply (`bumpThread`). A question settled or a help
+  request worked on another screen arrives live too, as a stamp on the
+  root (0112, see *Realtime*): the feed's copy of the root, the pane
+  showing it and #help's Unanswered count and list read it again. The pane
+  reconciles with the newest page every 30 seconds and on a reconnect, and
+  the page's deleted set keeps a stale page from bringing a deleted reply
+  back. A send carries
   its client id (0104): a Retry is the same reply. A reply still sending, or
   one that failed, is kept by its root outside the pane
   (`components/chat/thread-outbox.ts`): Back on a phone or opening another
@@ -301,9 +305,10 @@ enter the feed. DMs and groups have no threads.
 - **Unanswered.** #help's header has an Unanswered button with the count:
   its open questions, waiting longest first, in the side pane
   (`/chat/api/unanswered`, `lib/chat-questions.ts`). The count moves when a
-  question is settled in the pane, when one arrives live, and on the
-  30-second resync (#help's newest page carries it). A question from
-  someone the viewer blocked is listed without its words, and its thread
+  question is settled in the pane, when one arrives live, when one is
+  settled on someone else's screen (0112: an open list reads itself again),
+  and on the 30-second resync (#help's newest page carries it). A question
+  from someone the viewer blocked is listed without its words, and its thread
   shows it collapsed with "show", as the feed does. The admin Overview's
   *Unanswered questions* (`chat.manage`) reads the same count, lists the
   oldest as rows that open their thread, and leaves out only a question
@@ -316,9 +321,11 @@ enter the feed. DMs and groups have no threads.
   program ticket with the asker as requester, their note and a link to the
   thread, never a word of the thread itself (Support is readable by people
   who may not read that channel). Its owner and open/handled state are the
-  ticket's, worked in Support like any request; the thread shows them, and
-  links the asker to their request and the team to the ticket. Asking again
-  while it's in the team's queue adds a team-only note to the same ticket.
+  ticket's, worked in Support like any request; the thread shows them (live
+  from 0112: a ticket picked up, answered or resolved stamps the thread's
+  root), and links the asker to their request and the team to the ticket.
+  Asking again while it's in the team's queue adds a team-only note to the
+  same ticket.
   One the team answered (waiting on the asker) or resolved goes back in the
   queue — open, needing a reply, its reply clock from this ask, as a
   requester's follow-up would — with the note; the thread says "The team
@@ -329,8 +336,11 @@ enter the feed. DMs and groups have no threads.
   heard them. It's never confidential: safeguarding stays with Report,
   which the dialog points to.
 - **Ask about this.** A lesson or assignment page links to
-  `/chat?ask=lesson:<id>`. The message it sends stores the item's id on its
-  thread (never a title, never anything the student wrote for it), and each
+  `/chat?ask=lesson:<id>`: the web's lesson and assignment pages, and the
+  installed app's assignment screen (`app/app/(student)/assignments/[id]`;
+  the app has no lesson screen, its course list opens the web lesson
+  page). The message it sends stores the item's id on its thread (never a
+  title, never anything the student wrote for it), and each
   viewer's chip is resolved through their OWN database client
   (`lib/chat-about.ts`): someone who reads #help but not that item sees no
   chip at all. The sender must be able to open it too. The chip shows under
@@ -386,6 +396,25 @@ policy to every row. Inserts and updates both arrive: reactions are folded
 onto the message row by a trigger, and deletes are blanking updates. A thread
 reply (`thread_root_id` set) goes to the thread pane, not the feed. Every
 other channel's unread count comes from the sidebar poll and the bell ping.
+
+A thread's question and help request (0112) ride the same subscription.
+`chat_threads` and `support_tickets` aren't in the publication: the first
+holds a help request's ticket and the course item a question links to,
+which no reader may see, and a second subscription would fail wherever the
+table isn't published. Instead triggers set `chat_messages.thread_changed_at`
+on the root when the question's state or accepted answer changes, or its
+help request is linked, unlinked, or changes status or owner in Support, so
+Realtime sends the root's readers an UPDATE like an edit's. It's a hint, not
+the change: the client reads the thread again through the GET routes, which
+check the channel and the root as always (the root by id for the feed, the
+pane if it shows that thread, #help's Unanswered list), spread over a second
+or so since everyone in the channel heard it at once. Every UPDATE of a root
+carries its stamp, so it counts only when Realtime's commit time says that
+commit wrote it (`threadStampNews()`, the database's clock on both sides),
+once per stamp. Never for a reply's count (its INSERT already arrives) or
+the course item (a stamp right after a post would tell #help it links
+something); a deleted root isn't stamped, and one another transaction is
+writing is skipped rather than waited for (the 30-second resync catches it).
 
 Presence (online dots, `chat-presence`) and typing (`chat-typing:<channel>`)
 are **private** Realtime topics: 0101's `realtime.messages` policies let in
@@ -498,6 +527,7 @@ opens More.
 | `lib/chat.ts` | Service-role reads |
 | `lib/chat-send.ts` | Inserting a message once per client id, and finding the one a retry already sent (0104) |
 | `supabase/migrations/0110_chat_threads.sql` | Threads, #help's questions, follows and the question audit trail |
+| `supabase/migrations/0112_chat_thread_live.sql` | The stamp on a thread's root that carries its question and help request changes over Realtime |
 | `lib/chat-threads-rules.ts` | Threads' rules, pure: where a reply hangs, questions, counting, who a reply bells, the help request's plan |
 | `lib/chat-thread-rows.ts` / `lib/chat-threads.ts` / `lib/chat-questions.ts` | Is 0110 there, and the thread rows for a page; a thread for one viewer, follows, question writes; the read-only Unanswered lists |
 | `lib/chat-help.ts` / `lib/chat-about.ts` | A thread's one Support help request; a question's course item, per viewer |
@@ -536,14 +566,20 @@ Tests:
   channel and one level whoever writes, counts and follows, #help's
   automatic questions, an answer from its own thread and its delete
   reopening the question, the audit trail, who reads replies and the thread
-  tables, a channel full of threads deleted, the verify query),
+  tables, a channel full of threads deleted, the verify query; then 0112:
+  what stamps a root and what never does, Support's state and owner, who
+  reads the stamp, its verify query),
   `lib/chat-threads-rules.test.ts`, `lib/chat-actions.test.ts` (a reply's
   Retry, where a reply may hang, *Ask the team*, settling a question,
   following, *Ask about this*), `lib/chat-server.test.ts` (the feed without
-  replies, reply paging, thread bells), `lib/chat-help.test.ts` (one help
+  replies, reply paging, thread bells, a moderator's transcript marking
+  replies with their roots), `lib/chat-thread-route.test.ts` (`GET
+  /chat/api/thread`: the channel checked first, a root from another channel,
+  a reply or a system line opening nothing), `lib/chat-help.test.ts` (one help
   request per thread; a course item shown only to who can open it),
-  `components/chat/live-rows.test.ts` (live replies routed and counted once),
-  and `lib/attention*.test.ts` (the Overview's Unanswered questions).
+  `components/chat/live-rows.test.ts` (live replies routed and counted once;
+  which UPDATE's thread stamp is news), and `lib/attention*.test.ts` (the
+  Overview's Unanswered questions).
 - `lib/staff-feed.test.ts`, `lib/stripe-staff-feed.test.ts`,
   `lib/announcement-chat.test.ts`, `lib/account-deletion.test.ts`,
   `lib/app-host.test.ts`: what the feed says and that every payment path
@@ -574,6 +610,12 @@ Until it runs, Chat has no threads, question states or Unanswered list, and
 after it: 0101 re-creates `chat_unread()` and
 `chat_messages_touch_channel()` without the thread clause, and takes
 `thread_root_id`'s column grant away.
+
+Then **0112** (live thread state), any time after 0110, before or after its
+code. Until it runs, a question settled or a help request worked reaches
+other screens on their 30-second resync, as before; the code before it
+ignores the new column. If 0101 is ever run again, run 0112 after 0104 and
+0110: 0101 takes `thread_changed_at`'s column grant away.
 
 **Don't roll the code back past 0110 once threads are in use; fix
 forward.** The migration itself never needs undoing (the previous code
