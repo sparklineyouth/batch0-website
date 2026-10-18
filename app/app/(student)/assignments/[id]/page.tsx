@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, CircleHelp } from "lucide-react";
 import { requireViewer } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { loadAssignmentDraft, loadStudentAssignments } from "@/lib/assignments-server";
 import { AssignmentDetail } from "@/components/assignments/assignment-detail";
-import { AppHeader, AppBody } from "@/components/app/frame";
+import { askAboutHref } from "@/lib/chat-threads-rules";
+import { AppHeader, AppBody, Row } from "@/components/app/frame";
 import type { Role } from "@/lib/types";
 
 export const metadata = { title: "Assignment · batch0" };
@@ -53,6 +54,22 @@ export default async function StudentAppAssignment(props: { params: Promise<{ id
             lessonHref={(l) => `/dashboard/course/${l}`}
             showTitle={false}
           />
+          {/* "Ask about this" (Chat threads, 0110), as on the web page: #help,
+              with this assignment linked by id only — never the draft or the
+              submission. Chat keeps the link only if the sender can open the
+              assignment, and shows its title only to readers who can
+              (lib/chat-about.ts). /chat is a full page, so it leaves the app
+              shell, like More's Chat row. */}
+          <div className="mt-8 rounded-2xl border border-line px-4 sm:px-5">
+            <Row
+              label="Ask about this assignment"
+              value="In #help, with this assignment linked"
+              href={askAboutHref("assignment", item.assignment.id)}
+              prefetch={false}
+              leading={<CircleHelp className="h-[18px] w-[18px] shrink-0 text-ink-faint" aria-hidden />}
+              right={<ArrowUpRight className="h-4 w-4 shrink-0 text-ink-faint" aria-hidden />}
+            />
+          </div>
         </div>
       </AppBody>
     </>

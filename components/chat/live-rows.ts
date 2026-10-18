@@ -73,6 +73,35 @@ export function pendingTwin(list: readonly UiMessage[], row: LiveRow, viewerId: 
 export const has = (row: object, key: string) => Object.prototype.hasOwnProperty.call(row, key);
 
 /**
+ * How far a stamp may sit before the commit that carries it and still be
+ * that commit's own. The stamp is the transaction's start (now()), the
+ * commit time its end, both the database's clock; a chat or Support write
+ * takes milliseconds.
+ */
+export const THREAD_STAMP_SLACK_MS = 10_000;
+
+/**
+ * Did this UPDATE change the thread on its message (0112)? Every UPDATE of a
+ * root carries its `thread_changed_at`, an edit's or a reaction's too, so
+ * it's news only when the stamp was written by the very commit Realtime
+ * reports (`committedAt`, the database's clock, never this device's) and
+ * this screen hasn't acted on that stamp already (`seen`, by message; two
+ * stamps in one transaction are one). Without a commit time, or a stamp,
+ * nothing is news: the 30-second resync catches up, as before 0112. A
+ * thread reply, or a deleted root, is never news (neither is stamped).
+ */
+export function threadStampNews(seen: Map<string, string>, row: LiveRow, committedAt: string | null): boolean {
+  const stamp = row.thread_changed_at;
+  if (typeof stamp !== "string" || !stamp || isThreadReply(row) || row.deleted_at) return false;
+  if (seen.get(row.id) === stamp) return false;
+  const at = Date.parse(stamp);
+  const commit = committedAt ? Date.parse(committedAt) : NaN;
+  if (!Number.isFinite(at) || !Number.isFinite(commit) || at < commit - THREAD_STAMP_SLACK_MS) return false;
+  seen.set(row.id, stamp);
+  return true;
+}
+
+/**
  * Apply a Realtime UPDATE to a list. A column the change record leaves out
  * (Postgres doesn't log an unchanged TOASTed body, so a reaction or a pin on
  * a long message arrives without one) is unchanged — never blank, never a

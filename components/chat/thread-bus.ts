@@ -4,10 +4,16 @@ import type { LiveRow } from "./use-chat-live";
  * How the open thread's pane hears what Realtime delivers (migration 0110).
  * ChatApp owns the one subscription to the open channel's messages; a row
  * that is a thread reply, or an update to one, is handed to whoever listens
- * here instead of the feed, and a reconnect asks them to resync. One bus per
+ * here instead of the feed, and a reconnect asks them to resync. So does a
+ * thread whose question or help request just changed (`changed`, 0112's
+ * stamp on its root): the pane showing it reads it again. One bus per
  * ChatApp, a handful of listeners at most.
  */
-export type ThreadEvent = { kind: "insert"; row: LiveRow } | { kind: "update"; row: LiveRow } | { kind: "resync" };
+export type ThreadEvent =
+  | { kind: "insert"; row: LiveRow }
+  | { kind: "update"; row: LiveRow }
+  | { kind: "resync" }
+  | { kind: "changed"; rootId: string };
 
 export type ThreadBus = {
   emit: (e: ThreadEvent) => void;

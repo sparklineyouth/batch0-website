@@ -188,6 +188,27 @@ export function dropThreadReply(summary: ThreadSummary | undefined, replyId: str
   };
 }
 
+/**
+ * The feed's summary once the thread was read again after it changed live
+ * (0112): the question's state and answer are the server's, as of that
+ * read; the reply count and the newest reply stay what this screen counted,
+ * since a reply landing while the read was out is in neither the read nor
+ * gone from the count (bumpThread, dropThreadReply keep those). `fetched`
+ * undefined: the thread has nothing to show any more but its replies.
+ */
+export function adoptThreadState(local: ThreadSummary | undefined, fetched: ThreadSummary | undefined): ThreadSummary | undefined {
+  const question = fetched?.question ?? null;
+  const answerId = fetched?.answerId ?? null;
+  if (!local) return fetched ? { ...fetched } : undefined;
+  if (local.question === question && local.answerId === answerId) return local;
+  return { ...local, question, answerId };
+}
+
+/** How #help's Unanswered count moves when a question goes from one summary to the next. */
+export function openQuestionDelta(before: ThreadSummary | undefined, after: ThreadSummary | undefined): number {
+  return (after?.question === "open" ? 1 : 0) - (before?.question === "open" ? 1 : 0);
+}
+
 /** Is a thread summary worth showing under its message? */
 export function showsThread(summary: ThreadSummary | null | undefined): boolean {
   return !!summary && (summary.replyCount > 0 || summary.question !== null);
