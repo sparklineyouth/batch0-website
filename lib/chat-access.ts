@@ -402,6 +402,26 @@ export function conversationAllowed(parties: readonly Party[]): boolean {
   return !(hasStudent && hasAdult);
 }
 
+/**
+ * Would the directory offer this person? For a DM (`group` null) the pair
+ * must pass the safeguarding rule. For a group, the whole group with them in
+ * it — the viewer, `group` (everyone else in it, or picked for it so far)
+ * and the candidate, checked once, as createGroup and addToGroup check it.
+ * Pairwise, the picker hid a mentor from a student adding to a group a staff
+ * member is in, which the rule allows. `viewer` null is staff: anyone goes.
+ */
+export function directoryOffers(viewer: Party | null, candidate: Party, group: readonly Party[] | null = null): boolean {
+  if (!viewer) return true;
+  return conversationAllowed([viewer, ...(group ?? []), candidate]);
+}
+
+/**
+ * What a group picker says when a pick leaves a group the rule refuses: it
+ * has students and adults outside the team, and nobody from the team.
+ */
+export const GROUP_NEEDS_TEAM_REASON =
+  "A group with students and adults outside the batch0 team needs someone from the team in it. Add one, or talk in your team or cohort channel.";
+
 export const ONLY_THE_TEAM_REASON =
   "For now you can message the batch0 team. Messaging other people opens once you've been accepted.";
 
@@ -743,6 +763,13 @@ export function isUuid(id: unknown): id is string {
 export function asUuid(id: unknown): string | null {
   return isUuid(id) ? id.toLowerCase() : null;
 }
+
+/**
+ * How far back "report a deleted message" reaches in a text channel: what
+ * was posted in the last two weeks and has since been deleted
+ * (listDeletedForReport in lib/chat.ts).
+ */
+export const REPORTABLE_DELETED_MS = 14 * 24 * 60 * 60_000;
 
 /** Mention autocomplete beyond the preloaded list: how many people one search returns. */
 export const PEOPLE_SEARCH_MAX = 8;

@@ -6,18 +6,22 @@ import path from "node:path";
 
 // The real lib/chat.ts and lib/chat-notify.ts against an in-memory database:
 // mention search past the first page of name matches, the sidebar and badge
-// under "Only @mentions", and "Mark all read" clearing bells in chunks.
+// under "Only @mentions", "Mark all read" clearing bells in chunks, the
+// directory for a group as against a DM, and the body-free stubs "report a
+// deleted message" lists.
 
 type Row = Record<string, any>;
 const state: {
   tables: Record<string, Row[]>;
   unread: { channel_id: string; unread: number; mentions: number }[];
   log: string[];
+  /** The columns each read asked for: "<table>: <columns>". */
+  selected: string[];
   inFlight: number;
   peak: number;
   fail: (table: string, op: string, call: number) => string | null;
   calls: number;
-} = { tables: {}, unread: [], log: [], inFlight: 0, peak: 0, fail: () => null, calls: 0 };
+} = { tables: {}, unread: [], log: [], selected: [], inFlight: 0, peak: 0, fail: () => null, calls: 0 };
 
 const likeToRegExp = (pattern: string) =>
   new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`, "is");
@@ -26,10 +30,11 @@ const likeToRegExp = (pattern: string) =>
 function from(table: string) {
   const filters: ((r: Row) => boolean)[] = [];
   const said: string[] = [];
-  const sorts: string[] = [];
+  const sorts: [string, boolean][] = [];
   let op = "select";
   let patch: Row = {};
   let window: [number, number] | null = null;
+  let cap: number | null = null;
   const run = async () => {
     state.inFlight++;
     state.peak = Math.max(state.peak, state.inFlight);
@@ -46,14 +51,21 @@ function from(table: string) {
     }
     if (sorts.length) {
       hit = [...hit].sort((a, b) => {
-        for (const c of sorts) if (a[c] !== b[c]) return String(a[c]) < String(b[c]) ? -1 : 1;
+        for (const [c, up] of sorts) if (a[c] !== b[c]) return (String(a[c]) < String(b[c]) ? -1 : 1) * (up ? 1 : -1);
         return 0;
       });
     }
-    return { data: (window ? hit.slice(window[0], window[1] + 1) : hit).map((r) => ({ ...r })), error: null };
+    if (window) hit = hit.slice(window[0], window[1] + 1);
+    if (cap !== null) hit = hit.slice(0, cap);
+    return { data: hit.map((r) => ({ ...r })), error: null };
+  };
+  // `a.eq.x,b.eq.y`: the only shape these reads hand .or() (the block lookups).
+  const anyOf = (expr: string) => {
+    const parts = expr.split(",").map((p) => p.split("."));
+    return (r: Row) => parts.some(([c, o, v]) => o === "eq" && r[c] === v);
   };
   const chain: any = {
-    select: () => chain,
+    select: (cols?: string) => (cols && state.selected.push(`${table}: ${cols}`), chain),
     update: (p: Row) => ((op = "update"), (patch = p), chain),
     eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), said.push(`${c}=${v}`), chain),
     in: (c: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[c])), said.push(`${c}:${vs.length}`), chain),
@@ -64,8 +76,18 @@ function from(table: string) {
       said.push(`${c}~${p}`);
       return chain;
     },
-    order: (c: string) => (sorts.push(c), chain),
+    neq: (c: string, v: unknown) => (filters.push((r) => r[c] !== v), said.push(`${c}!=${v}`), chain),
+    gte: (c: string, v: string) => (filters.push((r) => r[c] != null && String(r[c]) >= v), said.push(`${c}>=`), chain),
+    not: (c: string, o: string, v: unknown) => {
+      assert.equal(`${o} ${v}`, "is null");
+      filters.push((r) => (r[c] ?? null) !== null);
+      said.push(`${c} not null`);
+      return chain;
+    },
+    or: (expr: string) => (filters.push(anyOf(expr)), chain),
+    order: (c: string, o?: { ascending?: boolean }) => (sorts.push([c, o?.ascending !== false]), chain),
     range: (a: number, b: number) => ((window = [a, b]), chain),
+    limit: (n: number) => ((cap = n), chain),
     then: (ok: any, ko: any) => run().then(ok, ko),
   };
   return chain;
@@ -106,6 +128,7 @@ function reset(tables: Record<string, Row[]>) {
   state.tables = tables;
   state.unread = [];
   state.log = [];
+  state.selected = [];
   state.peak = 0;
   state.calls = 0;
   state.fail = () => null;
@@ -213,4 +236,105 @@ test("mark all read clears bells a hundred links at a time, one request after an
   state.fail = (_table, _op, call) => (call === 2 ? "upstream timeout" : null);
   await assert.rejects(clearChannelBellsMany(ME, channels), /Couldn't clear chat bells: upstream timeout/);
   assert.equal(await clearChannelBellsMany(ME, []), 0);
+});
+
+// ---------------------------------------------------------------------------
+// The directory: a DM's pair, or a group's whole membership
+// ---------------------------------------------------------------------------
+
+const STUDENT_A = id(4001);
+const STUDENT_B = id(4002);
+const MENTOR = id(4003);
+const STAFFER = id(4004);
+const INVESTOR = id(4005);
+
+function directory() {
+  reset({
+    profiles: [
+      { id: STUDENT_A, full_name: "Ava Patel", role: "student" },
+      { id: STUDENT_B, full_name: "Ben Ortiz", role: "student" },
+      { id: MENTOR, full_name: "Sam Rivera", role: "mentor" },
+      { id: STAFFER, full_name: "Rish Admin", role: "admin" },
+      { id: INVESTOR, full_name: "Ivy Investor", role: "investor" },
+    ],
+    enrollments: [
+      { id: id(5001), user_id: STUDENT_A, cohort_id: id(6001) },
+      { id: id(5002), user_id: STUDENT_B, cohort_id: id(6001) },
+    ],
+    applications: [],
+    chat_blocks: [],
+  });
+}
+const vettedViewer = (userId: string, staff = false) => ({ userId, staff, vetted: true, cohortIds: [], teamIds: [], memberOf: [] });
+const names = (people: { name: string }[]) => people.map((p) => p.name).sort();
+
+test("a DM's directory keeps the strict pair: no mentor for a student, no student for a mentor", async () => {
+  directory();
+  assert.deepEqual(names(await chat.searchDirectory("", vettedViewer(STUDENT_A))), ["Ben Ortiz", "Rish Admin"]);
+  directory();
+  assert.deepEqual(names(await chat.searchDirectory("", vettedViewer(MENTOR))), ["Ivy Investor", "Rish Admin"]);
+  // A group with nobody else in it yet is asked the same question.
+  directory();
+  assert.deepEqual(names(await chat.searchDirectory("", vettedViewer(STUDENT_A), 20, [])), ["Ben Ortiz", "Rish Admin"]);
+});
+
+test("a group's directory asks about the whole group: with staff in it, a student finds the mentor it may hold", async () => {
+  directory();
+  // The reviewer's case: staff picked (or in the group), so the mentor is offered.
+  assert.deepEqual(
+    names(await chat.searchDirectory("", vettedViewer(STUDENT_A), 20, [STAFFER])),
+    ["Ben Ortiz", "Ivy Investor", "Rish Admin", "Sam Rivera"],
+  );
+  directory();
+  assert.deepEqual(names(await chat.searchDirectory("sam", vettedViewer(STUDENT_A), 20, [STAFFER, STUDENT_B])), ["Sam Rivera"]);
+  // Another student instead of staff: still no adult outside the team.
+  directory();
+  assert.deepEqual(names(await chat.searchDirectory("", vettedViewer(STUDENT_A), 20, [STUDENT_B])), ["Ben Ortiz", "Rish Admin"]);
+  // The mirror: a mentor building a group with staff in it finds students.
+  directory();
+  assert.deepEqual(
+    names(await chat.searchDirectory("", vettedViewer(MENTOR), 20, [STAFFER])),
+    ["Ava Patel", "Ben Ortiz", "Ivy Investor", "Rish Admin"],
+  );
+  // A mentor already in the group, no staff: the student can't be offered.
+  directory();
+  assert.deepEqual(names(await chat.searchDirectory("", vettedViewer(STUDENT_A), 20, [MENTOR])), ["Rish Admin"]);
+  // Staff reach everyone, group or not.
+  directory();
+  assert.equal((await chat.searchDirectory("", vettedViewer(STAFFER, true))).length, 4);
+});
+
+// ---------------------------------------------------------------------------
+// "Report a deleted message": stubs, never words
+// ---------------------------------------------------------------------------
+
+test("a text channel's deleted messages come back as stubs: who and when, never what — and never your own", async () => {
+  const CH = channelRow(700, "channel", { name: "general", audience: "everyone" });
+  const now = Date.now();
+  const at = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString();
+  const message = (n: number, over: Row) => ({
+    id: id(n), channel_id: CH.id, sender_id: id(2), kind: "message", body: "", attachments: [], created_at: at(10), deleted_at: at(5), ...over,
+  });
+  reset({
+    chat_messages: [
+      message(7001, { created_at: at(30) }),
+      message(7002, { created_at: at(20), sender_id: id(3) }),
+      message(7003, { deleted_at: null, body: "still here" }),
+      message(7004, { sender_id: ME }), // the viewer's own
+      message(7005, { kind: "system", sender_id: null }),
+      message(7006, { sender_id: null }), // a deleted account's: nothing left to review
+      message(7007, { created_at: at(60 * 24 * 15) }), // older than two weeks
+      message(7008, { channel_id: id(701) }), // another channel
+    ],
+  });
+  const stubs = await chat.listDeletedForReport(chat.toChannel(CH), ME);
+  assert.deepEqual(stubs.map((m) => m.id), [id(7002), id(7001)], "newest first");
+  for (const stub of stubs) assert.deepEqual(Object.keys(stub).sort(), ["createdAt", "id", "senderId"], "no body, no files, no deleted_by");
+  assert.deepEqual(
+    state.selected.filter((x) => x.startsWith("chat_messages")),
+    ["chat_messages: id, sender_id, created_at"],
+    "the read itself never asks for the words, the files or who deleted it",
+  );
+  // A DM or group has none: its report hands the whole conversation over.
+  assert.deepEqual(await chat.listDeletedForReport(chat.toChannel(channelRow(702, "group")), ME), []);
 });

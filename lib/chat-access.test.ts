@@ -9,6 +9,7 @@ import {
   bellTitle,
   channelReportsOpenTo,
   defaultReadCursor,
+  directoryOffers,
   dmVerdict,
   ONLY_THE_TEAM_REASON,
   reachVerdict,
@@ -448,6 +449,24 @@ test("safeguarding: no private conversation puts a student alone with a non-staf
   assert.equal(conversationAllowed([student, mentor]), false, "student and mentor in a DM");
   assert.equal(conversationAllowed([student, student2, investor]), false, "a group with no staff in it");
   assert.equal(conversationAllowed([student, mentor, staff]), true, "a group the team is in");
+});
+
+test("the directory: a DM asks about the pair, a group about everyone in it with the candidate", () => {
+  const student = { id: "s", student: true, staff: false };
+  const student2 = { id: "s2", student: true, staff: false };
+  const mentor = { id: "m", student: false, staff: false };
+  const staff = { id: "a", student: false, staff: true };
+  // The reviewer's mismatch: pairwise, a student never saw the mentor that a
+  // group with staff in it may hold.
+  assert.equal(directoryOffers(student, mentor), false, "a DM stays strict");
+  assert.equal(directoryOffers(student, mentor, [staff]), true, "a group the team is in");
+  assert.equal(directoryOffers(student, mentor, [staff]), conversationAllowed([student, mentor, staff]), "the rule createGroup asks");
+  assert.equal(directoryOffers(student, mentor, [student2]), false, "a group with no staff in it");
+  assert.equal(directoryOffers(student, mentor, []), false, "nobody else yet: the pair");
+  assert.equal(directoryOffers(mentor, student, [staff]), true, "the same from the mentor's side");
+  assert.equal(directoryOffers(student, student2, [mentor]), false, "a mentor already in it, no staff");
+  assert.equal(directoryOffers(student, staff, [mentor]), true, "staff make any group allowed");
+  assert.equal(directoryOffers(null, student), true, "staff searching: anyone");
 });
 
 test("a safeguarded DM or group goes read-only with the reason", () => {

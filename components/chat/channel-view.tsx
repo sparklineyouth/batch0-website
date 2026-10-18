@@ -29,7 +29,15 @@ import { Avatar } from "./avatar";
 import { MessageList, type MessageActions } from "./message-list";
 import { Composer } from "./composer";
 import { MenuItem, MenuSeparator, Popover } from "./popover";
-import { AddPeopleDialog, ChannelSettingsDialog, FlagDialog, MuteDialog, RenameGroupDialog, ReportDialog } from "./dialogs";
+import {
+  AddPeopleDialog,
+  ChannelSettingsDialog,
+  FlagDialog,
+  MuteDialog,
+  RenameGroupDialog,
+  ReportDeletedDialog,
+  ReportDialog,
+} from "./dialogs";
 import type { MarkupContext } from "./markup";
 import { chatApi, NOT_AVAILABLE, tracked } from "./api";
 import { OFFLINE, resultError } from "./util";
@@ -127,6 +135,8 @@ export function ChannelView({
   const [deleting, setDeleting] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [report, setReport] = useState<{ message: UiMessage | null } | null>(null);
+  /** "Report a deleted message" (text channels): from the menu, or from a reply's quote of one. */
+  const [reportDeleted, setReportDeleted] = useState<{ preselect: { id: string; senderId: string } | null } | null>(null);
   const [flagging, setFlagging] = useState<UiMessage | null>(null);
   const [muting, setMuting] = useState<{ userId: string; name: string } | null>(null);
   const [menu, setMenu] = useState(false);
@@ -235,6 +245,7 @@ export function ChannelView({
       onReact,
       onPin,
       onReport: (m) => setReport({ message: m }),
+      onReportDeleted: (id, senderId) => setReportDeleted({ preselect: { id, senderId } }),
       onBlock: (id) => void toggleBlock(id),
       onRetry,
       onDiscard,
@@ -391,6 +402,14 @@ export function ChannelView({
                         </div>
                         <MenuSeparator />
                       </>
+                    ) : null}
+                    {channel.kind === "channel" ? (
+                      // History and search leave deleted messages out, and a
+                      // text channel can't be reported whole: this is how
+                      // something posted and then deleted still gets to the team.
+                      <MenuItem icon={Flag} danger onClick={() => { setMenu(false); setReportDeleted({ preselect: null }); }}>
+                        Report a deleted message
+                      </MenuItem>
                     ) : null}
                     {channel.kind === "channel" && channel.canManage ? (
                       <>
@@ -550,6 +569,19 @@ export function ChannelView({
           onClose={() => setReport(null)}
           onDone={() => {
             setReport(null);
+            setNotice("Reported. The batch0 team will look at it. Nobody else is told who reported.");
+          }}
+        />
+      ) : null}
+
+      {reportDeleted && channel?.kind === "channel" ? (
+        <ReportDeletedDialog
+          channel={channel}
+          people={people}
+          preselect={reportDeleted.preselect}
+          onClose={() => setReportDeleted(null)}
+          onDone={() => {
+            setReportDeleted(null);
             setNotice("Reported. The batch0 team will look at it. Nobody else is told who reported.");
           }}
         />

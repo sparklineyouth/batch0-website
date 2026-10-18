@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyUpdate, bumpSidebarRow, quotePreview, sameMessage, toUiMessage, withoutMessage } from "./live-rows.ts";
+import { applyUpdate, bumpSidebarRow, pendingTwin, quotePreview, sameMessage, toUiMessage, withoutMessage } from "./live-rows.ts";
+import { newClientId } from "./util.ts";
 import type { LiveRow } from "./use-chat-live";
 import type { SidebarData, SidebarItem, UiMessage } from "./types";
 
@@ -88,6 +89,40 @@ test("toUiMessage: a reply to a loaded image is '[attachment]'; to an unloaded o
   assert.deepEqual(live.replyTo, { id: "img", senderId: "u1", preview: "[attachment]", deleted: false });
   const orphan = toUiMessage(row("n2", { body: "nice", reply_to_id: "elsewhere" }), [image]);
   assert.deepEqual(orphan.replyTo, { id: "elsewhere", senderId: null, preview: "", deleted: false });
+});
+
+test("toUiMessage: an echo carries the sender's client id when the row has one (0104)", () => {
+  assert.equal(toUiMessage(row("n", { body: "hi", client_id: "cid-1" }), []).clientId, "cid-1");
+  const before = toUiMessage(row("n", { body: "hi" }), []);
+  assert.equal("clientId" in before, false, "a row from before 0104 has none, and the shape says so");
+  assert.equal("clientId" in toUiMessage(row("n", { body: "hi", client_id: null }), []), false);
+});
+
+test("pendingTwin: our own echo without a client id adopts the oldest bubble still sending the same words", () => {
+  const sending = (id: string, body: string, over: Partial<UiMessage> = {}) => msg(id, { body, senderId: "me", pending: true, ...over });
+  const list = [msg("old", { body: "ok", senderId: "me" }), sending("p1", "ok"), sending("p2", "ok"), sending("p3", "other")];
+  const echo = (over: Partial<LiveRow>) => row("srv", { sender_id: "me", body: "ok", ...over });
+  assert.equal(pendingTwin(list, echo({}), "me"), 1);
+  // With a client id the merge settles the exact bubble instead (lib/chat-view.ts).
+  assert.equal(pendingTwin(list, echo({ client_id: "cid" }), "me"), -1);
+  assert.equal(pendingTwin(list, echo({ sender_id: "you" }), "me"), -1, "someone else's message is never ours");
+  assert.equal(pendingTwin([msg("f", { body: "ok", senderId: "me", failed: "Offline" })], echo({}), "me"), -1, "a failed bubble isn't guessed at");
+});
+
+test("newClientId: a fresh v4 uuid every time, with or without crypto.randomUUID", () => {
+  const v4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  const ids = new Set(Array.from({ length: 500 }, () => newClientId()));
+  assert.equal(ids.size, 500);
+  for (const id of ids) assert.match(id, v4);
+  const real = globalThis.crypto;
+  Object.defineProperty(globalThis, "crypto", { value: { getRandomValues: real.getRandomValues.bind(real) }, configurable: true });
+  try {
+    const fallback = new Set(Array.from({ length: 200 }, () => newClientId()));
+    assert.equal(fallback.size, 200);
+    for (const id of fallback) assert.match(id, v4);
+  } finally {
+    Object.defineProperty(globalThis, "crypto", { value: real, configurable: true });
+  }
 });
 
 test("sameMessage: a structurally equal copy is the same; a changed one, or an unsent bubble, isn't", () => {

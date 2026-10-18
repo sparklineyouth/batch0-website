@@ -1,4 +1,4 @@
-# Migrations 0093–0102 (October 2026)
+# Migrations 0093–0104 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -55,6 +55,14 @@ check-ins, in-app files, discussions and the old recorder at once:
    every scheduled email automation fans out to nobody: the insert fails with
    42P10 (the notifications bug 0090 §9 fixed, on the outbox) and the run is
    recorded as an error on the automation.
+4. **Any time after 0101: 0104.** It adds `chat_messages.client_id` and a
+   unique `(sender_id, client_id)`, so a Chat message is sent once however
+   many times it's retried. The code works without it: until it runs, a
+   send whose answer is lost can still be posted twice by Retry, and the
+   failed bubble stays beside the message that went through until it's
+   discarded. **If 0101 ever runs again after 0104, run 0104 again**: 0101
+   re-grants the message columns it knows by name, which takes away
+   `client_id`'s (0104's verify query notices).
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -143,6 +151,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0100 | `0100_admin_cleanup.sql` | Removes the retired `ai_usage.view` permission from roles and deletes leftover founder-pass self-check rows (negative serials). |
 | 0101 | `0101_chat.sql` | batch0 Chat: channels, DMs and group DMs (`chat_*` tables including `chat_mutes`, read-only policies, `chat_can_read()`, realtime on `chat_messages`, private presence and typing topics on `realtime.messages`, a trigram index for search, the private `chat-files` bucket), the starting channels plus one per cohort and team (kept, archived, when their team or cohort is deleted), old DMs and team threads carried in, `discord.manage` removed (not converted), admins kept out of other people's chat bells, and the Discord integration's tables, columns and settings dropped. See `docs/chat.md`. |
 | 0102 | `0102_email_outbox_dedupe_index.sql` | `email_outbox.dedupe_key` gets a plain unique index in place of 0052's partial one, so the scheduled-automation fan-out's `on conflict (dedupe_key)` works. Changes no data and sends nothing by itself. |
+| 0104 | `0104_chat_client_ids.sql` | `chat_messages.client_id` (the composer's id for a message, kept by every Retry), unique per sender, readable by signed-in readers so Realtime's echo carries it: a resend of a message that went through gets the original back instead of posting it twice. Changes no data. See `docs/chat.md`. |
 
 ## Verify
 
@@ -220,6 +229,19 @@ select exists (select 1 from pg_index ix
                where ix.indrelid = to_regclass('public.email_outbox')
                  and ix.indisunique and ix.indpred is null and ix.indnkeyatts = 1
                  and a.attname = 'dedupe_key') as ok;
+
+-- 0104
+select exists (select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'chat_messages'
+                 and column_name = 'client_id')
+   and exists (select 1 from pg_constraint
+               where conrelid = to_regclass('public.chat_messages')
+                 and conname = 'chat_messages_sender_id_client_id_key' and contype = 'u')
+   -- Readers may select it (Realtime's echo carries it); re-running 0101 takes that away.
+   and exists (select 1 from information_schema.column_privileges
+               where table_schema = 'public' and table_name = 'chat_messages'
+                 and column_name = 'client_id' and grantee = 'authenticated'
+                 and privilege_type = 'SELECT') as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,

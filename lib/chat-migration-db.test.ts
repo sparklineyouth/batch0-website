@@ -7,9 +7,11 @@ import {
   canReadChannel,
   channelReportsOpenTo,
   reportPartyIds,
+  reportVisibleTo,
   type ChannelScope,
   type ChatViewer,
 } from "./chat-access.ts";
+import { MIGRATION_CHECKS } from "./migration-plan.ts";
 import { MIGRATION_PROBES } from "./pending-migrations.ts";
 import { ACCEPTED_STATUSES } from "./pre-cohort.ts";
 
@@ -29,6 +31,8 @@ import { ACCEPTED_STATUSES } from "./pre-cohort.ts";
  */
 
 const migration = await readFile(new URL("../supabase/migrations/0101_chat.sql", import.meta.url), "utf8");
+/** 0104: client ids, so a retried send is one message (lib/chat-send.ts). Its tests are at the end. */
+const clientIds = await readFile(new URL("../supabase/migrations/0104_chat_client_ids.sql", import.meta.url), "utf8");
 
 const ADMIN = "a0000000-0000-4000-8000-000000000001";
 const STAFF = "a0000000-0000-4000-8000-000000000002";
@@ -1178,4 +1182,108 @@ test("the admin overview's 0101 probes: stale before, satisfied after", async ()
   for (const p of probes.filter((x) => !x.leftover)) {
     await db.query(`select ${p.columns} from public.${p.table} limit 0`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// 0104: one message per sender and client id
+// ---------------------------------------------------------------------------
+
+const verified = async (db: PGlite) => (await db.query<{ ok: boolean }>(MIGRATION_CHECKS["0104"])).rows[0]?.ok === true;
+
+test("0104 applies twice on top of 0101, and its verify query tells before from after", async () => {
+  const db = await setup();
+  await db.exec(migration);
+  assert.equal(await verified(db), false);
+  await db.exec(clientIds);
+  await db.exec(clientIds);
+  assert.equal(await verified(db), true);
+  // 0101 run again re-grants the columns it names, and its table-level
+  // revoke takes client_id's grant with it: the check notices, and 0104
+  // again puts it back (the order docs/migrations-2026-10.md gives).
+  await db.exec(migration);
+  assert.equal(await verified(db), false);
+  await db.exec(clientIds);
+  assert.equal(await verified(db), true);
+  // On a database without 0101, the check is a plain "no", not an error.
+  const bare = await setup();
+  assert.equal(await verified(bare), false);
+});
+
+test("a sender's client id names one message; another sender's, and messages without one, never collide", async () => {
+  const db = await setup();
+  await db.exec(migration);
+  await db.exec(clientIds);
+  const general = await channelId(db, "general");
+  const ID = "c1000000-0000-4000-8000-000000000001";
+  await db.exec(`insert into public.chat_messages (channel_id, sender_id, body, client_id) values ('${general}', '${ENROLLED}', 'here is my update', '${ID}')`);
+  // The retry of a send whose answer was lost: refused by the key, so the
+  // server hands back the first row instead (lib/chat-send.ts).
+  await assert.rejects(
+    db.exec(`insert into public.chat_messages (channel_id, sender_id, body, client_id) values ('${general}', '${ENROLLED}', 'here is my update', '${ID}')`),
+    (err: any) => err?.code === "23505" && /chat_messages_sender_id_client_id_key/.test(String(err?.message ?? err)),
+  );
+  // Scoped to the author: the same id from someone else is theirs.
+  await db.exec(`insert into public.chat_messages (channel_id, sender_id, body, client_id) values ('${general}', '${OTHER}', 'mine too', '${ID}')`);
+  // Two messages meant twice, word for word: two ids, two rows. And rows
+  // with no id at all — history, system lines, announcements — never collide.
+  await db.exec(`
+    insert into public.chat_messages (channel_id, sender_id, body, client_id) values
+      ('${general}', '${ENROLLED}', 'ok', 'c1000000-0000-4000-8000-000000000002'),
+      ('${general}', '${ENROLLED}', 'ok', 'c1000000-0000-4000-8000-000000000003');
+    insert into public.chat_messages (channel_id, sender_id, body) values ('${general}', '${ENROLLED}', 'ok'), ('${general}', '${ENROLLED}', 'ok');
+    insert into public.chat_messages (channel_id, kind, body) values ('${general}', 'system', 'Maya pinned a message.'), ('${general}', 'system', 'Maya pinned a message.');
+  `);
+  const ok = (await db.query<{ n: number }>(`select count(*)::int as n from public.chat_messages where channel_id = '${general}' and body = 'ok'`)).rows[0].n;
+  assert.equal(ok, 4);
+  // The lookup a resend makes is the key's own index.
+  const found = await db.query<{ body: string }>(
+    `select body from public.chat_messages where sender_id = $1 and client_id = $2`,
+    [ENROLLED, ID],
+  );
+  assert.deepEqual(found.rows, [{ body: "here is my update" }]);
+});
+
+test("readers see a message's client id (Realtime's echo carries it), and still not who removed it", async () => {
+  const db = await setup();
+  await db.exec(migration);
+  await db.exec(clientIds);
+  const general = await channelId(db, "general");
+  await db.exec(`insert into public.chat_messages (id, channel_id, sender_id, body, client_id) values
+    ('90000000-0000-4000-8000-0000000001c1', '${general}', '${ENROLLED}', 'hello', 'c1000000-0000-4000-8000-0000000000c1')`);
+  const seen = await asUser(db, ENROLLED, `select client_id from public.chat_messages where id = '90000000-0000-4000-8000-0000000001c1'`);
+  assert.deepEqual(seen.rows, [{ client_id: "c1000000-0000-4000-8000-0000000000c1" }]);
+  // Who removed a message stays held back.
+  await assert.rejects(asUser(db, ENROLLED, `select deleted_by from public.chat_messages`), /permission denied/);
+  assert.equal((await asUser(db, FRESH, `select client_id from public.chat_messages where channel_id = '${general}'`)).rows.length, 0, "the read policy still decides the rows");
+});
+
+test("a deleted text-channel message is still a report target: about its sender, its words for other moderators only", async () => {
+  const db = await setup();
+  await db.exec(migration);
+  await db.exec(clientIds);
+  await db.exec(`update public.app_roles set permissions = permissions || array['chat.manage'] where slug = 'community'`);
+  const general = await channelId(db, "general");
+  const MSG = "90000000-0000-4000-8000-0000000001d1";
+  // STAFF (a moderator) posts something, then deletes it before anyone reports it.
+  await db.exec(`
+    insert into public.chat_messages (id, channel_id, sender_id, body) values ('${MSG}', '${general}', '${STAFF}', 'something awful');
+    update public.chat_messages set body = '', attachments = '[]', deleted_at = now(), deleted_by = '${STAFF}' where id = '${MSG}';
+  `);
+  // The reporter's screen: the row is a blank tombstone, and the words are in
+  // revisions, which no signed-in reader can select.
+  const tomb = await asUser(db, ENROLLED, `select body, deleted_at is not null as gone from public.chat_messages where id = '${MSG}'`);
+  assert.deepEqual(tomb.rows, [{ body: "", gone: true }]);
+  assert.equal((await asUser(db, ENROLLED, `select 1 from public.chat_message_revisions`)).rows.length, 0);
+  // Reported anyway (reportMessage takes a deleted message's id): the freeze
+  // names its sender, as for any text-channel report.
+  await db.exec(`insert into public.chat_reports (channel_id, message_id, reporter_id, reason) values ('${general}', '${MSG}', '${ENROLLED}', 'said something awful, then deleted it')`);
+  const parties = (await db.query<any>(`select party_ids from public.chat_reports where message_id = '${MSG}'`)).rows[0].party_ids;
+  assert.deepEqual(parties, [STAFF]);
+  const revisions = (await db.query<any>(`select body, reason from public.chat_message_revisions where message_id = '${MSG}'`)).rows;
+  assert.deepEqual(revisions, [{ body: "something awful", reason: "delete" }]);
+  // Who may open it: every moderator but the one it's about.
+  const own = { partyIds: parties as string[] };
+  const moderator = (userId: string): ChatViewer => ({ userId, staff: true, vetted: true, cohortIds: [], teamIds: [], memberOf: [] });
+  assert.equal(reportVisibleTo({ id: general, kind: "channel" }, own, [own], moderator(STAFF)), false);
+  assert.equal(reportVisibleTo({ id: general, kind: "channel" }, own, [own], moderator(ADMIN)), true);
 });
