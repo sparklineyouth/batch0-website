@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { MIGRATION_CHECKS } from "./migration-plan.ts";
+import { checkDraft } from "./assignment-drafts.ts";
 
 /**
  * Migration 0105 (private assignment drafts), run for real in PGlite on top of
@@ -431,4 +432,22 @@ test("caps match a submission's, and drafts go with their assignment or account"
   assert.equal(await draftOf(db, BEN, OPEN), null);
   await db.exec(`delete from public.course_assignments where id = '${OPEN}'`);
   assert.equal(await draftOf(db, ANA, OPEN), null);
+});
+
+test("Postgres refuses a NUL character, so the save path drops it before it gets here", async () => {
+  const db = await setup();
+  // What every autosave of a pasted NUL hit: an error, retried forever.
+  await assert.rejects(() => save(db, ANA, OPEN, "pasted\u0000text", 0));
+  assert.equal(await draftOf(db, ANA, OPEN), null);
+  // checkDraft (what the draft route saves through) drops it; that saves.
+  const checked = checkDraft({ body: "pasted\u0000text", link: "https://docs.google.com/d/1\u0000" });
+  assert.ok(checked.ok);
+  const saved = await save(db, ANA, OPEN, checked.body, 0, checked.link);
+  assert.equal(saved.outcome, "saved");
+  assert.deepEqual(await draftOf(db, ANA, OPEN), {
+    body: "pastedtext",
+    link_url: "https://docs.google.com/d/1",
+    version: 1,
+    cleared: false,
+  });
 });

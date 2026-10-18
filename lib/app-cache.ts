@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import {
   eventCohortIds,
   eventVisibilityScopes,
@@ -150,10 +151,42 @@ function eventScope({ cohortIds }: EventScope) {
   };
 }
 
-function visibleEvents(scopes: readonly string[]) {
-  const q = createAdminClient().from("events").select(EVENT_COLUMNS);
-  const [pub, enrolled] = scopes;
-  return enrolled ? q.or(`${pub},and(${enrolled})`) : q.eq("visibility", "public");
+/** Either client: the service role (scoped by `scopes`) or the viewer's own (scoped by RLS). */
+type EventsDb = Pick<ReturnType<typeof createAdminClient>, "from">;
+
+/**
+ * Upcoming events, reaching back a day so a session that is running (or that
+ * a host started early) still shows. `scopes` are the visibility branches a
+ * service-role read must apply itself; null is the viewer's own client, where
+ * the `events read` policy does.
+ */
+function upcomingEvents(db: EventsDb, scopes: readonly string[] | null, nowIso: string) {
+  const since = new Date(new Date(nowIso).getTime() - 24 * 60 * 60_000).toISOString();
+  let q = db.from("events").select(EVENT_COLUMNS);
+  if (scopes) {
+    const [pub, enrolled] = scopes;
+    q = enrolled ? q.or(`${pub},and(${enrolled})`) : q.eq("visibility", "public");
+  }
+  return q.gte("starts_at", since).order("starts_at", { ascending: true }).limit(20);
+}
+
+/** One page of past events with something to watch, scoped as upcomingEvents is. */
+function recordingEvents(db: EventsDb, scopes: readonly string[] | null, nowIso: string, page: number) {
+  const { from, to } = historyRange(page);
+  return (
+    db
+      .from("events")
+      .select(EVENT_COLUMNS)
+      // ONE .or(): visibility AND has-a-recording, spelled out as a flat
+      // `or` of `and`s (recordingOrFilter), so nothing rests on how two
+      // `or=` parameters combine. With no scopes it's the recording kinds
+      // alone, and RLS does the rest.
+      .or(recordingOrFilter(scopes ?? []))
+      .lt("starts_at", nowIso)
+      .order("starts_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 }
 
 /**
@@ -181,11 +214,7 @@ export function getCohortEvents(
   const { scopes, key, tags } = eventScope(scope);
   return unstable_cache(
     async () => {
-      const since = new Date(new Date(nowIso).getTime() - 24 * 60 * 60_000).toISOString();
-      const up = await visibleEvents(scopes)
-        .gte("starts_at", since)
-        .order("starts_at", { ascending: true })
-        .limit(20);
+      const up = await upcomingEvents(createAdminClient(), scopes, nowIso);
       if (up.error) throw new Error(up.error.message);
       return { upcoming: (up.data ?? []) as AppEvent[] };
     },
@@ -213,18 +242,7 @@ export function getCohortRecordings(
   const { scopes, key, tags } = eventScope(scope);
   return unstable_cache(
     async () => {
-      const { from, to } = historyRange(page);
-      const { data, error } = await createAdminClient()
-        .from("events")
-        .select(EVENT_COLUMNS)
-        // ONE .or(): visibility AND has-a-recording, spelled out as a flat
-        // `or` of `and`s (recordingOrFilter), so nothing rests on how two
-        // `or=` parameters combine.
-        .or(recordingOrFilter(scopes))
-        .lt("starts_at", nowIso)
-        .order("starts_at", { ascending: false })
-        .order("id", { ascending: true })
-        .range(from, to);
+      const { data, error } = await recordingEvents(createAdminClient(), scopes, nowIso, page);
       if (error) throw new Error(error.message);
       return takePage((data ?? []) as AppEvent[]);
     },
@@ -232,6 +250,41 @@ export function getCohortRecordings(
     ["app-recordings", key, nowBucket, String(page)],
     { revalidate: CONTENT_TTL, tags },
   )();
+}
+
+/*
+ * STAFF PREVIEWS: the same two reads, through the viewer's own client.
+ *
+ * Staff open the app to see what students see, and getStudentAccess reports
+ * them enrolled so they can. But they hold no enrollment rows, so the scope
+ * above (enrolledCohortIds) left them public events only: no cohort's
+ * sessions, no recordings — not what any student sees, and not what
+ * /dashboard/events shows them. These ask with the viewer's session instead,
+ * so the `events read` policy itself decides, exactly as /dashboard/events
+ * does (staff see every event there; a speaker, their own).
+ *
+ * Nothing here can widen what a student sees: a student never takes this
+ * path, and if one did, RLS would still show them only their own. Not
+ * cached: unstable_cache can't read the session, and an entry keyed for
+ * staff must never answer a student. Staff are few; a preview can afford
+ * the round trip.
+ */
+
+/** getCohortEvents for staff previewing the app: what the `events read` policy shows them. */
+export async function getPreviewEvents(nowIso: string): Promise<{ upcoming: AppEvent[] }> {
+  const up = await upcomingEvents(await createClient(), null, nowIso);
+  if (up.error) throw new Error(up.error.message);
+  return { upcoming: (up.data ?? []) as AppEvent[] };
+}
+
+/** getCohortRecordings for staff previewing the app, scoped by the policy as getPreviewEvents is. */
+export async function getPreviewRecordings(
+  nowIso: string,
+  page: number,
+): Promise<{ rows: AppEvent[]; hasMore: boolean }> {
+  const { data, error } = await recordingEvents(await createClient(), null, nowIso, page);
+  if (error) throw new Error(error.message);
+  return takePage((data ?? []) as AppEvent[]);
 }
 
 export type AppAnnouncement = {

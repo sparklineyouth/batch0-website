@@ -38,7 +38,15 @@ test("a material click stays in the installed app's window, where its session is
   const page = readFileSync(new URL("../app/dashboard/course/[lessonId]/page.tsx", import.meta.url), "utf8");
   assert.match(page, /<MaterialLink\s+href=\{m\.href\}/);
   assert.doesNotMatch(page, /target="_blank"/);
-  const link = readFileSync(new URL("../app/dashboard/course/[lessonId]/material-link.tsx", import.meta.url), "utf8");
+  const link = readFileSync(new URL("../components/dashboard/material-link.tsx", import.meta.url), "utf8");
   assert.match(link, /keepInAppWindow\(e, isInstalledApp\(\)\)/);
   assert.match(link, /window\.location\.assign\(href\)/);
+});
+
+test("a resource opens in the installed app's window too: /open/[id] reads the session as well", () => {
+  // Resources opened /dashboard/resources/open/<id> with a bare target=_blank,
+  // so in the iOS home-screen app every Download / Open landed on sign-in.
+  const page = readFileSync(new URL("../app/dashboard/resources/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /<MaterialLink\s+href=\{`\/dashboard\/resources\/open\/\$\{r\.id\}`\}/);
+  assert.doesNotMatch(page, /target="_blank"/);
 });

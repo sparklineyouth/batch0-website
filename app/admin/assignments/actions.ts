@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPermission } from "@/lib/server-guards";
-import { runAction, type ActionResult } from "@/lib/action-result";
+import { refuse, runAction, type ActionResult } from "@/lib/action-result";
 import { logAudit } from "@/lib/audit";
 import { isMissingSchemaError } from "@/lib/schema-ready";
 import {
@@ -355,8 +355,12 @@ export async function loadReviewCell(input: {
       .eq("id", input.assignmentId)
       .maybeSingle();
     if (error) throw dbError(error, "Couldn't load that assignment.");
-    if (!a) throw new Error("Assignment not found.");
-    const [{ data: enrollment }, { data: profile }, { data: sub }] = await Promise.all([
+    if (!a) refuse("Assignment not found.");
+    const [
+      { data: enrollment, error: enrollmentError },
+      { data: profile, error: profileError },
+      { data: sub, error: subError },
+    ] = await Promise.all([
       admin.from("enrollments").select("enrolled_at").eq("cohort_id", a.cohort_id).eq("user_id", input.userId).maybeSingle(),
       admin.from("profiles").select("id, full_name, email").eq("id", input.userId).maybeSingle(),
       admin
@@ -366,11 +370,16 @@ export async function loadReviewCell(input: {
         .eq("user_id", input.userId)
         .maybeSingle(),
     ]);
+    // A failed read is "couldn't load", never an answer. These errors used
+    // to be dropped, so a timeout on any of the three read as no enrollment
+    // and no work, and the drawer said the student "isn't in this cohort".
+    const readError = enrollmentError ?? profileError ?? subError;
+    if (readError) throw dbError(readError, "Couldn't load this student's work just now. Close the drawer and try again.");
     const submission = (sub ?? null) as SubmissionRow | null;
     // Handed-in work outlives the enrollment it was handed in under: the
     // Overview's "Waiting for feedback" rows link here for it, and refusing
     // would leave it waiting with no way to clear it.
-    if (!profile || (!enrollment && !submission)) throw new Error("That student isn't in this cohort.");
+    if (!profile || (!enrollment && !submission)) refuse("That student isn't in this cohort.");
     return {
       student: { id: profile.id, name: profile.full_name, email: profile.email },
       assignment: { id: a.id, title: a.title, week: a.week, due_at: a.due_at },

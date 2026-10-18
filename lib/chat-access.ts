@@ -128,7 +128,7 @@ export function reportVisibleTo(
   channel: { id: string; kind: ChannelKind },
   own: { partyIds: readonly string[] },
   channelReports: readonly { partyIds: readonly string[] }[],
-  viewer: ChatViewer,
+  viewer: Pick<ChatViewer, "userId" | "staff" | "memberOf">,
 ): boolean {
   if (!channelReportsOpenTo(reportScope(channel.kind, own, channelReports), viewer)) return false;
   return channel.kind === "channel" || !viewer.memberOf.includes(channel.id);

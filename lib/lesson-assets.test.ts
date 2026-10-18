@@ -12,6 +12,7 @@ import {
   materialProblem,
   resumePosition,
   shouldSavePosition,
+  videoErrorAction,
 } from "./lesson-assets.ts";
 
 // Run with `npm test`.
@@ -195,4 +196,27 @@ test("the player seeks to the saved spot and recovers an expired source, even be
   // Re-asking the route gets a fresh signature; a loop of failures stops and says so.
   assert.match(player, /setSrc\(`\$\{videoSrc\}\$\{sep\}r=\$\{now\}`\)/);
   assert.match(player, /MAX_RECOVERIES_IN_WINDOW/);
+});
+
+test("a video the browser can't play says so at once, instead of re-signing three times first", () => {
+  // MEDIA_ERR_SRC_NOT_SUPPORTED: a fresh signature changes nothing.
+  assert.equal(videoErrorAction(4), "unplayable");
+  // …unless this file already loaded here: its format plays, so a 4 now is
+  // a reload of the source failing, which a fresh signature can fix.
+  assert.equal(videoErrorAction(4, true), "refresh");
+  // A stream that broke mid-video (an expired signature, a dropped connection).
+  assert.equal(videoErrorAction(2), "refresh");
+  assert.equal(videoErrorAction(undefined), "refresh");
+  // Aborted, or a file that won't decode: left alone, as before.
+  assert.equal(videoErrorAction(1), "ignore");
+  assert.equal(videoErrorAction(3), "ignore");
+
+  const player = readFileSync(new URL("../app/dashboard/course/[lessonId]/lesson-player.tsx", import.meta.url), "utf8");
+  assert.match(player, /videoErrorAction\(v\.error\?\.code, loadedRef\.current\)/);
+  const onError = player.slice(player.indexOf("const onError = () => {"));
+  assert.ok(
+    onError.indexOf('if (action === "unplayable")') < onError.indexOf("recoveriesRef.current"),
+    "decided before any re-sign is counted or sent",
+  );
+  assert.match(player, /const onMeta = \(\) => \{\s*loadedRef\.current = true;/);
 });

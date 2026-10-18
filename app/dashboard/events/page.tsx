@@ -10,6 +10,7 @@ import { EventCard, type StudentEvent } from "@/components/live/event-card";
 import { studentEventStatus } from "@/lib/event-form";
 import { recordedEventIds } from "@/lib/event-recordings";
 import {
+  currentSessions,
   emptyHistoryMessage,
   historyHref,
   historyRange,
@@ -91,12 +92,16 @@ export default async function StudentEventsPage(props: {
     .order("id", { ascending: true })
     .range(from, to);
   if (show === "recordings") olderQuery = olderQuery.or(recordingOrFilter());
+  // The last day's sessions feed page one only (live, upcoming, and the
+  // ended ones leading the past list), so a later page doesn't read them.
   const [{ data: recent }, { data: olderRows }] = await Promise.all([
-    supabase
-      .from("events")
-      .select("*")
-      .gte("starts_at", since)
-      .order("starts_at", { ascending: true }),
+    page === 1
+      ? supabase
+          .from("events")
+          .select("*")
+          .gte("starts_at", since)
+          .order("starts_at", { ascending: true })
+      : Promise.resolve({ data: [] as any[] }),
     olderQuery,
   ]);
   const older = takePage(olderRows ?? []);
@@ -113,8 +118,8 @@ export default async function StudentEventsPage(props: {
       nowDate,
     ),
   }));
-  const liveNow = withStatus.filter((x) => x.s === "live");
-  const stillUpcoming = withStatus.filter((x) => x.s === "upcoming" || x.s === "open");
+  // Page one only: a later page is older history (currentSessions).
+  const current = currentSessions(page, withStatus);
   // The last day's ended sessions lead page one; later pages are older history.
   const pastRows = pastHistoryRows(
     page,
@@ -143,31 +148,31 @@ export default async function StudentEventsPage(props: {
         {access.enrolled ? "Live sessions and Demo Day." : "Your Demo Day ticket is confirmed."}
       </p>
 
-      {liveNow.length > 0 && (
+      {current && current.live.length > 0 && (
         <section className="mt-8">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-red-500">
             Live now
           </h2>
           <div className="space-y-3">
-            {liveNow.map(({ e, s }) => (
+            {current.live.map(({ e, s }) => (
               <EventCard key={e.id} event={toStudentEvent(e)} upcoming={false} initialStatus={s} />
             ))}
           </div>
         </section>
       )}
 
-      {page === 1 && (
+      {current && (
         <section className="mt-8">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-phosphor-ink">
             Upcoming
           </h2>
-          {stillUpcoming.length === 0 ? (
+          {current.upcoming.length === 0 ? (
             <Card>
               <p className="text-sm text-ink-faint">Nothing scheduled yet.</p>
             </Card>
           ) : (
             <div className="space-y-3">
-              {stillUpcoming.map(({ e, s }) => (
+              {current.upcoming.map(({ e, s }) => (
                 <EventCard key={e.id} event={toStudentEvent(e)} upcoming initialStatus={s} />
               ))}
             </div>

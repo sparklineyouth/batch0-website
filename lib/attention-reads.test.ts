@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as nodeModule from "node:module";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 
 // The real reads behind two attention sources — loadFeedbackQueue
 // (lib/assignments-server.ts) and the follow-up reads
@@ -60,10 +61,10 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
     return next(specifier, context);
   },
 });
-const { listDueFollowUps, listActiveFollowUps, getFollowUpThread, listFollowUpOwners } = await import(
+const { listDueFollowUps, listActiveFollowUps, getFollowUpThread, listFollowUpOwners, getFollowUpOwner } = await import(
   "./student-followups-server.ts"
 );
-const { loadFeedbackQueue } = await import("./assignments-server.ts");
+const { loadFeedbackQueue, loadCohortBoard } = await import("./assignments-server.ts");
 
 const MISSING = { code: "PGRST205", message: "Could not find the table 'public.student_followups' in the schema cache" };
 const TIMEOUT = { code: "57014", message: "canceling statement due to statement timeout" };
@@ -167,6 +168,77 @@ test("the owner list throws when it can't be read, instead of saying nobody can 
     (await listFollowUpOwners()).map((o: { name: string }) => o.name),
     ["Ada Lovelace", "Sam Rivera"],
   );
+});
+
+test("the owner list pages past a thousand people, in a stable order, rather than stopping short", async () => {
+  // It used to stop at 300: whoever sorted after that was missing from the
+  // drawer, and a save naming them was refused.
+  const everyone = Array.from({ length: 1234 }, (_, i) => ({
+    id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    full_name: `Staff ${String(i).padStart(4, "0")}`,
+    email: null,
+  }));
+  script.calls = [];
+  script.reply = (t, ops) => {
+    if (t !== "profiles") return {};
+    const [from, to] = ops.find(([m]) => m === "range")![1];
+    return { data: everyone.slice(from, to + 1) };
+  };
+  const owners = await listFollowUpOwners();
+  assert.equal(owners.length, 1234);
+  assert.equal(owners.at(-1)!.name, "Staff 1233");
+  const reads = script.calls.filter((c) => c.table === "profiles");
+  assert.deepEqual(reads.map((c) => c.ops.find(([m]) => m === "range")![1]), [[0, 999], [1000, 1999]]);
+  for (const r of reads) {
+    assert.deepEqual(r.ops.filter(([m]) => m === "order").map(([, a]) => a[0]), ["full_name", "id"], "a tiebreak for paging");
+  }
+});
+
+test("a save's owner is checked by id: one row, the same role rule, and a failed read throws", async () => {
+  script.calls = [];
+  script.reply = (t) => (t === "profiles" ? { data: { id: OWNER, full_name: "Sam Rivera", email: "sam@example.com", role: "admin" } } : {});
+  assert.deepEqual(await getFollowUpOwner(OWNER), { id: OWNER, name: "Sam Rivera" });
+  assert.deepEqual(script.calls[0].ops.find(([m]) => m === "eq"), ["eq", ["id", OWNER]]);
+  // A role that can't change follow-ups (the doubles' only owner role is admin).
+  script.reply = (t) => (t === "profiles" ? { data: { id: STUDENT, full_name: "Ada", email: null, role: "student" } } : {});
+  assert.equal(await getFollowUpOwner(STUDENT), null);
+  script.reply = () => ({ data: null });
+  assert.equal(await getFollowUpOwner(OWNER), null);
+  script.reply = () => ({ error: TIMEOUT });
+  await assert.rejects(() => quiet(() => getFollowUpOwner(OWNER)), /Couldn't check who can own follow-ups/);
+});
+
+test("cohort board: 'not set up' only for a missing table; any read that fails is 'failed', never an answer", async () => {
+  const assignment = { id: "a1", status: "published", opens_at: null, due_at: "2026-10-10T03:59:00.000Z", audience: "cohort" };
+  const ok = (t: string): Reply =>
+    t === "course_assignments"
+      ? { data: [assignment] }
+      : t === "enrollments"
+        ? { data: [{ user_id: STUDENT, enrolled_at: "2026-09-01T00:00:00.000Z", profile: people[0] }] }
+        : { data: [] };
+  script.reply = (t) => (t === "course_assignments" ? { error: { code: "42P01", message: 'relation "course_assignments" does not exist' } } : ok(t));
+  const missing = await quiet(() => loadCohortBoard(db as any, "c1"));
+  assert.deepEqual({ ready: missing.ready, failed: missing.failed }, { ready: false, failed: false });
+  // Each read, failing on its own. A failed enrollments read used to come
+  // back as a board with nobody in it; a failed submissions read, as
+  // everyone missing everything.
+  for (const broken of ["course_assignments", "enrollments", "course_assignment_targets", "course_assignment_submissions"]) {
+    script.reply = (t) => (t === broken ? { error: TIMEOUT } : ok(t));
+    const r = await quiet(() => loadCohortBoard(db as any, "c1"));
+    assert.deepEqual({ ready: r.ready, failed: r.failed, rows: r.rows }, { ready: false, failed: true, rows: [] }, broken);
+  }
+  script.reply = ok;
+  const fine = await loadCohortBoard(db as any, "c1");
+  assert.deepEqual({ ready: fine.ready, failed: fine.failed, students: fine.students.length }, { ready: true, failed: false, students: 1 });
+});
+
+test("a team's Readiness card says 'couldn't load' for a failed board, and the page catches a throw", () => {
+  const page = readFileSync(path.join(root, "app/admin/teams/[id]/page.tsx"), "utf8");
+  assert.match(page, /loadCohortBoard\(admin, team\.cohort_id\)\.catch\(/);
+  assert.match(page, /boardFailed=\{!!board\?\.failed\}/);
+  const card = readFileSync(path.join(root, "app/admin/teams/[id]/team-readiness.tsx"), "utf8");
+  assert.match(card, /boardFailed \? \(/);
+  assert.match(card, /Couldn&apos;t load assignment progress/);
 });
 
 const submission = {

@@ -119,9 +119,15 @@ export default async function AdminAssignmentsPage(props: {
       )}
 
       {!board.ready ? (
-        <p className="mt-8 border-y border-line py-10 text-center text-sm text-ink-soft">
-          Assignments aren&apos;t set up yet.
-        </p>
+        board.failed ? (
+          <p role="status" className="mt-8 border-y border-line py-10 text-center text-sm text-red-600 dark:text-red-400">
+            Couldn&apos;t load this cohort&apos;s assignments just now. Reload to try again.
+          </p>
+        ) : (
+          <p className="mt-8 border-y border-line py-10 text-center text-sm text-ink-soft">
+            Assignments aren&apos;t set up yet.
+          </p>
+        )
       ) : (
         <>
           {waiting.failed ? (

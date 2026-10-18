@@ -96,10 +96,11 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
            return t.state.countsAvailable?{needs_reply:t.state.needsReply,available:true}:{needs_reply:0,available:false};};`,
       "@/lib/chat":
         g +
-        `export const getChatViewer=async(u,c)=>{t.record('getChatViewer',[u]);
-           if(t.state.missing.has('chat')){const e=new Error("Couldn't load channels: relation does not exist");e.code='42P01';throw e;}
-           return{userId:u,staff:true,vetted:true,cohortIds:[],teamIds:[],memberOf:[]};};
-         export const listReports=async(v,status)=>{t.record('listReports',[status]);return t.state.reports;};
+        `export const getChatViewer=async(u)=>{t.record('getChatViewer',[u]);throw new Error('the whole membership was resolved');};
+         export const listReports=async()=>{t.record('listReports',[]);throw new Error('listReports needs a full viewer');};
+         export const listOpenReportsFor=async(u,c)=>{t.record('listOpenReportsFor',[u]);
+           if(t.state.missing.has('chat')){const e=new Error("Couldn't load reports: relation does not exist");e.code='42P01';throw e;}
+           return t.state.reports;};
          export const getChannelRow=async(id)=>{t.record('getChannelRow',[id]);return{id,kind:'channel',name:'help'};};`,
       "@/lib/assignments-server":
         g +
@@ -216,7 +217,11 @@ test("chat reports: the open queue's own count, its oldest rows", async () => {
     createdAt: new Date(NOW - (10 - i) * 3_600_000).toISOString(),
   })).reverse();
   const r = await loadAttention({ userId: ME, caps: caps("chat.manage"), now: NOW });
-  assert.deepEqual(call("listReports")!.args, ["open"]);
+  assert.deepEqual(call("listOpenReportsFor")!.args, [ME]);
+  // Not the moderator's whole chat membership (thousands of DMs for staff)
+  // on every Overview render: lib/chat-server.test.ts pins what it reads.
+  assert.equal(call("getChatViewer"), undefined);
+  assert.equal(call("listReports"), undefined);
   const chat = r.sources.find((s) => s.key === "chat_reports")!;
   assert.equal(chat.total, 10);
   assert.equal(chat.items.length, 8);
@@ -226,8 +231,7 @@ test("chat reports: the open queue's own count, its oldest rows", async () => {
 test("chat reports: with none open, the moderator's chat membership isn't even resolved", async () => {
   reset();
   const r = await loadAttention({ userId: ME, caps: caps("chat.manage"), now: NOW });
-  assert.equal(call("getChatViewer"), undefined);
-  assert.equal(call("listReports"), undefined);
+  assert.equal(call("listOpenReportsFor"), undefined);
   assert.deepEqual(r.sources.map((s) => [s.key, s.total]), [["chat_reports", 0]]);
 });
 

@@ -9,6 +9,7 @@ import {
   latestSavedSeconds,
   resumePosition,
   shouldSavePosition,
+  videoErrorAction,
 } from "@/lib/lesson-assets";
 
 type SupabaseBrowser = ReturnType<typeof import("@/lib/supabase/client").createClient>;
@@ -17,6 +18,11 @@ type BrowserSession = { client: SupabaseBrowser; userId: string };
 /** Re-asking the video route more often than this means it isn't expiry. */
 const RECOVERY_WINDOW_MS = 60_000;
 const MAX_RECOVERIES_IN_WINDOW = 3;
+
+const VIDEO_UNAVAILABLE =
+  "The video couldn't load. Reload the page to try again — if it keeps happening, tell the team in Support.";
+const VIDEO_UNPLAYABLE =
+  "This video won't play here — it may be in a format this browser can't play, or it couldn't be loaded. Reload to try again, or try another browser; if it keeps happening, tell the team in Support.";
 
 export function LessonPlayer({
   lessonId,
@@ -63,6 +69,9 @@ export function LessonPlayer({
   const resumeReadRef = useRef(false);
   const playingRef = useRef(false);
   const recoveriesRef = useRef<number[]>([]);
+  // The file has loaded its metadata on this page at least once, so this
+  // browser can play its format (videoErrorAction).
+  const loadedRef = useRef(false);
   const sessionRef = useRef<Promise<BrowserSession | null> | null>(null);
 
   /**
@@ -203,6 +212,7 @@ export function LessonPlayer({
     const v = videoRef.current;
     if (!v) return;
     const onMeta = () => {
+      loadedRef.current = true;
       const pending = pendingSeekRef.current;
       if (!pending) return;
       if (pending.kind === "resume") return applyResume();
@@ -222,19 +232,23 @@ export function LessonPlayer({
   // The signature on the file can run out mid-video (or a connection drop
   // can kill the stream): ask the route for a fresh one and carry on from
   // the same second. Repeated failures in a short window aren't expiry —
-  // stop and say so instead of looping.
+  // stop and say so instead of looping. A source the browser can't play at
+  // all isn't expiry either, and says so at once (videoErrorAction).
   useEffect(() => {
     const v = videoRef.current;
     if (!v || !refreshable || !videoSrc) return;
     const onError = () => {
-      const code = v.error?.code;
-      // 1 = aborted by the user/browser; 3 = the file itself won't decode.
-      if (code === 1 || code === 3) return;
+      const action = videoErrorAction(v.error?.code, loadedRef.current);
+      if (action === "ignore") return;
+      if (action === "unplayable") {
+        setVideoError(VIDEO_UNPLAYABLE);
+        return;
+      }
       const now = Date.now();
       const recent = recoveriesRef.current.filter((t) => now - t < RECOVERY_WINDOW_MS);
       if (recent.length >= MAX_RECOVERIES_IN_WINDOW) {
         recoveriesRef.current = recent;
-        setVideoError("The video couldn't load. Reload the page to try again — if it keeps happening, tell the team in Support.");
+        setVideoError(VIDEO_UNAVAILABLE);
         return;
       }
       recoveriesRef.current = [...recent, now];

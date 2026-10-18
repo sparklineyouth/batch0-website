@@ -30,6 +30,7 @@ import {
   resourcesHref,
 } from "@/lib/resource-search";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
+import { MaterialLink } from "@/components/dashboard/material-link";
 import { ResourceSearch } from "./resource-search";
 
 export const metadata = { title: "Resources · batch0" };
@@ -464,13 +465,14 @@ function ResourceList({
                   </div>
                 </div>
                 {url ? (
-                  <a
-                    // Through /open/[id] rather than straight at the file, so
-                    // the click is recorded and the signed URL is minted fresh
-                    // (see that route). Same one-click experience.
+                  // Through /open/[id] rather than straight at the file, so
+                  // the click is recorded and the signed URL is minted fresh
+                  // (see that route). Same one-click experience. That route
+                  // reads the session, so in the installed app the click
+                  // stays in the app's window: a new tab there has no cookie
+                  // and opened the sign-in page (MaterialLink says why).
+                  <MaterialLink
                     href={`/dashboard/resources/open/${r.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-phosphor px-3 py-2 text-xs font-semibold text-on-phosphor hover:bg-phosphor-200"
                   >
                     {r.storage_path ? (
@@ -482,7 +484,7 @@ function ResourceList({
                         <ExternalLink className="h-3.5 w-3.5" /> Open
                       </>
                     )}
-                  </a>
+                  </MaterialLink>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 text-xs text-ink-faint">
                     <FileText className="h-3.5 w-3.5" /> No file
