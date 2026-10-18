@@ -17,7 +17,7 @@ were carried into Chat.
 ## Stack
 
 - Node.js 24.x; `.nvmrc` pins the verified local version, 24.21.0
-- Next.js 15.5.25 (App Router), React 19.3.0, and TypeScript
+- Next.js 15.5.28 (App Router), React 19.3.1, and TypeScript; `docs/framework-upgrade.md` records each version bump and the security advisories behind it
 - Tailwind CSS and lucide-react
 - Supabase for authentication, database, and private file storage; Stripe for payments
 
