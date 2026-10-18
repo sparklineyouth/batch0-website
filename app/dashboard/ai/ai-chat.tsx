@@ -21,9 +21,21 @@ export function AiChat({
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const scrollRef = useRef<HTMLDivElement>(null);
+  // `streaming` is state, so it only reads true after a render: two Enter
+  // presses (or Enter and a click) inside one frame both passed the check
+  // and sent the question twice. A ref is set the moment the first send
+  // starts. The server refuses a second send while a reply streams anyway
+  // (409, app/api/ai/chat); this keeps a double press from getting that far.
+  const sendingRef = useRef(false);
+  // The conversation on screen. A send started in another one keeps reading
+  // its reply to the end (the server saves it either way) but stops drawing
+  // it here, and doesn't touch this conversation's send state when it ends.
+  const shownRef = useRef(conversationId);
 
   // When the conversation changes, reset.
   useEffect(() => {
+    shownRef.current = conversationId;
+    sendingRef.current = false;
     setMessages(initialMessages);
     setStreaming(false);
     setError(undefined);
@@ -39,9 +51,13 @@ export function AiChat({
 
   async function send() {
     const text = input.trim();
-    if (!text || streaming) return;
+    if (!text || streaming || sendingRef.current) return;
+    sendingRef.current = true;
+    const sentIn = conversationId;
+    const shown = () => shownRef.current === sentIn;
     setError(undefined);
     setInput("");
+    const before = messages;
     const next: Msg[] = [
       ...messages,
       { role: "user", content: text },
@@ -57,6 +73,13 @@ export function AiChat({
         body: JSON.stringify({ conversationId, message: text }),
       });
       if (!res.ok || !res.body) {
+        // Every refusal comes before the question is saved (the hourly
+        // limit, a reply still streaming in another tab, …), so the bubbles
+        // come back off and the words go back in the box to send later.
+        if (shown()) {
+          setMessages(before);
+          setInput((current) => current || text);
+        }
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? `Request failed (${res.status})`);
       }
@@ -67,6 +90,7 @@ export function AiChat({
         const { value, done } = await reader.read();
         if (done) break;
         assembled += decoder.decode(value, { stream: true });
+        if (!shown()) continue;
         setMessages((prev) => {
           const out = [...prev];
           out[out.length - 1] = { role: "assistant", content: assembled };
@@ -75,9 +99,12 @@ export function AiChat({
       }
       router.refresh();
     } catch (e: any) {
-      setError(getActionError(e));
+      if (shown()) setError(getActionError(e));
     } finally {
-      setStreaming(false);
+      if (shown()) {
+        sendingRef.current = false;
+        setStreaming(false);
+      }
     }
   }
 

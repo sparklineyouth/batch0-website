@@ -9,13 +9,29 @@ import path from "node:path";
 // server log line and a plain instruction, never the provider's raw error,
 // a reply that was saved before something later failed must not be reported
 // as lost, and doing what the notice says — sending the question again —
-// must not save it twice. No network, no tokens spent.
+// must not save it twice. Nor may a second send while the first reply is
+// still streaming: it used to look exactly like that resend, and got the
+// question a second reply. No network, no tokens spent.
 
 const state = {
-  failAt: "stream" as "before" | "stream" | "usage",
+  failAt: "stream" as "before" | "stream" | "usage" | "none",
   inserted: [] as { role: string; content: string }[],
   logged: [] as unknown[][],
   sentToModel: [] as { role: string; content: string }[],
+  modelCalls: 0,
+  /** When set, the model holds its reply open until this resolves. */
+  hold: null as Promise<void> | null,
+};
+/** checkRateLimit / clearRateLimit as rate_limit_check counts (0005), per key. */
+const limits = new Map<string, number>();
+const rateLimit = {
+  check: async (a: { kind: string; identifier: string; limit: number }) => {
+    const key = `${a.kind}:${a.identifier}`;
+    const n = (limits.get(key) ?? 0) + 1;
+    limits.set(key, n);
+    return { ok: n <= a.limit, count: n, limit: a.limit };
+  },
+  clear: async (a: { kind: string; identifier: string }) => void limits.delete(`${a.kind}:${a.identifier}`),
 };
 console.error = (...args: unknown[]) => void state.logged.push(args);
 
@@ -53,11 +69,13 @@ class FakeAnthropic {
   messages = {
     create: async (req: { messages: { role: string; content: string }[] }) => {
       state.sentToModel = req.messages;
+      state.modelCalls++;
       // Overloaded before the first word: nothing streams at all.
       if (state.failAt === "before") throw new Error('529 {"type":"error","error":{"type":"overloaded_error"}}');
       return (async function* () {
         yield { type: "message_start", message: { usage: { input_tokens: 10, output_tokens: 1 } } };
         yield { type: "content_block_delta", delta: { type: "text_delta", text: "Start with" } };
+        if (state.hold) await state.hold;
         if (state.failAt === "stream") {
           throw new Error('529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}');
         }
@@ -66,7 +84,7 @@ class FakeAnthropic {
     },
   };
 }
-(globalThis as any).__aiChatTest = { db, state, FakeAnthropic };
+(globalThis as any).__aiChatTest = { db, state, FakeAnthropic, rateLimit };
 const root = fileURLToPath(new URL("../", import.meta.url));
 const fake = (source: string) => `data:text/javascript,${encodeURIComponent(source)}`;
 (nodeModule as any).registerHooks({
@@ -77,7 +95,7 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
       "@/lib/supabase/server": g + "export const createClient=async()=>t.db;",
       "@/lib/supabase/admin": g + "export const createAdminClient=()=>t.db;",
       "@/lib/env": "export const env={anthropicApiKey:'test-key'};",
-      "@/lib/rate-limit": "export const checkRateLimit=async()=>({ok:true});",
+      "@/lib/rate-limit": g + "export const checkRateLimit=(a)=>t.rateLimit.check(a);export const clearRateLimit=(a)=>t.rateLimit.clear(a);",
       "@/lib/assignments-server": "export const loadStudentAssignments=async()=>({items:[]});",
       "@/lib/ai/usage":
         g + "export const isOverHardCap=async()=>false;export const applyUsage=async()=>{if(t.state.failAt==='usage')throw Error('usage rollup down');return{chargedCents:0};};",
@@ -93,13 +111,17 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
 });
 const { POST } = await import("../app/api/ai/chat/route.ts");
 
-async function ask(): Promise<string> {
-  const res = await POST(
+function post(message = "How should I price?"): Promise<Response> {
+  return POST(
     new Request("https://batch0.org/api/ai/chat", {
       method: "POST",
-      body: JSON.stringify({ conversationId: "c1", message: "How should I price?" }),
+      body: JSON.stringify({ conversationId: "c1", message }),
     }),
   );
+}
+
+async function ask(): Promise<string> {
+  const res = await post();
   assert.equal(res.status, 200);
   return await res.text();
 }
@@ -176,5 +198,83 @@ test("sending the question again after a failed reply answers the saved one inst
     assert.deepEqual(state.inserted.map((r) => r.role), ["user", "assistant"]);
   } finally {
     tables.ai_messages = [];
+  }
+});
+
+test("a second send while the reply is still streaming is refused, not answered twice", async () => {
+  state.failAt = "none";
+  state.inserted = [];
+  state.logged = [];
+  state.modelCalls = 0;
+  limits.clear();
+  let release!: () => void;
+  state.hold = new Promise<void>((r) => (release = r));
+  try {
+    const first = await post();
+    assert.equal(first.status, 200);
+    const reading = first.text();
+    // The first reply is mid-stream: its question is saved with nothing
+    // after it — what a resend after a failure looks like, too.
+    tables.ai_messages = [{ role: "user", content: "How should I price?", created_at: "2026-10-17T10:01:00Z" }];
+    const second = await post();
+    assert.equal(second.status, 409);
+    assert.match((await second.json()).error, /still being answered/);
+    // A different question to the same conversation waits its turn as well.
+    assert.equal((await post("And what about churn?")).status, 409);
+    release();
+    assert.equal(await reading, "Start with");
+    assert.equal(state.modelCalls, 1, "one question, one reply");
+    assert.deepEqual(state.inserted.map((r) => r.role), ["user", "assistant"]);
+    // Handed back once the reply is saved: the next message goes through.
+    tables.ai_messages = [
+      { role: "assistant", content: "Start with", created_at: "2026-10-17T10:01:30Z" },
+      { role: "user", content: "How should I price?", created_at: "2026-10-17T10:01:00Z" },
+    ];
+    assert.equal((await post("And what about churn?")).status, 200);
+  } finally {
+    state.hold = null;
+    tables.ai_messages = [];
+  }
+});
+
+test("a reply that fails hands the conversation back, so sending again works at once", async () => {
+  state.failAt = "stream";
+  state.inserted = [];
+  limits.clear();
+  assert.match(await ask(), /Send your message again/);
+  tables.ai_messages = [{ role: "user", content: "How should I price?", created_at: "2026-10-17T10:01:00Z" }];
+  try {
+    state.failAt = "none";
+    state.inserted = [];
+    assert.equal(await ask(), "Start with");
+    assert.deepEqual(state.inserted.map((r) => r.role), ["assistant"], "answered, not saved again");
+  } finally {
+    tables.ai_messages = [];
+  }
+});
+
+test("a resend whose question was answered while it waited isn't answered again", async () => {
+  // The history the request read first says "unanswered"; by the time it
+  // holds the conversation, another tab's reply has been saved.
+  state.failAt = "none";
+  state.inserted = [];
+  state.modelCalls = 0;
+  limits.clear();
+  const unanswered = [{ role: "user", content: "How should I price?", created_at: "2026-10-17T10:01:00Z" }];
+  const answered = [{ role: "assistant", content: "Price on value.", created_at: "2026-10-17T10:01:30Z" }, ...unanswered];
+  let reads = 0;
+  Object.defineProperty(tables, "ai_messages", {
+    configurable: true,
+    get: () => (reads++ === 0 ? unanswered : answered),
+  });
+  try {
+    const res = await post();
+    assert.equal(res.status, 409);
+    assert.match((await res.json()).error, /just answered/);
+    assert.equal(state.modelCalls, 0);
+    assert.deepEqual(state.inserted, []);
+    assert.ok(!limits.has("ai-chat-reply:c1"), "and the conversation is handed back");
+  } finally {
+    Object.defineProperty(tables, "ai_messages", { configurable: true, writable: true, value: [] });
   }
 });

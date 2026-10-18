@@ -32,6 +32,17 @@ export function slugify(input: string): string {
 }
 
 /**
+ * Could this be a team's slug? Every slug is slugify()'s output: lowercase
+ * letters, digits and dashes. The public team page refuses anything else
+ * before it looks the slug up, because it matches with ilike (so an old
+ * mixed-case link still opens), and to ilike the `%`, `_` and `*` a URL can
+ * carry are wildcards: /teams/____ used to open whichever team it hit.
+ */
+export function isTeamSlug(slug: string): boolean {
+  return /^[a-z0-9-]{1,64}$/i.test(slug);
+}
+
+/**
  * Reserves a unique team slug within a cohort. Falls back to appending a
  * suffix if there's a collision.
  */

@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
@@ -7,6 +8,22 @@ import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
 import { friendlyAuthError } from "@/lib/auth-errors";
 import { HONEYPOT_MESSAGE, honeypotTripped } from "@/lib/honeypot";
+import { checkRateLimit, clientIpFrom } from "@/lib/rate-limit";
+
+/**
+ * Signups one network may make in SIGNUP_IP_WINDOW_SECONDS. Generous on
+ * purpose: a classroom or a school library is one address, and a teacher
+ * walking a class through signup at an info session is the best day this
+ * form has. A script is the other thing that arrives from one address, and
+ * each account it makes is pre-confirmed and mailed a welcome — this caps it
+ * at eighty an hour instead of as many as it can post.
+ */
+const SIGNUP_IP_LIMIT = 20;
+const SIGNUP_IP_WINDOW_SECONDS = 15 * 60;
+
+// Not exported: a "use server" module may export only async functions.
+const SIGNUP_RATE_LIMITED =
+  "A lot of accounts were just created from your network. Wait a few minutes, then try again.";
 
 type SignUpInput = {
   email: string;
@@ -57,6 +74,24 @@ export async function signUpAction(input: SignUpInput): Promise<SignUpResult> {
       ok: false,
       error: "Pick a stronger password — at least 8 characters.",
     };
+  }
+
+  // Per network, after the checks above (a typo costs nothing) and before
+  // anything is created, so a refused attempt mints no account and sends no
+  // email. Every attempt that gets this far counts, including one for an
+  // address that already has an account: that answer is itself something a
+  // script would like to ask about many addresses. Fails open, like every
+  // limit (lib/rate-limit.ts). Logged at warn without the address, like the
+  // honeypot, so a wave is visible without paging anyone.
+  const byIp = await checkRateLimit({
+    kind: "signup:ip",
+    identifier: clientIpFrom(await headers()),
+    limit: SIGNUP_IP_LIMIT,
+    windowSeconds: SIGNUP_IP_WINDOW_SECONDS,
+  });
+  if (!byIp.ok) {
+    console.warn("[signup] per-network limit reached; no account created");
+    return { ok: false, error: SIGNUP_RATE_LIMITED };
   }
 
   const admin = createAdminClient();

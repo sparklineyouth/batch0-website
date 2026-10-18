@@ -451,6 +451,14 @@ box the child ticks is not (`docs/sms-marketing-opt-in.md`, "Open issue").
 `SMS_MIN_AGE` in `lib/sms/policy.ts`; the opt-in page, its action, the audience
 and the prompt all check it.
 
+**Only +1 numbers can opt in.** A toll-free number reaches the North American
+Numbering Plan only, and the send gate (`canSend`) already refuses anything
+else, so `grantConsent` refuses it too, before any ledger row: a grant for a
++44 number used to be recorded, and the page said texts were on for a number
+nothing would ever text. The person is told why
+(`OPT_IN_NOT_REACHABLE`, `lib/sms/consent.ts`). An opt-out has no such
+check: a STOP lands from any number.
+
 **The consent ledger is append-only and stores the exact rendered sentence.**
 `messaging_consent_log` keeps the string the person actually saw — not a version
 pointer into a file that will be edited next month. The evidence has to survive

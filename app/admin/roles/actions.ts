@@ -20,7 +20,8 @@ import {
   slugifyRole,
   unmetPermissionNeed,
 } from "@/lib/permissions";
-import type { ActionResult } from "@/lib/action-result";
+import { isRefusal, refuse, type ActionResult } from "@/lib/action-result";
+import { exactEmailLookup } from "@/lib/team-invites";
 
 export type RoleInput = {
   slug: string;
@@ -312,33 +313,40 @@ export async function grantRoleByEmail(
     const actor = await assertPermission("people.roles");
 
     const role = await getRole(slug);
-    if (!role) throw new Error("That role doesn't exist.");
+    if (!role) refuse("That role doesn't exist.");
     // Same escalation rule as role editing: you can't hand out more than you
     // hold. Checked again by changeRoles; here so the message comes before
     // the email lookup, as it always has.
     if (!covers(actor.caps, role.permissions)) {
-      throw new Error(
-        `You can't assign "${role.label}" — it holds permissions you don't have.`,
-      );
+      refuse(`You can't assign "${role.label}" — it holds permissions you don't have.`);
     }
 
     const clean = email.trim().toLowerCase();
-    if (!clean || !clean.includes("@")) throw new Error("Enter a valid email.");
+    if (!clean || !clean.includes("@")) refuse("Enter a valid email.");
 
+    // Matched literally (exactEmailLookup, lib/team-invites.ts). The address
+    // used to go to ilike as typed, where `_` and `%` are wildcards and legal
+    // in an address: "jo_n@school.edu" matched john@school.edu, and the role
+    // went to whoever the pattern hit when it hit exactly one account.
+    const lookup = exactEmailLookup(clean);
     const admin = createAdminClient();
-    const { data: profile, error: findErr } = await admin
-      .from("profiles")
-      .select("id, email, full_name, role")
-      .ilike("email", clean)
-      .maybeSingle();
+    const base = admin.from("profiles").select("id, email, full_name, role");
+    const { data: matches, error: findErr } = await (lookup.op === "eq"
+      ? base.eq("email", lookup.value)
+      : base.ilike("email", lookup.value)
+    ).limit(2);
     if (findErr) throw new Error(findErr.message);
-    if (!profile) {
-      throw new Error(
-        `No account for ${clean}. Ask them to sign up first, then assign the role.`,
-      );
+    if (!matches || matches.length === 0) {
+      refuse(`No account for ${clean}. Ask them to sign up first, then assign the role.`);
     }
+    // Two accounts differing only by case: refuse to guess between them
+    // rather than hand a role to the wrong person.
+    if (matches.length > 1) {
+      refuse(`More than one account uses ${clean}. Change the role from People instead.`);
+    }
+    const profile = matches[0];
     if (profile.role === slug) {
-      throw new Error(`${clean} already holds the ${role.label} role.`);
+      refuse(`${clean} already holds the ${role.label} role.`);
     }
 
     const res = await changeRoles({
@@ -358,6 +366,8 @@ export async function grantRoleByEmail(
       data: { name: profile.full_name || profile.email, email: profile.email },
     };
   } catch (err: any) {
+    // A refusal is the answer, not a fault (lib/action-result.ts): no log.
+    if (isRefusal(err)) return { ok: false, error: err.message };
     console.error("[action:grantRoleByEmail]", err);
     return { ok: false, error: err?.message ?? "Could not assign the role." };
   }

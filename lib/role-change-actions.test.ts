@@ -40,6 +40,22 @@ const state: {
   beforeUpdate: (() => void) | null;
 } = { actor: null as any, profiles: [], audit: [], updates: 0, beforeUpdate: null };
 
+/**
+ * Postgres ILIKE as PostgREST hands it over: `*` is `%`, `%` and `_` are
+ * wildcards, and a backslash makes the next character literal.
+ */
+function ilike(value: string, pattern: string): boolean {
+  let re = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === "\\" && i + 1 < pattern.length) re += pattern[++i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    else if (c === "%" || c === "*") re += ".*";
+    else if (c === "_") re += ".";
+    else re += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${re}$`, "i").test(value);
+}
+
 function as(id: string, role: string): Actor {
   return { userId: id, role, caps: capsOf(role) };
 }
@@ -65,7 +81,10 @@ const db = {
         return chain;
       },
       ilike(k: keyof Profile, v: string) {
-        filters.push((r) => r[k].toLowerCase() === v.toLowerCase());
+        filters.push((r) => ilike(r[k], v));
+        return chain;
+      },
+      limit() {
         return chain;
       },
       update(v: any) {
@@ -106,6 +125,7 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
     const doubles: Record<string, string> = {
       "server-only": "export {};",
       "next/cache": "export const revalidatePath=()=>{};",
+      "next/navigation": "export const unstable_rethrow=()=>{};",
       "@/lib/supabase/admin": g + "export const createAdminClient=()=>t.db;",
       "@/lib/server-guards":
         g +
@@ -124,8 +144,8 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
   },
 });
 
-// The actions log their refusals; the assertions below are what matter.
-mock.method(console, "error", () => {});
+// The actions log their faults; the assertions below are what matter.
+const logged = mock.method(console, "error", () => {});
 
 const { changeUserRole, bulkChangeUserRole } = await import("../app/admin/students/actions.ts");
 const { grantRoleByEmail } = await import("../app/admin/roles/actions.ts");
@@ -271,4 +291,43 @@ test("the permission guard still throws for someone without people.roles", async
   await assert.rejects(changeUserRole("s1", "mentor"), /Forbidden/);
   await assert.rejects(bulkChangeUserRole({ userIds: ["s1"], role: "mentor" }), /Forbidden/);
   assert.equal(roleOf("s1"), "student");
+});
+
+test("the email form matches the address literally: a LIKE pattern finds nobody", async () => {
+  const people = [p("actor", "admin"), { id: "john", email: "john@school.edu", full_name: "John", role: "student" }];
+  // `_` and `%` are legal in an address and wildcards to ilike: these used
+  // to hand John the role.
+  for (const typed of ["jo_n@school.edu", "%@school.edu", "j*@school.edu", "JO%"]) {
+    reset(people, as("actor", "admin"));
+    const res = await grantRoleByEmail(typed, "mentor");
+    assert.equal(res.ok, false, typed);
+    assert.match((res as any).error, /No account for|Enter a valid email/, typed);
+    assert.equal(roleOf("john"), "student", typed);
+  }
+  // His own address, in any case, still works.
+  reset(people, as("actor", "admin"));
+  assert.equal((await grantRoleByEmail("John@School.edu", "mentor")).ok, true);
+  assert.equal(roleOf("john"), "mentor");
+});
+
+test("the email form refuses to guess between two accounts that differ only by case", async () => {
+  reset(
+    [p("actor", "admin"), { id: "a1", email: "ada@school.edu", full_name: "Ada", role: "student" }, { id: "a2", email: "Ada@School.edu", full_name: "Ada 2", role: "student" }],
+    as("actor", "admin"),
+  );
+  const res = await grantRoleByEmail("ada@school.edu", "mentor");
+  assert.equal(res.ok, false);
+  assert.match((res as any).error, /More than one account/);
+  assert.equal(roleOf("a1"), "student");
+  assert.equal(roleOf("a2"), "student");
+});
+
+test("the email form's refusals are answers, not logged errors", async () => {
+  reset([p("actor", "admin")], as("actor", "admin"));
+  logged.mock.resetCalls();
+  for (const [email, slug] of [["nobody@school.edu", "mentor"], ["not-an-email", "mentor"], ["actor@example.test", "no-such-role"]]) {
+    const res = await grantRoleByEmail(email, slug);
+    assert.equal(res.ok, false, email);
+  }
+  assert.equal(logged.mock.callCount(), 0);
 });

@@ -1,4 +1,4 @@
-# Migrations 0093–0109 (October 2026)
+# Migrations 0093–0111 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -93,6 +93,15 @@ check-ins, in-app files, discussions and the old recorder at once:
    enforced by the app alone: an investor calling the API directly with
    their own session could get past it, and could read the team's notes on
    their request. (Production has no investor accounts today.)
+10. **Any time: 0111.** It only re-creates `admin_move_student_cohort()`
+   (0103) with a weaker lock on the student's profile row (FOR NO KEY
+   UPDATE instead of FOR UPDATE); same signature, same results, no data
+   changed, so no code depends on which runs first. Until it runs, a cohort
+   move makes every write that references that student (a notification, a
+   payment, a chat message) wait for the move to commit, and one that
+   already holds their application can deadlock with it. **If 0103 ever
+   runs again after 0111, run 0111 again**: 0103 re-creates the old lock
+   (0111's verify query notices).
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -188,6 +197,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0106 | `0106_sms_messaging.sql` | Texting: `messaging_consent` (consent per number, no promotional consent on a student's number), the append-only `messaging_consent_log`, `sms_outbox`, `sms_campaigns`, `sms_events`, and the `sms_settings` singleton seeded with no credentials. Service-role only (RLS on, no policies, no grants). Creates only new tables, changes no data, and sends nothing: texting stays off until a number and credentials are saved. See `docs/sms.md`. |
 | 0107 | `0107_student_followups.sql` | `student_followups`: who on the team owns a check on a student, the next check date and a factual note (one open per student), written from the drawer on `/admin/progress` and due ones listed in the Overview's attention list. RLS on with no policies, every API privilege revoked. Changes no data and sends nothing. |
 | 0109 | `0109_intro_requests_server_writes.sql` | Investor intro requests lose their client write policies and table write privileges (an investor's own JWT could file requests past the five-waiting cap, or set their row back to `requested` or on to `wired`); writes go through server actions. Reads are unchanged except `admin_notes`, which only the service role reads now. Changes no rows. |
+| 0111 | `0111_hardening.sql` | `admin_move_student_cohort()` re-created with its profile lock taken FOR NO KEY UPDATE instead of FOR UPDATE: two moves of one student still run one at a time, but foreign key checks on that profile (any insert that references the student) no longer wait for a move, and can't deadlock with one. Otherwise 0103's function unchanged; changes no data. |
 
 ## Verify
 
@@ -337,6 +347,11 @@ select has_column_privilege('authenticated', 'public.intro_requests', 'status', 
    and not exists (select 1 from pg_policies
                    where schemaname = 'public' and tablename = 'intro_requests'
                      and cmd <> 'SELECT') as ok;
+
+-- 0111
+select exists (select 1 from pg_proc
+               where oid = to_regprocedure('public.admin_move_student_cohort(uuid, uuid, uuid)')
+                 and prosrc like '%from public.profiles where id = p_user_id for no key update;%') as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,

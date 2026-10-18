@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { passHolderUserIds } from "@/lib/founder-pass";
+import { isTeamSlug } from "@/lib/team";
 import { Card } from "@/components/ui/card";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { FounderPassBadge } from "@/components/founder-pass-badge";
@@ -14,6 +15,8 @@ type Props = { params: Promise<{ slug: string }> };
 // dedupes it within the request, so a view costs one round trip instead of
 // two. Selects the union of the columns both callers read.
 const getTeamBySlug = cache(async (slug: string) => {
+  // Wildcards in the URL would make ilike match other teams (lib/team.ts).
+  if (!isTeamSlug(slug)) return null;
   const admin = createAdminClient();
   const { data } = await admin
     .from("teams")

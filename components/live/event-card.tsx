@@ -5,7 +5,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { LocalTime } from "@/components/ui/local-time";
 import { LiveDot } from "@/components/live/live-dot";
 import { relativeTime, type LiveEvent } from "@/lib/live";
-import { studentEventStatus } from "@/lib/event-form";
+import { httpsUrl, studentEventStatus } from "@/lib/event-form";
 import { isHostedOnBatch0 } from "@/lib/webinars";
 import { CalendarDays, MapPin, Video, ExternalLink } from "lucide-react";
 
@@ -72,8 +72,10 @@ export function EventCard({
   const hosted = isHostedOnBatch0(event.liveMode);
   const joinable = status === "open" || status === "live";
   const live = status === "live";
-  // Only an external event has a link to leave for.
-  const externalUrl = event.liveMode === "external" ? event.externalUrl : null;
+  // Only an external event has a link to leave for. Both links are read
+  // through httpsUrl, as the home reads them (lib/event-form.ts).
+  const externalUrl = event.liveMode === "external" ? httpsUrl(event.externalUrl) : null;
+  const recordingUrl = httpsUrl(event.recordingUrl);
   const stillAhead = upcoming && !ended;
   const startsAt = new Date(event.startsAt);
 
@@ -134,9 +136,9 @@ export function EventCard({
                 Add to calendar
               </Link>
             )}
-            {event.recordingUrl && (!upcoming || ended) ? (
+            {recordingUrl && (!upcoming || ended) ? (
               <a
-                href={event.recordingUrl}
+                href={recordingUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-phosphor-ink hover:underline"

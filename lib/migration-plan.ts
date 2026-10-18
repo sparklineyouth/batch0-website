@@ -156,6 +156,10 @@ where permissions @> array['ai_usage.view']::text[];`,
    and not exists (select 1 from pg_policies
                    where schemaname = 'public' and tablename = 'intro_requests'
                      and cmd <> 'SELECT') as ok;`,
+  // The lock line itself: re-running 0103 after 0111 puts FOR UPDATE back.
+  "0111": `select exists (select 1 from pg_proc
+               where oid = to_regprocedure('public.admin_move_student_cohort(uuid, uuid, uuid)')
+                 and prosrc like '%from public.profiles where id = p_user_id for no key update;%') as ok;`,
 };
 
 /**

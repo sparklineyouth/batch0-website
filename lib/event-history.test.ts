@@ -114,6 +114,14 @@ test("recording link: a pasted link, else the room's own once a take exists", ()
     external: false,
   });
 
+  // A pasted link is an href only when it's https (httpsUrl): anything else
+  // is no recording, not a link to tap.
+  for (const bad of ["javascript:alert(1)", "http://video.test/p", "video.test/p"]) {
+    const row = ev("bad", 1, { live_mode: "external", recording_url: bad });
+    assert.equal(recordingLink(row, new Set()), null, bad);
+    assert.deepEqual(visibleHistory([row], "recordings", new Set(), (e) => e), [], bad);
+  }
+
   // Not shared yet, or not batch0's room: nothing to look up or play.
   const unshared = ev("u", 3);
   assert.equal(needsRecordingLookup(unshared), false);

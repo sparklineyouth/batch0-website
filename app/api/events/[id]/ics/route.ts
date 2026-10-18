@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { env } from "@/lib/env";
 import { isHostedOnBatch0 } from "@/lib/webinars";
+import { httpsUrl } from "@/lib/event-form";
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -38,9 +39,11 @@ export async function GET(_req: Request, props: { params: Promise<{ id: string }
 
   const ev = event as any;
   // A hosted event points at its batch0 page, which decides who may join.
+  // An external link only when it's https: calendar apps make URL: a tap
+  // target too (httpsUrl, lib/event-form.ts).
   const joinUrl = isHostedOnBatch0(ev.live_mode)
     ? `${env.siteUrl}/dashboard/events/${ev.id}/live`
-    : ev.zoom_url;
+    : httpsUrl(ev.zoom_url);
   const start = toIcsDate(ev.starts_at);
   const end = toIcsDate(
     ev.ends_at ?? new Date(new Date(ev.starts_at).getTime() + 60 * 60 * 1000).toISOString(),

@@ -11,23 +11,28 @@ import path from "node:path";
 // bell, so the chat copy rings none of them twice.
 
 const ANN = "00000000-0000-4000-8000-0000000000a1";
-const state: { posts: any[]; enrolled: string[]; insertFails: boolean; postResult: any } = {
+const state: { posts: any[]; enrolled: string[]; insertFails: boolean; postResult: any; deletes: string[] } = {
   posts: [],
   enrolled: [],
   insertFails: false,
   postResult: { ok: true, messageId: "m", messageIds: ["m"], channelId: "c" },
+  deletes: [],
 };
 const db = {
   from(table: string) {
+    let deleting = false;
     const chain: any = {
       insert: () => chain,
       select: () => chain,
       eq: () => chain,
+      like: (k: string, pattern: string) => (state.deletes.push(`${table} where ${k} like ${pattern}`), chain),
+      delete: () => ((deleting = true), state.deletes.push(table), chain),
       single: async () => {
         assert.equal(table, "announcements");
         return state.insertFails ? { data: null, error: { message: "down" } } : { data: { id: ANN }, error: null };
       },
       then(resolve: any, reject: any) {
+        if (deleting) return Promise.resolve({ error: null }).then(resolve, reject);
         assert.equal(table, "enrollments");
         return Promise.resolve({ data: state.enrolled.map((user_id) => ({ user_id, profile: null })), error: null }).then(resolve, reject);
       },
@@ -57,7 +62,7 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
     return next(specifier, context);
   },
 });
-const { broadcastAnnouncement } = await import("../app/admin/announcements/actions.ts");
+const { broadcastAnnouncement, deleteAnnouncement } = await import("../app/admin/announcements/actions.ts");
 
 const base = { cohortId: null, title: "Kickoff moved", body: "Now Tuesday.", sendEmail: false, postChat: true };
 
@@ -113,4 +118,17 @@ test("a muted author's announcement goes out, its chat copy doesn't, and the com
   } finally {
     state.postResult = { ok: true, messageId: "m", messageIds: ["m"], channelId: "c" };
   }
+});
+
+test("deleting an announcement clears its own bells, and a malformed id clears nobody's", async () => {
+  state.deletes = [];
+  await deleteAnnouncement(ANN);
+  assert.deepEqual(state.deletes, ["notifications", `notifications where link like %a-${ANN}%`, "announcements"]);
+  // The id becomes a LIKE pattern: "%" used to match every announcement's
+  // bells, deleted before the announcement delete failed on the bad id.
+  state.deletes = [];
+  for (const bad of ["%", "_", "", "not-a-uuid"]) {
+    await assert.rejects(deleteAnnouncement(bad), /doesn't exist/, bad);
+  }
+  assert.deepEqual(state.deletes, []);
 });

@@ -126,6 +126,32 @@ export function parseHttpUrl(
   return { ok: true, url: u.toString() };
 }
 
+/**
+ * A stored event link (zoom_url, recording_url) as an href, or null: https
+ * only, with no whitespace, quote or angle bracket in it. The read-side half
+ * of parseHttpUrl, for every page and email that turns one of those columns
+ * into a link.
+ *
+ * The admin form checks what it saves, but the columns hold whatever was ever
+ * written — by an older form, a SQL fix, an import — and a `javascript:` value
+ * in an href runs in the reader's session the moment they tap "Join". The
+ * student home has always read the link through this; the installed app's
+ * Join button, the recording links and the Demo Day ticket used it raw. A
+ * link that fails it shows as no link, as on the home. The quote and the
+ * brackets: the ticket emails put the link inside href="…" with a text-only
+ * escaper, and a URL the form saved has them percent-encoded anyway.
+ */
+export function httpsUrl(url: string | null | undefined): string | null {
+  const u = (url ?? "").trim();
+  return /^https:\/\/[^\s"<>]+$/i.test(u) ? u : null;
+}
+
+/** An event link the form may save: empty, or a link httpsUrl will show. */
+function isSavableEventLink(input: string): boolean {
+  const parsed = parseHttpUrl(input);
+  return parsed.ok && (parsed.url === null || httpsUrl(parsed.url) !== null);
+}
+
 // ---------------------------------------------------------------------------
 // Who can see it
 // ---------------------------------------------------------------------------
@@ -275,10 +301,12 @@ export function validateEventFields(d: {
   ) {
     errors.duration = "Pick a length.";
   }
-  if (d.liveMode === "external" && !parseHttpUrl(d.externalUrl).ok) {
+  // https only, though parseHttpUrl takes http too: every page reads these
+  // links through httpsUrl, so an http one would save and then show nowhere.
+  if (d.liveMode === "external" && !isSavableEventLink(d.externalUrl)) {
     errors.externalUrl = "Use a full https:// link.";
   }
-  if (!parseHttpUrl(d.recordingUrl).ok) {
+  if (!isSavableEventLink(d.recordingUrl)) {
     errors.recordingUrl = "Use a full https:// link.";
   }
   if (!parseWho(d.who)) errors.who = "Pick who it's for.";

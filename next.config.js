@@ -12,6 +12,15 @@ const nextConfig = {
       static: 30,
     },
   },
+  // nodemailer (lib/email/send.ts, the SMTP path) is a Node library through
+  // and through — net, tls, dns, child_process for its sendmail transport —
+  // and isn't on Next's built-in list of packages left to Node's own loader
+  // (next/dist/lib/server-external-packages.json), so webpack was bundling
+  // it into the server build, rewriting its requires as it went. Listed here
+  // it is loaded from node_modules as published, the setup Next documents
+  // for packages like it, and output file tracing ships it with each
+  // function that imports it.
+  serverExternalPackages: ["nodemailer"],
   // These routes read fonts from disk at runtime. Next 15 makes tracing
   // configuration stable at the top level; leaving it in experimental
   // would silently omit fonts from deployment bundles.

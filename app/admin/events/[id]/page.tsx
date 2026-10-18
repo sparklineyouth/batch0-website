@@ -12,7 +12,7 @@ import { formatBytes } from "@/lib/webinars";
 import { presentHosts } from "@/lib/live-rooms";
 import { PEER_TIMEOUT_MS } from "@/lib/live-signal";
 import { joinNames } from "@/lib/live";
-import { adminGroup, EVENT_TYPE_LABEL, isEventType, isUuid, roomActionLabel } from "@/lib/event-form";
+import { adminGroup, EVENT_TYPE_LABEL, httpsUrl, isEventType, isUuid, roomActionLabel } from "@/lib/event-form";
 import { LiveControls } from "../live-controls";
 import { ShareFiles } from "../share-files";
 import { FileDown, Pencil, Video } from "lucide-react";
@@ -41,6 +41,9 @@ export default async function AdminEventPage(props: { params: Promise<{ id: stri
   if (!event) notFound();
   const ev = event as any;
   const hosted = ev.live_mode === "hosted" || ev.live_mode === "premiere";
+  // Staff read the stored link through httpsUrl too: an href is where a bad
+  // value would run, whoever is looking (lib/event-form.ts).
+  const recordingHref = httpsUrl(ev.recording_url);
   const now = new Date();
   const timing = {
     startsAt: ev.starts_at as string,
@@ -138,17 +141,17 @@ export default async function AdminEventPage(props: { params: Promise<{ id: stri
         <Stat label="Questions" value={String(questions.length)} />
       </dl>
 
-      {(hosted || ev.recording_url) && (
+      {(hosted || recordingHref) && (
         <Section id="recording" title="Recording">
           {hosted && (
             <EventRecordings
               eventId={ev.id}
-              emptyText={ev.recording_url ? undefined : "No recording yet."}
+              emptyText={recordingHref ? undefined : "No recording yet."}
             />
           )}
-          {ev.recording_url && (
+          {recordingHref && (
             <a
-              href={ev.recording_url}
+              href={recordingHref}
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm text-phosphor-ink hover:underline"

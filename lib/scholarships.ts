@@ -54,7 +54,7 @@ import {
   type CohortCandidate,
   type ScholarshipCohort,
 } from "@/lib/scholarship-window";
-import { mintTicketToken, getDemoDayDetails } from "@/lib/demo-day-tickets";
+import { mintTicketToken, getDemoDayDetails, findProfileByEmail } from "@/lib/demo-day-tickets";
 import { normalizeTicketEmail, TICKET_NAME_MAX } from "@/lib/demo-day-ticket-input";
 
 // ---------------------------------------------------------------------------
@@ -2231,13 +2231,10 @@ export async function sendScholarshipGuestTicket(args: {
   const cohortId = ((award as any)?.cohort_id as string | null) ?? null;
 
   // A guest who already has a batch0 account sees the event on their
-  // dashboard (events policy, 0070). Best-effort, like the paid path.
-  const { data: guestProfile } = await admin
-    .from("profiles")
-    .select("id")
-    .ilike("email", email)
-    .limit(1)
-    .maybeSingle();
+  // dashboard (events policy, 0070). Best-effort, like the paid path, and
+  // through the same literal match: the holder types this address, and a
+  // pattern in it must not hand the ticket to someone else's account.
+  const guestProfile = await findProfileByEmail(email);
 
   const now = new Date().toISOString();
   const { data: inserted, error: insertErr } = await admin
@@ -2246,7 +2243,7 @@ export async function sendScholarshipGuestTicket(args: {
       token: mintTicketToken(),
       email,
       name,
-      user_id: (guestProfile as any)?.id ?? null,
+      user_id: guestProfile?.id ?? null,
       cohort_id: cohortId,
       amount_cents: 0,
       note: null,
@@ -2288,7 +2285,7 @@ export async function sendScholarshipGuestTicket(args: {
     await sendTemplated(GUEST_TICKET_TEMPLATE, {
       to: email,
       toName: name,
-      userId: (guestProfile as any)?.id ?? null,
+      userId: guestProfile?.id ?? null,
       vars: {
         host_name: host.fullName ?? "a batch0 founder",
         demo_day_when: details.when ?? "",
@@ -2305,7 +2302,7 @@ export async function sendScholarshipGuestTicket(args: {
           location: details.location,
           externalUrl: details.externalUrl,
           cohortName: details.cohortName,
-          hasAccount: !!(guestProfile as any)?.id,
+          hasAccount: !!guestProfile?.id,
         }),
     });
   } catch (err) {

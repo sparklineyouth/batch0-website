@@ -11,6 +11,7 @@ import {
   floorToMinute,
   fromLocalInput,
   goLiveNowAudience,
+  httpsUrl,
   liveForAudience,
   nextRoundHour,
   parseHttpUrl,
@@ -103,6 +104,45 @@ test("parseHttpUrl accepts http(s) only", () => {
   ]) {
     assert.equal(parseHttpUrl(bad).ok, false, bad);
   }
+});
+
+test("httpsUrl: a stored event link becomes an href only when it's https", () => {
+  assert.equal(httpsUrl(" https://zoom.us/j/123?pwd=x "), "https://zoom.us/j/123?pwd=x");
+  assert.equal(httpsUrl("HTTPS://YouTu.be/x"), "HTTPS://YouTu.be/x");
+  for (const bad of [
+    null,
+    undefined,
+    "",
+    "javascript:alert(document.cookie)",
+    " JavaScript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "http://zoom.us/j/123",
+    "//evil.example/x",
+    "zoom.us/j/123",
+    "https://",
+    "https://zoom.us/j/1 onclick=x",
+    'https://x.test/"><script>alert(1)</script>',
+    "https://x.test/<b>",
+  ]) {
+    assert.equal(httpsUrl(bad), null, String(bad));
+  }
+  // What the form saves always passes: the URL parser percent-encodes quotes
+  // and brackets.
+  const saved = parseHttpUrl('https://x.test/a"b<c>');
+  assert.ok(saved.ok && saved.url && httpsUrl(saved.url) === saved.url);
+});
+
+test("the event form saves only https links: an http one would show nowhere", () => {
+  // Every page reads these columns through httpsUrl.
+  assert.equal(
+    validateEventFields({ ...valid, liveMode: "external", externalUrl: "http://zoom.us/j/1" }).externalUrl,
+    "Use a full https:// link.",
+  );
+  assert.equal(validateEventFields({ ...valid, recordingUrl: "http://youtu.be/x" }).recordingUrl, "Use a full https:// link.");
+  assert.deepEqual(
+    validateEventFields({ ...valid, liveMode: "external", externalUrl: " https://zoom.us/j/1 ", recordingUrl: "https://youtu.be/x" }),
+    {},
+  );
 });
 
 // ---- who -------------------------------------------------------------------

@@ -18,7 +18,9 @@ import { Templates } from "@/lib/email/templates";
 import { getSiteConfig } from "@/lib/site-config";
 import { fmtDateOnly } from "@/lib/pre-cohort";
 import { formatTicketAmount } from "@/lib/demo-day-ticket-input";
+import { exactEmailLookup } from "@/lib/team-invites";
 import { isHostedOnBatch0 } from "@/lib/webinars";
+import { httpsUrl } from "@/lib/event-form";
 import type { DemoDayTicket } from "@/lib/types";
 
 /** Template keys, so the seed, the send and the admin editor agree. */
@@ -63,21 +65,29 @@ export async function getTicketByToken(
 }
 
 /**
- * The batch0 account behind an email, if there is one. Case-insensitive:
- * profiles.email is stored as typed at signup, and the ticket email is
- * lowercased, so an exact `eq` would miss "Alex@Example.com".
+ * The batch0 account behind an email, if there is exactly one. Matched
+ * literally and case-insensitively (exactEmailLookup, lib/team-invites.ts).
+ *
+ * The address is whatever an admin or a scholarship holder typed for a
+ * guest, and it used to go to ilike as it was: `%`, `_` and `*` are wildcards
+ * there and legal in an address, so `%@gmail.com` or `a_c@school.edu` linked
+ * the ticket to the first account the pattern hit — and that stranger then
+ * saw Demo Day on their dashboard (the events policy, 0070). Two accounts
+ * differing only by case link neither: the ticket still works from its pay
+ * link, and guessing between them is how the wrong person gets it.
  */
 export async function findProfileByEmail(
   email: string,
 ): Promise<{ id: string; full_name: string | null } | null> {
+  const lookup = exactEmailLookup(email);
+  if (!lookup.value.includes("@")) return null;
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("profiles")
-    .select("id, full_name")
-    .ilike("email", email)
-    .limit(1)
-    .maybeSingle();
-  return data ?? null;
+  const base = admin.from("profiles").select("id, full_name");
+  const { data } = await (lookup.op === "eq"
+    ? base.eq("email", lookup.value)
+    : base.ilike("email", lookup.value)
+  ).limit(2);
+  return data && data.length === 1 ? (data[0] as { id: string; full_name: string | null }) : null;
 }
 
 /**
@@ -136,7 +146,9 @@ export async function getDemoDayDetails(
       when: formatEventWhen(ev.starts_at),
       location: ev.location ?? null,
       // A premiere is hosted on batch0 too; only `external` has a Zoom link.
-      externalUrl: isHostedOnBatch0(ev.live_mode) ? null : (ev.zoom_url ?? null),
+      // Into the ticket page's href and both ticket emails' href="…", which
+      // escape it as text only: https or nothing (lib/event-form.ts).
+      externalUrl: isHostedOnBatch0(ev.live_mode) ? null : httpsUrl(ev.zoom_url),
       hosted: isHostedOnBatch0(ev.live_mode),
       eventId: ev.id,
     };
