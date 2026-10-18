@@ -167,7 +167,11 @@ Visit http://localhost:3000.
 In `/admin/course`, create a module (week, title, cohort), add lessons, and
 upload each lesson's video and materials right there. They land in the private
 `course-videos` and `course-materials` buckets. Lessons are gated: only students
-enrolled in the matching cohort can read them, through short-lived signed URLs.
+enrolled in the matching cohort can read them, through short-lived signed URLs
+minted when the video loads or a material is clicked
+(`/dashboard/course/<lesson>/video` and `/materials`, `lib/lesson-assets.ts`),
+never at page render. Reopening a lesson resumes the video where the student
+left off.
 Weekly work goes in `/admin/assignments` (`docs/assignments.md`).
 
 ## 9. Deploy

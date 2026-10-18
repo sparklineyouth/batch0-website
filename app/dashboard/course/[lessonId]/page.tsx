@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LessonPlayer } from "./lesson-player";
@@ -10,88 +9,46 @@ import { renderLessonMarkdown } from "@/lib/lesson-content";
 import { loadStudentAssignments } from "@/lib/assignments-server";
 import { formatEastern } from "@/lib/assignments";
 import { StatusChip } from "@/components/assignments/status-chip";
+import {
+  lessonMaterialHref,
+  lessonMaterials,
+  lessonVideoHref,
+  materialProblem,
+  resumePosition,
+} from "@/lib/lesson-assets";
 
 export const dynamic = "force-dynamic";
 
 export default async function LessonPage(
   props: {
     params: Promise<{ lessonId: string }>;
+    searchParams: Promise<{ material?: string | string[] }>;
   }
 ) {
-  const params = await props.params;
+  const [params, searchParams] = await Promise.all([props.params, props.searchParams]);
   const user = await requireUser();
   const supabase = await createClient();
 
-  // Signed URLs for lesson assets are short-lived (10 min) and minted
-  // server-side per request. Long-TTL URLs that leak into HTML source /
-  // browser history / share sheets are a low-grade access leak; this
-  // keeps the window tight while still being long enough to start a
-  // video. The page is `force-dynamic` so every viewer gets a fresh URL.
-  const SIGNED_URL_TTL = 60 * 10;
-
-  // All materials in one storage batch, keeping the authored order and
-  // skipping anything that fails to sign — same as minting one by one.
-  const signAssets = async (lesson: any) => {
-    let videoUrl: string | null = lesson.video_url || null;
-    const materials: { title: string; url: string }[] = [];
-    const adminCli = createAdminClient();
-    const rawMaterials = Array.isArray(lesson.materials)
-      ? (lesson.materials as any[]).filter((m) => m?.path)
-      : [];
-    const [video, signed] = await Promise.all([
-      lesson.video_path
-        ? adminCli.storage
-            .from("course-videos")
-            .createSignedUrl(lesson.video_path, SIGNED_URL_TTL)
-        : null,
-      rawMaterials.length > 0
-        ? adminCli.storage
-            .from("course-materials")
-            .createSignedUrls(
-              rawMaterials.map((m) => m.path as string),
-              SIGNED_URL_TTL,
-            )
-        : null,
-    ]);
-    if (video?.data?.signedUrl) videoUrl = video.data.signedUrl;
-    const byPath = new Map<string, string>();
-    for (const item of signed?.data ?? []) {
-      if (item.path && item.signedUrl) byPath.set(item.path, item.signedUrl);
-    }
-    for (const m of rawMaterials) {
-      const url = byPath.get(m.path);
-      if (url) materials.push({ title: m.title || m.path, url });
-    }
-    return { videoUrl, materials };
-  };
-
-  // Progress filters only on the route param + user, so it
-  // rides one batch with the lesson; the signed URLs chain off the lesson
-  // row inside the same batch instead of adding serial stages.
-  // Promise.resolve materializes the builder — a raw PostgREST builder
-  // re-runs its fetch on every .then(), and this one is consumed twice.
-  const lessonPromise = Promise.resolve(
+  // Nothing is signed here any more. The video and every material link point
+  // at routes that check the viewer can read this lesson and sign at the
+  // moment of the request (lib/lesson-assets.ts): a URL minted at render was
+  // dead ten minutes later, which is before most students reach the
+  // worksheet at the bottom of a lesson.
+  const [{ data: lesson }, { data: progress }, attached] = await Promise.all([
     supabase
       .from("lessons")
       .select("*, module:modules(week, title, cohort_id)")
       .eq("id", params.lessonId)
       .maybeSingle(),
-  );
-  const [{ data: lesson }, assets, { data: progress }, attached] =
-    await Promise.all([
-      lessonPromise,
-      lessonPromise.then(({ data: l }) =>
-        l ? signAssets(l) : { videoUrl: null, materials: [] },
-      ),
-      supabase
-        .from("lesson_progress")
-        .select("watched_seconds, completed_at")
-        .eq("user_id", user.id)
-        .eq("lesson_id", params.lessonId)
-        .maybeSingle(),
-      // Assignments anchored to this lesson that this student has been set.
-      loadStudentAssignments(supabase, user.id, { lessonId: params.lessonId }),
-    ]);
+    supabase
+      .from("lesson_progress")
+      .select("watched_seconds, completed_at")
+      .eq("user_id", user.id)
+      .eq("lesson_id", params.lessonId)
+      .maybeSingle(),
+    // Assignments anchored to this lesson that this student has been set.
+    loadStudentAssignments(supabase, user.id, { lessonId: params.lessonId }),
+  ]);
 
   if (!lesson) notFound();
   const lessonHtml = lesson.description ? await renderLessonMarkdown(lesson.description) : null;
@@ -106,7 +63,14 @@ export default async function LessonPage(
   );
   const lessonIndex = sequence.findIndex((l: any) => l.id === lesson.id);
   const nextLesson = lessonIndex >= 0 ? sequence[lessonIndex + 1] : null;
-  const { videoUrl, materials } = assets;
+  const videoSrc: string | null = lesson.video_path
+    ? lessonVideoHref(lesson.id)
+    : lesson.video_url || null;
+  const materials = lessonMaterials(lesson.materials).map((m) => ({
+    title: m.title,
+    href: lessonMaterialHref(lesson.id, m.path),
+  }));
+  const problem = materialProblem(searchParams.material);
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -150,11 +114,23 @@ export default async function LessonPage(
       <div className="mt-6">
         <LessonPlayer
           lessonId={lesson.id}
-          videoUrl={videoUrl}
+          videoSrc={videoSrc}
+          // Signed by the video route, so the player may ask it again.
+          refreshable={Boolean(lesson.video_path)}
+          // The player re-checks against the real duration once it has it.
+          resumeAt={resumePosition(progress?.watched_seconds, lesson.duration_seconds)}
           completed={Boolean(progress?.completed_at)}
         />
       </div>
 
+      {/* A material link that couldn't open lands back here (its route). */}
+      {problem && (
+        <p role="alert" className="mt-6 text-sm text-red-600 dark:text-red-400">
+          {problem === "missing"
+            ? "That file isn't part of this lesson any more — it may have been replaced."
+            : "That file couldn't be opened just now. Try again in a moment."}
+        </p>
+      )}
       {materials.length > 0 && (
         <Card className="mt-6">
           <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-ink-soft">
@@ -164,7 +140,7 @@ export default async function LessonPage(
             {materials.map((m, i) => (
               <li key={i}>
                 <a
-                  href={m.url}
+                  href={m.href}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 text-sm text-phosphor-ink hover:underline"
