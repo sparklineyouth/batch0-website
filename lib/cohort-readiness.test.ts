@@ -411,6 +411,22 @@ test("an upcoming external session with no link fails and opens that event's edi
   ]);
 });
 
+test("a session link students' pages won't show (not https) counts as no link, and says why", () => {
+  const events = mondays();
+  events[1] = { ...events[1], live_mode: "external", zoom_url: "http://zoom.us/j/1", title: "Guest workshop" };
+  events[2] = { ...events[2], live_mode: "external", zoom_url: "javascript:alert(1)", title: "Office hour" };
+  const links = byId(cohortReadiness(readyInput({ events })).checks, "links");
+  assert.equal(links.state, "fail");
+  assert.equal(links.detail, "2 of 9 upcoming sessions have no join link.");
+  assert.deepEqual(
+    links.items.map((i) => i.text),
+    [
+      "Mon, Dec 21, 8:00 PM ET · Guest workshop: external, its link isn't https://, so students don't see it.",
+      "Mon, Dec 28, 8:00 PM ET · Office hour: external, its link isn't https://, so students don't see it.",
+    ],
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Kickoff, dates, enrollment
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@ import { ConfirmDialog } from "@/components/ui/dialog";
 import { LocalTime } from "@/components/ui/local-time";
 import { LiveDot } from "@/components/live/live-dot";
 import { getActionError } from "@/lib/action-error";
-import { EVENT_TYPE_LABEL, whoFromRow } from "@/lib/event-form";
+import { EVENT_TYPE_LABEL, httpsUrl, whoFromRow } from "@/lib/event-form";
 import { joinNames } from "@/lib/live";
 import { deleteEvent } from "./actions";
 import { EventForm } from "./event-form";
@@ -204,6 +204,8 @@ function EventRow({
   onDelete: () => void;
 }) {
   const hosted = r.liveMode === "hosted";
+  // An href, so through httpsUrl like every other reader (lib/event-form.ts).
+  const externalHref = httpsUrl(r.externalUrl);
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line py-3">
       <div className="min-w-0 flex-1 basis-64">
@@ -235,9 +237,9 @@ function EventRow({
             {r.roomAction}
           </ButtonLink>
         )}
-        {!hosted && r.externalUrl && r.group !== "past" && (
+        {!hosted && externalHref && r.group !== "past" && (
           <a
-            href={r.externalUrl}
+            href={externalHref}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-xs text-phosphor-ink hover:underline"

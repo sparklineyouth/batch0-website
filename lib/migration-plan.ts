@@ -172,6 +172,12 @@ where permissions @> array['ai_usage.view']::text[];`,
                  and privilege_type = 'SELECT')
    and coalesce(position('thread_root_id' in
          pg_get_functiondef(to_regprocedure('public.chat_unread(uuid, uuid[])'))) > 0, false) as ok;`,
+  // The two lock lines themselves: re-running 0103 after 0111 puts the old
+  // ones back.
+  "0111": `select exists (select 1 from pg_proc
+               where oid = to_regprocedure('public.admin_move_student_cohort(uuid, uuid, uuid)')
+                 and prosrc like '%from public.profiles where id = p_user_id for no key update;%'
+                 and prosrc like '%from public.cohorts where id = p_to_cohort_id for update;%') as ok;`,
 };
 
 /**

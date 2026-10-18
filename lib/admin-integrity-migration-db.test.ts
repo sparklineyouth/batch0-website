@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
-import { MIGRATION_CHECKS } from "./migration-plan.ts";
+import { pageinspect } from "@electric-sql/pglite/contrib/pageinspect";
+import { MIGRATION_CHECKS, stripSqlComments } from "./migration-plan.ts";
 import { cohortMoveFailureMessage } from "./cohort-move.ts";
 
 /**
@@ -22,6 +23,13 @@ import { cohortMoveFailureMessage } from "./cohort-move.ts";
  * PGlite is a single connection, so two sessions racing can't be staged
  * here; what can be shown is that every removal takes the shared lock before
  * it counts, which is what serialises them in Postgres.
+ *
+ * 0111 re-creates the move function with a weaker lock on the profile row
+ * (FOR NO KEY UPDATE) and the destination cohort locked first, and
+ * production runs that version, so every move test below runs against 0103
+ * followed by 0111. The 0111 tests at the end read the locks off the locked
+ * tuples themselves (pageinspect), and check that those two lines are all
+ * 0111 changed.
  */
 
 const migration0081 = await readFile(
@@ -30,6 +38,10 @@ const migration0081 = await readFile(
 );
 const migration = await readFile(
   new URL("../supabase/migrations/0103_admin_integrity.sql", import.meta.url),
+  "utf8",
+);
+const migration0111 = await readFile(
+  new URL("../supabase/migrations/0111_hardening.sql", import.meta.url),
   "utf8",
 );
 
@@ -48,8 +60,8 @@ const SCHOLARSHIP = "50000000-0000-4000-8000-000000000001";
  * profiles.role foreign key, 0071 scholarship_applications and its one-award
  * index).
  */
-async function setup() {
-  const db = new PGlite();
+async function setup({ through = "0111" }: { through?: "0103" | "0111" } = {}) {
+  const db = new PGlite({ extensions: { pageinspect } });
   await db.exec(`
     create role anon; create role authenticated; create role service_role;
     create table public.app_roles (
@@ -124,6 +136,7 @@ async function setup() {
     [STUDENT, OTHER, ADMIN_A, ADMIN_B],
   );
   await db.exec(migration);
+  if (through === "0111") await db.exec(migration0111);
   return db;
 }
 
@@ -746,7 +759,7 @@ test("0103: every removal of full access takes the shared lock before counting",
 });
 
 test("0103 is idempotent, and its verify query passes only once it has run", async () => {
-  const db = await setup();
+  const db = await setup({ through: "0103" });
   try {
     const check = MIGRATION_CHECKS["0103"];
     assert.ok(check, "0103 needs a verify query in MIGRATION_CHECKS");
@@ -764,6 +777,191 @@ test("0103 is idempotent, and its verify query passes only once it has run", asy
       drop function public.admin_move_student_cohort(uuid, uuid, uuid);
     `);
     assert.equal((await db.query<{ ok: boolean }>(check)).rows[0].ok, false);
+  } finally {
+    await db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 0111: the profile lock, and the destination cohort locked first
+// ---------------------------------------------------------------------------
+
+const NO_SUCH_COHORT = "f0000000-0000-4000-8000-0000000000ff";
+
+/**
+ * The lock flags on one row's tuple, read off the heap page inside the
+ * caller's still-open transaction, or null when this transaction holds no
+ * lock on it. FOR UPDATE marks the tuple HEAP_KEYS_UPDATED, which is what
+ * makes it conflict with a foreign key check's FOR KEY SHARE; FOR NO KEY
+ * UPDATE leaves that flag off.
+ */
+async function lockFlags(db: PGlite, table: "profiles" | "cohorts", id: string): Promise<string[] | null> {
+  const r = await db.query<{ flags: string[]; mine: boolean }>(
+    `select (heap_tuple_infomask_flags(h.t_infomask, h.t_infomask2)).raw_flags as flags,
+            h.t_xmax::text = pg_current_xact_id()::text as mine
+       from heap_page_items(get_raw_page('public.${table}', 0)) h
+      where h.lp = (select (ctid::text::point)[1]::int from public.${table} where id = $1)`,
+    [id],
+  );
+  assert.equal(r.rows.length, 1);
+  return r.rows[0].mine ? r.rows[0].flags : null;
+}
+
+/** Run a move in a transaction, read the row's lock while it's open, roll back. */
+async function lockDuringMove(
+  db: PGlite,
+  table: "profiles" | "cohorts",
+  id: string,
+  run: () => Promise<void>,
+): Promise<string[] | null> {
+  await db.exec("create extension if not exists pageinspect");
+  await db.exec("begin");
+  try {
+    await run();
+    return await lockFlags(db, table, id);
+  } finally {
+    await db.exec("rollback");
+  }
+}
+
+async function profileLockDuringMove(db: PGlite): Promise<string[]> {
+  const flags = await lockDuringMove(db, "profiles", STUDENT, async () => {
+    // Refused (no such cohort), but only after the lock is taken: the lock is
+    // the function's first statement.
+    assert.equal((await move(db, NO_SUCH_COHORT)).code, "no_cohort");
+  });
+  assert.ok(flags, "the move's own transaction holds it");
+  return flags;
+}
+
+test("0111: a move locks the profile FOR NO KEY UPDATE, so foreign key checks don't wait for it", async () => {
+  const before = await setup({ through: "0103" });
+  try {
+    const flags = await profileLockDuringMove(before);
+    assert.ok(flags.includes("HEAP_XMAX_LOCK_ONLY") && flags.includes("HEAP_XMAX_EXCL_LOCK"), flags.join());
+    assert.ok(flags.includes("HEAP_KEYS_UPDATED"), "0103's FOR UPDATE blocks FOR KEY SHARE");
+  } finally {
+    await before.close();
+  }
+  const db = await setup();
+  try {
+    const flags = await profileLockDuringMove(db);
+    // Still exclusive (two moves of one student still queue)…
+    assert.ok(flags.includes("HEAP_XMAX_LOCK_ONLY") && flags.includes("HEAP_XMAX_EXCL_LOCK"), flags.join());
+    // …but no longer a key lock.
+    assert.ok(!flags.includes("HEAP_KEYS_UPDATED"), flags.join());
+    // And a move still works end to end on this version.
+    await db.query("insert into public.enrollments (user_id, cohort_id) values ($1, $2)", [STUDENT, FALL]);
+    const moved = await move(db, WINTER);
+    assert.equal(moved.ok, true);
+    assert.equal(moved.enrollment, "moved");
+  } finally {
+    await db.close();
+  }
+});
+
+test("0111 locks the destination cohort before the enrollment and the application", async () => {
+  // Every checkout function locks the cohort and then the application
+  // (reserve_checkout_seat, attach_checkout_session, settle_enrollment_payment,
+  // apply_enrollment_refund). 0103's move locked the application and reached
+  // the cohort only at its end, through the capacity guard, so a settlement
+  // holding the cohort and a move holding the application could deadlock.
+  // PGlite can't stage two sessions; what it can show is a refusal that
+  // returns after the enrollment and application locks and before any write
+  // already holding the cohort.
+  // Enrolled in both, committed before the move's transaction (the inserts
+  // take the capacity guard's cohort lock themselves).
+  const enrolledInBoth = (db: PGlite) =>
+    db.query("insert into public.enrollments (user_id, cohort_id) values ($1, $2), ($1, $3)", [STUDENT, FALL, WINTER]);
+  const refusedAfterLocks = (db: PGlite) => async () => {
+    assert.equal((await move(db, WINTER, FALL)).code, "already_enrolled");
+  };
+  const before = await setup({ through: "0103" });
+  try {
+    await enrolledInBoth(before);
+    assert.equal(await lockDuringMove(before, "cohorts", WINTER, refusedAfterLocks(before)), null, "0103 hasn't locked it yet");
+  } finally {
+    await before.close();
+  }
+  const db = await setup();
+  try {
+    await enrolledInBoth(db);
+    const flags = await lockDuringMove(db, "cohorts", WINTER, refusedAfterLocks(db));
+    assert.ok(flags, "0111 holds it");
+    // FOR UPDATE, the mode the capacity guard and the checkout functions take.
+    for (const f of ["HEAP_XMAX_LOCK_ONLY", "HEAP_XMAX_EXCL_LOCK", "HEAP_KEYS_UPDATED"]) {
+      assert.ok(flags.includes(f), `${f} in ${flags.join()}`);
+    }
+    // The cohort being left isn't locked: nothing in the move writes a row
+    // that points at it.
+    await db.exec("begin");
+    try {
+      await refusedAfterLocks(db)();
+      assert.equal(await lockFlags(db, "cohorts", FALL), null);
+    } finally {
+      await db.exec("rollback");
+    }
+  } finally {
+    await db.close();
+  }
+});
+
+test("0111 changes nothing in the function but the two lock lines", () => {
+  const body = (sql: string) => {
+    const m = /create or replace function public\.admin_move_student_cohort[\s\S]*?\$\$;/.exec(sql);
+    assert.ok(m, "the function is in the file");
+    return stripSqlComments(m[0]).replace(/\s+/g, " ").trim();
+  };
+  const was = body(migration);
+  const now = body(migration0111);
+  const lockWas = "perform 1 from public.profiles where id = p_user_id for update;";
+  const lockNow = "perform 1 from public.profiles where id = p_user_id for no key update;";
+  const cohortWas = "perform 1 from public.cohorts where id = p_to_cohort_id;";
+  const cohortNow = "perform 1 from public.cohorts where id = p_to_cohort_id for update;";
+  assert.ok(was.includes(lockWas) && now.includes(lockNow));
+  assert.ok(was.includes(cohortWas) && now.includes(cohortNow));
+  assert.equal(now, was.replace(lockWas, lockNow).replace(cohortWas, cohortNow));
+  // Still in this order: the profile, then the cohort, then the rest.
+  assert.ok(now.indexOf(lockNow) < now.indexOf(cohortNow));
+  assert.ok(now.indexOf(cohortNow) < now.indexOf("from public.enrollments"));
+  // The grants after it, as 0103 left them.
+  for (const line of [
+    "revoke all on function public.admin_move_student_cohort(uuid, uuid, uuid) from public, anon, authenticated;",
+    "grant execute on function public.admin_move_student_cohort(uuid, uuid, uuid) to service_role;",
+  ]) {
+    assert.ok(migration0111.includes(line), line);
+  }
+});
+
+test("0111 is idempotent, its verify query passes only once it has run, and notices 0103 run again", async () => {
+  const db = await setup({ through: "0103" });
+  try {
+    const check = MIGRATION_CHECKS["0111"];
+    assert.ok(check, "0111 needs a verify query in MIGRATION_CHECKS");
+    const ok = async () => (await db.query<{ ok: boolean }>(check)).rows[0].ok;
+    assert.equal(await ok(), false, "0103 alone is the FOR UPDATE version");
+    await db.exec(migration0111);
+    assert.equal(await ok(), true);
+    await db.exec(migration0111);
+    assert.equal(await ok(), true);
+    // Re-running 0103 puts the old locks back; the query says so.
+    await db.exec(migration);
+    assert.equal(await ok(), false);
+    await db.exec(migration0111);
+    assert.equal(await ok(), true);
+    // Either lock line alone isn't 0111.
+    const withoutCohortLock = migration0111.replace(
+      "where id = p_to_cohort_id for update;",
+      "where id = p_to_cohort_id;",
+    );
+    assert.notEqual(withoutCohortLock, migration0111);
+    await db.exec(withoutCohortLock);
+    assert.equal(await ok(), false);
+    await db.exec(migration0111);
+    assert.equal(await ok(), true);
+    // A database without the function at all: not done.
+    await db.exec("drop function public.admin_move_student_cohort(uuid, uuid, uuid)");
+    assert.equal(await ok(), false);
   } finally {
     await db.close();
   }

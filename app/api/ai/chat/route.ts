@@ -3,9 +3,16 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildCurriculumContext, buildSystemPrompt } from "@/lib/ai/system-prompt";
 import { resolveAiTeamContext } from "@/lib/ai/team-context";
-import { isResendOfUnanswered, replyFailedNotice } from "@/lib/ai/resend";
+import {
+  ALREADY_ANSWERED,
+  isResendOfUnanswered,
+  REFUSAL_CODE,
+  replyFailedNotice,
+  REPLY_IN_FLIGHT,
+  REPLY_LEASE_SECONDS,
+} from "@/lib/ai/resend";
 import { env } from "@/lib/env";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimit, clearRateLimit } from "@/lib/rate-limit";
 import { loadStudentAssignments } from "@/lib/assignments-server";
 import { formatEastern, isDone, statusLabel } from "@/lib/assignments";
 import { applyUsage, isOverHardCap } from "@/lib/ai/usage";
@@ -250,10 +257,43 @@ export async function POST(req: Request) {
   let teamRetrieval: any = null;
   let curriculumCorpus: string | null = null;
 
+  // One reply per conversation at a time. A second send while a reply
+  // streams — Enter pressed twice before the composer disabled, the same
+  // chat open in another tab — used to find the first one's question saved
+  // with nothing after it, read it as a resend, and stream a second answer:
+  // two replies saved to one question, both billed. Taken after every gate
+  // above (only the owner can hold their conversation's lease) and handed
+  // back when the stream ends, whichever way it ends (lib/ai/resend.ts).
+  const lease = { kind: "ai-chat-reply", identifier: conversationId };
+  const replying = await checkRateLimit({ ...lease, limit: 1, windowSeconds: REPLY_LEASE_SECONDS });
+  if (!replying.ok) {
+    return new Response(JSON.stringify({ error: REPLY_IN_FLIGHT, code: REFUSAL_CODE.replyInFlight }), { status: 409 });
+  }
+
   // The student sending again the question whose reply failed (the notice
   // tells them to): it is already saved, with no reply after it, so it is
-  // answered rather than saved a second time (lib/ai/resend.ts).
+  // answered rather than saved a second time (lib/ai/resend.ts). Not a reply
+  // still streaming: that request holds the lease just taken.
   const resend = isResendOfUnanswered(history, trimmedMessage);
+  if (resend) {
+    // `history` was read before the lease. A reply that was streaming then
+    // may have been saved since — its request hands the lease back only
+    // after saving — so look again before answering the question twice.
+    // Only on this path: an ordinary message pays nothing for it. A failed
+    // read keeps the first answer (a resend), as before this check existed.
+    const { data: newest, error: newestError } = await admin
+      .from("ai_messages")
+      .select("role, content")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (!newestError && !isResendOfUnanswered(newest, trimmedMessage)) {
+      await clearRateLimit(lease);
+      return new Response(JSON.stringify({ error: ALREADY_ANSWERED, code: REFUSAL_CODE.alreadyAnswered }), {
+        status: 409,
+      });
+    }
+  }
 
   await Promise.all([
     // Persist the user's message immediately so it survives even if
@@ -321,7 +361,11 @@ export async function POST(req: Request) {
         console.error("[ai-chat] curriculum corpus build failed", err);
       }
     })(),
-  ]);
+  ]).catch(async (err) => {
+    // Nothing streams after this, so the stream's own hand-back never runs.
+    await clearRateLimit(lease);
+    throw err;
+  });
 
   const systemText = buildSystemPrompt({
     studentName: profile?.full_name ?? null,
@@ -500,6 +544,8 @@ export async function POST(req: Request) {
           controller.enqueue(encoder.encode(replyFailedNotice(assembled.length)));
         }
       } finally {
+        // Before close: the function may be frozen once the response ends.
+        await clearRateLimit(lease);
         controller.close();
       }
     },

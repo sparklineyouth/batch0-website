@@ -34,6 +34,7 @@ import {
   formatEastern,
 } from "./assignments.ts";
 import { cohortEligibility } from "./cohort-eligibility.ts";
+import { httpsUrl } from "./event-form.ts";
 import { isSafeHref, type KickoffRow } from "./kickoff.ts";
 import type { Permission } from "./permissions.ts";
 
@@ -708,10 +709,14 @@ function linksCheck(c: Ctx): ReadinessCheck {
   // Hosted rooms (and legacy premieres, which run as hosted) open inside
   // batch0; an external session is only reachable through its link.
   const hosted = (e: ReadinessEvent) => e.live_mode === "hosted" || e.live_mode === "premiere";
-  const noLink = ahead.filter((e) => !hosted(e) && !e.zoom_url?.trim());
+  // Read as students' pages read it (httpsUrl): a link that isn't https shows
+  // nowhere, so it counts as none.
+  const noLink = ahead.filter((e) => !hosted(e) && !httpsUrl(e.zoom_url));
   if (noLink.length) {
     const items = noLink.map((e) => ({
-      text: `${formatEastern(e.starts_at)} · ${e.title}: external, no link.`,
+      text: `${formatEastern(e.starts_at)} · ${e.title}: external, ${
+        e.zoom_url?.trim() ? "its link isn't https://, so students don't see it" : "no link"
+      }.`,
       link: to("events", `/admin/events?edit=${e.id}`),
     }));
     return check(

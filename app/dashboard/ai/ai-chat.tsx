@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { Sparkles, Send, Loader2 } from "lucide-react";
 import { getActionError } from "@/lib/action-error";
+import { ChatSends, type ChatMsg } from "@/lib/ai/chat-sends";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = ChatMsg;
 
 export function AiChat({
   conversationId,
@@ -21,14 +22,43 @@ export function AiChat({
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Every send, for as long as the panel is mounted. Picking another
+  // conversation changes this panel's props rather than remounting it, so a
+  // reply can still be streaming after the student has left its
+  // conversation, or left and come back. ChatSends decides what such a send
+  // may still draw, and holds the double-send guard (lib/ai/chat-sends.ts).
+  const [sends] = useState(
+    () =>
+      new ChatSends(
+        {
+          setMessages,
+          setInput,
+          setStreaming,
+          setError,
+          showError: (err) => setError(getActionError(err)),
+          refresh: () => router.refresh(),
+        },
+        (body) =>
+          fetch("/api/ai/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }),
+      ),
+  );
 
-  // When the conversation changes, reset.
+  // A conversation opened, or opened again: start a new visit.
   useEffect(() => {
-    setMessages(initialMessages);
-    setStreaming(false);
-    setError(undefined);
+    sends.open(conversationId, initialMessages);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
+
+  // A fresh copy from the server (router.refresh). Shown only when a send
+  // asked for it: a reply that landed while this visit showed an older copy,
+  // or the "just answered" refusal.
+  useEffect(() => {
+    sends.serverCopy(initialMessages);
+  }, [sends, initialMessages]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -37,48 +67,8 @@ export function AiChat({
     });
   }, [messages, streaming]);
 
-  async function send() {
-    const text = input.trim();
-    if (!text || streaming) return;
-    setError(undefined);
-    setInput("");
-    const next: Msg[] = [
-      ...messages,
-      { role: "user", content: text },
-      { role: "assistant", content: "" },
-    ];
-    setMessages(next);
-    setStreaming(true);
-
-    try {
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, message: text }),
-      });
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? `Request failed (${res.status})`);
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let assembled = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        assembled += decoder.decode(value, { stream: true });
-        setMessages((prev) => {
-          const out = [...prev];
-          out[out.length - 1] = { role: "assistant", content: assembled };
-          return out;
-        });
-      }
-      router.refresh();
-    } catch (e: any) {
-      setError(getActionError(e));
-    } finally {
-      setStreaming(false);
-    }
+  function send() {
+    void sends.send(input, messages);
   }
 
   function onKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -87,6 +77,8 @@ export function AiChat({
       send();
     }
   }
+
+  const last = messages[messages.length - 1];
 
   return (
     // Below lg the conversation list stacks ABOVE this panel, so the full
@@ -115,7 +107,10 @@ export function AiChat({
         {messages.map((m, i) => (
           <Bubble key={i} message={m} />
         ))}
-        {streaming && messages[messages.length - 1]?.content === "" && (
+        {/* Waiting for the first word: this send's empty bubble, or a reply
+            still streaming from before the student left and came back,
+            which open() doesn't draw (its transcript ends with the question). */}
+        {streaming && (last?.content === "" || last?.role === "user") && (
           <div className="flex items-center gap-2 text-xs text-ink-faint">
             <Loader2 className="h-3 w-3 animate-spin" />
             Thinking…

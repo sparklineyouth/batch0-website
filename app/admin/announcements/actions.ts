@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { cohortContentTag, GLOBAL_CONTENT_TAG } from "@/lib/app-cache";
 import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
+import { isUuid } from "@/lib/event-form";
 import { sendEmail } from "@/lib/email/send";
 import { notifyMany } from "@/lib/notifications";
 import { postToChannel } from "@/lib/chat-post";
@@ -196,6 +197,10 @@ function escape(s: string) {
 
 export async function deleteAnnouncement(id: string) {
   await assertPermission("announcements.manage");
+  // The id goes into a LIKE pattern below, where `%` matches anything: a
+  // malformed one would clear every announcement's notifications before the
+  // delete itself failed on it. The admin list only ever sends real ids.
+  if (!isUuid(id)) throw new Error("That announcement doesn't exist.");
   const admin = createAdminClient();
   // Clear notifications that linked to this announcement so students
   // don't see a deep-link to a 404.

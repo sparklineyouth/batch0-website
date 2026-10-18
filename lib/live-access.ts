@@ -30,6 +30,7 @@ import {
   type AudienceMode,
 } from "@/lib/webinars";
 import { PEER_TIMEOUT_MS, type SignalRole } from "@/lib/live-signal";
+import { httpsUrl } from "@/lib/event-form";
 import {
   markLeft,
   notifyHosts,
@@ -797,7 +798,8 @@ function toAccessEvent(row: any): LiveAccessEvent {
     liveEndedAt: row.live_ended_at ?? null,
     visibility: row.visibility,
     cohortId: row.cohort_id ?? null,
-    recordingUrl: row.recording_url ?? null,
+    // An href on the room page once it ends: https only (lib/event-form.ts).
+    recordingUrl: httpsUrl(row.recording_url),
     primaryHostId: row.live_primary_host_id ?? null,
   };
 }

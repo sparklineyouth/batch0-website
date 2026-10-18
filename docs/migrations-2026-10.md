@@ -1,4 +1,4 @@
-# Migrations 0093–0110 (October 2026)
+# Migrations 0093–0111 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -109,6 +109,17 @@ check-ins, in-app files, discussions and the old recorder at once:
    0110 again**: 0101 re-creates those two functions without the thread
    clause and takes `thread_root_id`'s column grant away (0110's verify
    query notices both).
+11. **Any time: 0111.** It only re-creates `admin_move_student_cohort()`
+   (0103) with two lock changes: the student's profile row is locked FOR NO
+   KEY UPDATE instead of FOR UPDATE, and the destination cohort is locked
+   first, before the enrollment and the application, the order every
+   checkout function uses. Same signature, same results, no data changed,
+   so no code depends on which runs first. Until it runs, a cohort move
+   makes every write that references that student (a notification, a
+   payment, a chat message) wait for the move to commit, and a Stripe
+   settlement for that student can deadlock with it. **If 0103 ever runs
+   again after 0111, run 0111 again**: 0103 re-creates the old locks
+   (0111's verify query notices).
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -216,6 +227,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0107 | `0107_student_followups.sql` | `student_followups`: who on the team owns a check on a student, the next check date and a factual note (one open per student), written from the drawer on `/admin/progress` and due ones listed in the Overview's attention list. RLS on with no policies, every API privilege revoked. Changes no data and sends nothing. |
 | 0109 | `0109_intro_requests_server_writes.sql` | Investor intro requests lose their client write policies and table write privileges (an investor's own JWT could file requests past the five-waiting cap, or set their row back to `requested` or on to `wired`); writes go through server actions. Reads are unchanged except `admin_notes`, which only the service role reads now. Changes no rows. |
 | 0110 | `0110_chat_threads.sql` | Chat threads and #help's questions: `chat_messages.thread_root_id` (one level, a reply's root always in its own channel by a `(thread_root_id, channel_id)` foreign key, readable by the channel's readers for Realtime), `chat_threads` (live reply count, #help's open/answered state with an accepted answer that must be a live reply in that thread, the thread's one Support help request, the course item a question is about), `chat_thread_events` (append-only audit of every question transition, written by trigger), and `chat_thread_follows` (who hears about replies). Deleting the accepted answer reopens its question in the same statement. Thread replies are left out of channel summaries and unread counts (two 0101 functions replaced, bodies otherwise unchanged). New tables are service role only. Changes no existing data. See `docs/chat.md`. |
+| 0111 | `0111_hardening.sql` | `admin_move_student_cohort()` re-created with its profile lock taken FOR NO KEY UPDATE instead of FOR UPDATE: two moves of one student still run one at a time, but foreign key checks on that profile (any insert that references the student) no longer wait for a move. It also locks the destination cohort before the enrollment and the application, as the checkout and settlement functions do (0080, 0081), so a Stripe settlement for that student can't deadlock with a move. Otherwise 0103's function unchanged; changes no data. |
 
 ## Verify
 
@@ -383,6 +395,12 @@ select to_regclass('public.chat_threads') is not null
                  and privilege_type = 'SELECT')
    and coalesce(position('thread_root_id' in
          pg_get_functiondef(to_regprocedure('public.chat_unread(uuid, uuid[])'))) > 0, false) as ok;
+
+-- 0111
+select exists (select 1 from pg_proc
+               where oid = to_regprocedure('public.admin_move_student_cohort(uuid, uuid, uuid)')
+                 and prosrc like '%from public.profiles where id = p_user_id for no key update;%'
+                 and prosrc like '%from public.cohorts where id = p_to_cohort_id for update;%') as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,

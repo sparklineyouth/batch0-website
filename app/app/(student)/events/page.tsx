@@ -12,7 +12,7 @@ import {
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordedEventIds } from "@/lib/event-recordings";
 import { LocalTime } from "@/components/ui/local-time";
-import { studentEventStatus } from "@/lib/event-form";
+import { httpsUrl, studentEventStatus } from "@/lib/event-form";
 import { isHostedOnBatch0 } from "@/lib/webinars";
 import {
   historyHref,
@@ -122,7 +122,9 @@ export default async function StudentAppEvents(props: {
       now,
     );
   const ahead = upcoming
-    .map((e) => ({ e, s: statusOf(e) }))
+    // The external link through httpsUrl, as the home reads it: the column
+    // holds whatever was ever written to it (lib/event-form.ts).
+    .map((e) => ({ e, s: statusOf(e), joinUrl: httpsUrl(e.zoom_url) }))
     .filter((x) => x.s === "live" || x.s === "open" || x.s === "upcoming")
     .sort((a, b) => Number(b.s === "live") - Number(a.s === "live"));
 
@@ -152,7 +154,7 @@ export default async function StudentAppEvents(props: {
               <Empty>Nothing scheduled right now.</Empty>
             ) : (
               <div className="space-y-2.5">
-                {ahead.map(({ e, s }) => (
+                {ahead.map(({ e, s, joinUrl }) => (
                   <div
                     key={e.id as string}
                     className="rounded-2xl border border-line bg-wash px-5 py-4"
@@ -184,9 +186,9 @@ export default async function StudentAppEvents(props: {
                         </a>
                       )
                     ) : (
-                      !!e.zoom_url && (
+                      joinUrl && (
                         <a
-                          href={e.zoom_url}
+                          href={joinUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="press mt-3 inline-flex h-9 items-center gap-2 rounded-md bg-phosphor px-3.5 text-[13px] font-semibold leading-none text-on-phosphor active:scale-[0.98]"

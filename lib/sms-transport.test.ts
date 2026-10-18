@@ -560,6 +560,21 @@ test("an uncontested opt-in is written, and a dashboard opt-out by another accou
   assert.equal(row.opted_out_by, null);
 });
 
+test("an opt-in for a number outside +1 is refused before anything is written", async (t) => {
+  // The send gate refuses every number a toll-free sender can't reach, so a
+  // grant for one was a permission nothing would use, under a "Texts are on".
+  reset(t);
+  for (const phone of ["+447700900123", "+919876543210", "+5215512345678"]) {
+    const res = await grant({ phone });
+    assert.equal(res.ok, false, phone);
+    assert.match((res as any).error, /start with \+1/, phone);
+  }
+  assert.equal(state.tables.messaging_consent.length, 0);
+  assert.equal(state.tables.messaging_consent_log.length, 0, "no ledger row either");
+  // The same rule as the gate: a +1 number opts in.
+  assert.deepEqual(await grant(), { ok: true });
+});
+
 // ---------------------------------------------------------------------------
 // The composer's server actions
 // ---------------------------------------------------------------------------

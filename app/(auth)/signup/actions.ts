@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
@@ -7,6 +8,30 @@ import { sendTemplated, emitEmailEvent } from "@/lib/email/dispatch";
 import { notify } from "@/lib/notifications";
 import { friendlyAuthError } from "@/lib/auth-errors";
 import { HONEYPOT_MESSAGE, honeypotTripped } from "@/lib/honeypot";
+import { checkRateLimit, clientIpFrom } from "@/lib/rate-limit";
+
+/**
+ * Signups one network may make in SIGNUP_IP_WINDOW_SECONDS. Generous on
+ * purpose: a teacher walking a class through signup at an info session is
+ * the best day this form has, and a school is usually one address for the
+ * whole building, so this one count covers every room signing up at once.
+ * Every attempt past the form's own checks counts, a retry after "that
+ * address already has an account" included, and the window runs from the
+ * first one (rate_limit_check, 0005, doesn't slide it). A class is 25 to 35,
+ * so the ceiling fits two full classes in the same quarter hour with a retry
+ * for nearly every student (lib/signup-actions.test.ts pins that). It was 20,
+ * which turned away a single class from the 21st student on. A script is the
+ * other thing that arrives from one address, and each account it makes is
+ * pre-confirmed and mailed a welcome: this caps it at 400 an hour instead of
+ * as many as it can post. The honeypot (lib/honeypot.ts) is what stops a
+ * form-filling one outright.
+ */
+const SIGNUP_IP_LIMIT = 100;
+const SIGNUP_IP_WINDOW_SECONDS = 15 * 60;
+
+// Not exported: a "use server" module may export only async functions.
+const SIGNUP_RATE_LIMITED =
+  "A lot of accounts were just created from your network. Wait a few minutes, then try again.";
 
 type SignUpInput = {
   email: string;
@@ -57,6 +82,24 @@ export async function signUpAction(input: SignUpInput): Promise<SignUpResult> {
       ok: false,
       error: "Pick a stronger password — at least 8 characters.",
     };
+  }
+
+  // Per network, after the checks above (a typo costs nothing) and before
+  // anything is created, so a refused attempt mints no account and sends no
+  // email. Every attempt that gets this far counts, including one for an
+  // address that already has an account: that answer is itself something a
+  // script would like to ask about many addresses. Fails open, like every
+  // limit (lib/rate-limit.ts). Logged at warn without the address, like the
+  // honeypot, so a wave is visible without paging anyone.
+  const byIp = await checkRateLimit({
+    kind: "signup:ip",
+    identifier: clientIpFrom(await headers()),
+    limit: SIGNUP_IP_LIMIT,
+    windowSeconds: SIGNUP_IP_WINDOW_SECONDS,
+  });
+  if (!byIp.ok) {
+    console.warn("[signup] per-network limit reached; no account created");
+    return { ok: false, error: SIGNUP_RATE_LIMITED };
   }
 
   const admin = createAdminClient();

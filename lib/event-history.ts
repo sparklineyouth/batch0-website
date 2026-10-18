@@ -9,8 +9,10 @@
  * query (recordingOrFilter) and history pages (historyRange), so every
  * recording a student may watch is reachable on both surfaces.
  *
- * No imports, so `node --test` runs it as-is.
+ * One relative .ts import (the link check), so `node --test` runs it as-is.
  */
+
+import { httpsUrl } from "./event-form.ts";
 
 /** Rows per page of history, on both surfaces. */
 export const EVENT_HISTORY_PAGE_SIZE = 10;
@@ -159,13 +161,17 @@ export function needsRecordingLookup(e: RecordingFacts): boolean {
 /**
  * Where a past event's recording plays, or null when it has none: the pasted
  * link (a new tab), else the hosted room's own player once `recorded` (the
- * ids recordedEventIds found) says there is a take.
+ * ids recordedEventIds found) says there is a take. A pasted link that isn't
+ * https (httpsUrl, lib/event-form.ts) is no recording rather than an href.
  */
 export function recordingLink(
   e: RecordingFacts,
   recorded: ReadonlySet<string>,
 ): { href: string; external: boolean } | null {
-  if (e.recording_url) return { href: e.recording_url, external: true };
+  if (e.recording_url) {
+    const href = httpsUrl(e.recording_url);
+    return href ? { href, external: true } : null;
+  }
   if (needsRecordingLookup(e) && recorded.has(e.id)) {
     return { href: `/dashboard/events/${encodeURIComponent(e.id)}/live`, external: false };
   }

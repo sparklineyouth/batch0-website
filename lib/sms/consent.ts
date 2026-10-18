@@ -178,6 +178,14 @@ export type GrantArgs = {
 export type ConsentWriteResult = { ok: true } | { ok: false; error: string };
 
 /**
+ * Why a number outside +1 can't be opted in. Shown after "We saved your
+ * number, but couldn't turn texts on:" on /dashboard/phone, and as is to an
+ * admin testing on their own phone.
+ */
+export const OPT_IN_NOT_REACHABLE =
+  "batch0 can only text numbers that start with +1 (the US and Canada), so texts can't be turned on for this one.";
+
+/**
  * Record an opt-in.
  *
  * Writes the ledger row FIRST, then the current-state row. That order is
@@ -199,6 +207,12 @@ export type ConsentWriteResult = { ok: true } | { ok: false; error: string };
  */
 export async function grantConsent(args: GrantArgs): Promise<ConsentWriteResult> {
   if (!isE164(args.phone)) return { ok: false, error: "Number is not in E.164 form." };
+  // The send gate (canSend, above) refuses every number a toll-free sender
+  // can't reach, so a grant for one recorded a permission nothing would ever
+  // use — and the dashboard said "Texts are on for this number" over it.
+  // Refused before the ledger row, like every other refusal here. Opting OUT
+  // has no such check: a STOP is honoured from any number.
+  if (!isReachableByTollFree(args.phone)) return { ok: false, error: OPT_IN_NOT_REACHABLE };
 
   const admin = createAdminClient();
   const request = {

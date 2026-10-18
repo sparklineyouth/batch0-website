@@ -123,15 +123,26 @@ export async function createIntroRequest(input: {
       revalidatePath("/admin/intros");
       return;
     }
-    const { error } = await admin
+    const { data: created, error } = await admin
       .from("intro_requests")
       // ignoreDuplicates: a double-submit racing this one leaves the first
       // row as it is instead of overwriting whatever the team did with it.
       .upsert(
         { investor_id: userId, team_id: input.teamId, message, status: "requested" },
         { onConflict: "investor_id,team_id", ignoreDuplicates: true },
-      );
+      )
+      // ON CONFLICT DO NOTHING returns only the rows it inserted, so this is
+      // empty exactly when the racing submit filed it first.
+      .select("id");
     if (error) throw new Error(error.message);
+
+    // The other submit filed this request and is pinging the admins for it.
+    // Pinging them again here is how one intro became two bells each.
+    if (!created || created.length === 0) {
+      revalidatePath(`/investor/teams/${input.teamId}`);
+      revalidatePath("/investor/intros");
+      return;
+    }
 
     // Ping admins. Failures here are swallowed — the request is filed.
     try {

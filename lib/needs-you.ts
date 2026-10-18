@@ -8,7 +8,7 @@
  * three weeks of missed work hid what was due today, and it never showed the
  * student's 1:1 at all. homeNeeds() is the one answer both now lay out.
  */
-import { studentEventStatus } from "./event-form.ts";
+import { httpsUrl, studentEventStatus } from "./event-form.ts";
 import { callListPhase, isPastPhase, isRoomOpenPhase, type CallTiming } from "./call-lifecycle.ts";
 import { studentGroup, type DerivedStatus } from "./assignments.ts";
 
@@ -48,11 +48,6 @@ type EventOpts = {
 
 function isHosted(mode: string | null): boolean {
   return mode === "hosted" || mode === "premiere";
-}
-
-function httpsUrl(url: string | null): string | null {
-  const u = (url ?? "").trim();
-  return /^https:\/\/\S+$/i.test(u) ? u : null;
 }
 
 /**

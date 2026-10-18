@@ -305,6 +305,45 @@ test("the permission guard still throws for someone without people.roles", async
   assert.equal(roleOf("s1"), "student");
 });
 
+test("the email form matches the address literally: a LIKE pattern finds nobody", async () => {
+  const people = [p("actor", "admin"), { id: "john", email: "john@school.edu", full_name: "John", role: "student" }];
+  // `_` and `%` are legal in an address and wildcards to ilike: these used
+  // to hand John the role.
+  for (const typed of ["jo_n@school.edu", "%@school.edu", "j*@school.edu", "JO%"]) {
+    reset(people, as("actor", "admin"));
+    const res = await grantRoleByEmail(typed, "mentor");
+    assert.equal(res.ok, false, typed);
+    assert.match((res as any).error, /No account for|Enter a valid email/, typed);
+    assert.equal(roleOf("john"), "student", typed);
+  }
+  // His own address, in any case, still works.
+  reset(people, as("actor", "admin"));
+  assert.equal((await grantRoleByEmail("John@School.edu", "mentor")).ok, true);
+  assert.equal(roleOf("john"), "mentor");
+});
+
+test("the email form refuses to guess between two accounts that differ only by case", async () => {
+  reset(
+    [p("actor", "admin"), { id: "a1", email: "ada@school.edu", full_name: "Ada", role: "student" }, { id: "a2", email: "Ada@School.edu", full_name: "Ada 2", role: "student" }],
+    as("actor", "admin"),
+  );
+  const res = await grantRoleByEmail("ada@school.edu", "mentor");
+  assert.equal(res.ok, false);
+  assert.match((res as any).error, /More than one account/);
+  assert.equal(roleOf("a1"), "student");
+  assert.equal(roleOf("a2"), "student");
+});
+
+test("the email form's refusals are answers, not logged errors", async () => {
+  reset([p("actor", "admin")], as("actor", "admin"));
+  errorLog.mock.resetCalls();
+  for (const [email, slug] of [["nobody@school.edu", "mentor"], ["not-an-email", "mentor"], ["actor@example.test", "no-such-role"]]) {
+    const res = await grantRoleByEmail(email, slug);
+    assert.equal(res.ok, false, email);
+  }
+  assert.equal(errorLog.mock.callCount(), 0);
+});
+
 // The email form's preview (previewRoleGrant) answers before Assign is
 // pressed, from the same reads and the same guard as the write, and writes
 // nothing.

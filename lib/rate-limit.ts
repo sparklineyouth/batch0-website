@@ -16,7 +16,7 @@ export async function checkRateLimit(args: {
   limit: number;
   windowSeconds: number;
 }): Promise<RateLimitResult> {
-  const key = `${args.kind}:${args.identifier}`.slice(0, 200);
+  const key = rateLimitKey(args.kind, args.identifier);
   try {
     const admin = createAdminClient();
     const { data, error } = await admin.rpc("rate_limit_check", {
@@ -35,8 +35,46 @@ export async function checkRateLimit(args: {
   }
 }
 
+function rateLimitKey(kind: string, identifier: string): string {
+  return `${kind}:${identifier}`.slice(0, 200);
+}
+
+/**
+ * Forget a counter, so the next checkRateLimit for it starts again at one.
+ *
+ * With `limit: 1` the pair is a lease: the check that comes back ok holds it,
+ * every other check in the window is refused, and clearing it hands it back
+ * early. The window is the lease's ceiling — a holder that dies without
+ * clearing (a function killed mid-request) frees it when the window ends.
+ * Never throws: a lease that fails to clear just runs out.
+ */
+export async function clearRateLimit(args: { kind: string; identifier: string }): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    const { error } = await admin
+      .from("rate_limits")
+      .delete()
+      .eq("key", rateLimitKey(args.kind, args.identifier));
+    if (error) console.error("[rate-limit] clear failed", error.message);
+  } catch (err) {
+    console.error("[rate-limit] clear failed", err);
+  }
+}
+
 export function clientIp(req: Request): string {
-  const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
-  return req.headers.get("x-real-ip") ?? "unknown";
+  return clientIpFrom(req.headers);
+}
+
+/**
+ * The same answer from a bare header list, for server actions, which get
+ * `headers()` rather than a Request. The first x-forwarded-for hop is the one
+ * Vercel's edge sets; x-real-ip covers other proxies. Both are
+ * client-settable, so a limit keyed on this is a speed bump for a script,
+ * not an identity.
+ */
+export function clientIpFrom(headers: Headers): string {
+  const fwd = headers.get("x-forwarded-for");
+  const first = fwd?.split(",")[0].trim();
+  if (first) return first;
+  return headers.get("x-real-ip")?.trim() || "unknown";
 }

@@ -32,6 +32,9 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
       "@/lib/email/templates": "export const Templates={welcome:()=>({subject:'',html:''})};",
       "@/lib/email/dispatch": g + "export const sendTemplated=async()=>{t.mailed++;};export const emitEmailEvent=async()=>{};",
       "@/lib/notifications": "export const notify=async()=>{};",
+      // The per-network limit has its own file (lib/signup-actions.test.ts).
+      "next/headers": "export const headers=async()=>new Headers();",
+      "@/lib/rate-limit": "export const checkRateLimit=async()=>({ok:true});export const clientIpFrom=()=>'203.0.113.1';",
     };
     if (doubles[specifier]) return { url: fake(doubles[specifier]), shortCircuit: true };
     if (specifier.startsWith("@/")) {
