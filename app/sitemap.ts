@@ -41,6 +41,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE}/privacy`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
     { url: `${BASE}/refund-policy`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
     { url: `${BASE}/community-guidelines`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
+    { url: `${BASE}/messages`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
     // The support form. Listed because every policy above now points at it as
     // the way to exercise something the policy grants, so a crawler that has
     // the policy should be able to reach the remedy. The tokenized threads at

@@ -101,6 +101,12 @@ const PRE_COHORT_ALLOWED_PREFIXES = [
   "/dashboard/support",
   "/dashboard/settings",
   "/dashboard/pay-fine",
+  // The phone number and texting opt-in. Not a nav item, so it stays out of
+  // PRE_COHORT_ALLOWED_HREFS, but every link to it — the "we need your phone
+  // number" email, the texting opt-in email, the dashboard prompt — goes to an
+  // accepted student, and the weeks before day one are exactly when kickoff
+  // logistics need a way to reach them. Locked, the link bounced them home.
+  "/dashboard/phone",
 ];
 
 /**

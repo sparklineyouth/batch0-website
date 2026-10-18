@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Privacy Policy</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: October 15, 2026
+        Last updated: October 17, 2026
       </p>
 
       <p>
@@ -154,9 +154,9 @@ export default function PrivacyPage() {
         <li>
           <strong>Service providers</strong> we use to operate the platform:
           Supabase (database + auth + storage), Stripe (payments), Resend
-          (email), Anthropic (AI co-founder), Vercel (hosting + analytics),
-          Google Analytics (site analytics). They process data on our behalf
-          only.
+          (email), Twilio (text messages), Anthropic (AI co-founder), Vercel
+          (hosting + analytics), Google Analytics (site analytics). They
+          process data on our behalf only.
         </li>
         <li>
           <strong>Mentors and investors</strong> see what you choose to
@@ -200,9 +200,20 @@ export default function PrivacyPage() {
         program — we reach you by email instead.
       </p>
       <p>
+        <strong>Turning texts on.</strong> Having a number on file is not
+        enough for us to text it: we text a number only after someone ticks a
+        box specifically about texting at{" "}
+        <a href="/dashboard/phone">batch0.org/dashboard/phone</a>. We
+        don&rsquo;t offer texts to applicants under 13, and we text from one US
+        toll-free number. See <a href="/messages">batch0.org/messages</a> for
+        the details.
+      </p>
+      <p>
         We keep a record of the number, when and how you gave it to us, and
         any request to stop, for as long as you are in the program and
-        afterward as needed to show we honored what you asked for.
+        afterward as needed to show we honored what you asked for. When you
+        turn texts on, that record includes the exact words you agreed to and
+        the IP address and browser you agreed from.
       </p>
 
       <h2>Your rights</h2>
@@ -265,7 +276,7 @@ export default function PrivacyPage() {
           name: "Privacy Policy",
           description:
             "How batch0 collects, uses, and protects student and parent data.",
-          dateModified: "2026-10-15",
+          dateModified: "2026-10-17",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Privacy", path: "/privacy" }])} />

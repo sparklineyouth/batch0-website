@@ -40,6 +40,20 @@ export default async function SettingsPage() {
           in the copy on purpose: it's what people scan a settings page for.
           Small type: these are help, not settings. */}
       <div className="mt-6 space-y-1.5 text-xs text-ink-faint">
+        {/* The number and the texting opt-in live on their own page (it's the
+            one a carrier reviews). Linked here because "stop texting me" and
+            "change my number" are settings-page questions, and the privacy
+            policy and /messages both point people at that page by name. */}
+        <p>
+          Your phone number, or texts on or off?{" "}
+          <Link
+            href="/dashboard/phone"
+            prefetch={false}
+            className="text-ink-soft underline decoration-line underline-offset-2 hover:text-ink hover:decoration-phosphor"
+          >
+            Phone &amp; texts
+          </Link>
+        </p>
         <p>
           Two accounts to merge?{" "}
           <Link

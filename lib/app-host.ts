@@ -65,6 +65,9 @@ const MARKETING_PREFIXES = [
   "/terms",
   "/refund-policy",
   "/community-guidelines",
+  // The texting disclosure page every HELP reply links to. Public and
+  // indexable, so it belongs to the apex like the policies beside it.
+  "/messages",
   "/pass",
   "/teams",
   "/verify",
