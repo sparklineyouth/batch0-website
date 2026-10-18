@@ -7,13 +7,15 @@ import path from "node:path";
 // Run with `npm test`. The real POST /api/ai/chat with the model, the
 // database and the billing doubled: a reply that dies mid-stream must leave a
 // server log line and a plain instruction, never the provider's raw error,
-// and a reply that was saved before something later failed must not be
-// reported as lost. No network, no tokens spent.
+// a reply that was saved before something later failed must not be reported
+// as lost, and doing what the notice says — sending the question again —
+// must not save it twice. No network, no tokens spent.
 
 const state = {
-  failAt: "stream" as "stream" | "usage",
+  failAt: "stream" as "before" | "stream" | "usage",
   inserted: [] as { role: string; content: string }[],
   logged: [] as unknown[][],
+  sentToModel: [] as { role: string; content: string }[],
 };
 console.error = (...args: unknown[]) => void state.logged.push(args);
 
@@ -49,15 +51,19 @@ const db = {
 // The model: two words, then the connection drops.
 class FakeAnthropic {
   messages = {
-    create: async () =>
-      (async function* () {
+    create: async (req: { messages: { role: string; content: string }[] }) => {
+      state.sentToModel = req.messages;
+      // Overloaded before the first word: nothing streams at all.
+      if (state.failAt === "before") throw new Error('529 {"type":"error","error":{"type":"overloaded_error"}}');
+      return (async function* () {
         yield { type: "message_start", message: { usage: { input_tokens: 10, output_tokens: 1 } } };
         yield { type: "content_block_delta", delta: { type: "text_delta", text: "Start with" } };
         if (state.failAt === "stream") {
           throw new Error('529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}');
         }
         yield { type: "message_delta", usage: { output_tokens: 2 } };
-      })(),
+      })();
+    },
   };
 }
 (globalThis as any).__aiChatTest = { db, state, FakeAnthropic };
@@ -104,7 +110,11 @@ test("a reply that dies mid-stream is logged, and the student gets an instructio
   state.logged = [];
   const text = await ask();
   assert.ok(text.startsWith("Start with"), "what streamed before the failure is kept");
-  assert.match(text, /cut off by an error on our side and wasn't saved\. Send your message again\./);
+  assert.equal(
+    text,
+    "Start with\n\nThe reply was cut off by an error on our side and wasn't saved. Send your message again.",
+    "plain text: the bubble shows markdown underscores as they are",
+  );
   assert.doesNotMatch(text, /overloaded_error|529/);
   assert.deepEqual(state.inserted.map((r) => r.role), ["user"], "only the question was saved");
   const line = state.logged.find((a) => a[0] === "[ai-chat] stream failed");
@@ -123,4 +133,48 @@ test("a failure after the reply was saved is logged but doesn't tell the student
   const line = state.logged.find((a) => a[0] === "[ai-chat] stream failed");
   assert.ok(line);
   assert.equal((line[1] as any).saved, true);
+});
+
+test("a reply that fails before its first word says so, without claiming it was cut off", async () => {
+  state.failAt = "before";
+  state.inserted = [];
+  state.logged = [];
+  const text = await ask();
+  assert.equal(text, "That reply failed on our side and wasn't saved. Send your message again.");
+  assert.ok(state.logged.find((a) => a[0] === "[ai-chat] stream failed"));
+});
+
+test("sending the question again after a failed reply answers the saved one instead of saving it twice", async () => {
+  state.failAt = "usage";
+  state.inserted = [];
+  state.logged = [];
+  // Newest first, as the route reads it: the question, with no reply after it.
+  tables.ai_messages = [
+    { role: "user", content: "How should I price?", created_at: "2026-10-17T10:01:00Z" },
+    { role: "assistant", content: "Earlier answer", created_at: "2026-10-17T10:00:30Z" },
+    { role: "user", content: "Earlier question", created_at: "2026-10-17T10:00:00Z" },
+  ];
+  try {
+    await ask();
+    assert.deepEqual(state.inserted.map((r) => r.role), ["assistant"], "the question isn't saved again");
+    assert.deepEqual(
+      state.sentToModel.map((m) => [m.role, m.content]),
+      [
+        ["user", "Earlier question"],
+        ["assistant", "Earlier answer"],
+        ["user", "How should I price?"],
+      ],
+      "the model sees the question once",
+    );
+    // The same words after a reply that DID save are a new question.
+    tables.ai_messages = [
+      { role: "assistant", content: "Price on value.", created_at: "2026-10-17T10:02:00Z" },
+      { role: "user", content: "How should I price?", created_at: "2026-10-17T10:01:00Z" },
+    ];
+    state.inserted = [];
+    await ask();
+    assert.deepEqual(state.inserted.map((r) => r.role), ["user", "assistant"]);
+  } finally {
+    tables.ai_messages = [];
+  }
 });

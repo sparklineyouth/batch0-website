@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildCurriculumContext, buildSystemPrompt } from "@/lib/ai/system-prompt";
 import { resolveAiTeamContext } from "@/lib/ai/team-context";
+import { isResendOfUnanswered, replyFailedNotice } from "@/lib/ai/resend";
 import { env } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { loadStudentAssignments } from "@/lib/assignments-server";
@@ -249,14 +250,21 @@ export async function POST(req: Request) {
   let teamRetrieval: any = null;
   let curriculumCorpus: string | null = null;
 
+  // The student sending again the question whose reply failed (the notice
+  // tells them to): it is already saved, with no reply after it, so it is
+  // answered rather than saved a second time (lib/ai/resend.ts).
+  const resend = isResendOfUnanswered(history, trimmedMessage);
+
   await Promise.all([
     // Persist the user's message immediately so it survives even if
     // streaming fails.
-    admin.from("ai_messages").insert({
-      conversation_id: conversationId,
-      role: "user",
-      content: trimmedMessage,
-    }),
+    resend
+      ? Promise.resolve()
+      : admin.from("ai_messages").insert({
+          conversation_id: conversationId,
+          role: "user",
+          content: trimmedMessage,
+        }),
     (async () => {
       if (!teamId) return;
       const [{ data: team }, { count }, { data: pitch }] =
@@ -334,13 +342,14 @@ export async function POST(req: Request) {
 
   // The history read predates the user-message insert, so the new turn is
   // appended locally — together they form the same HISTORY_WINDOW-message
-  // context a post-insert read would produce.
+  // context a post-insert read would produce. A resend's turn is already the
+  // newest row of that history, so it isn't appended twice.
   const orderedHistory = (history ?? []).slice().reverse();
   const messages: Anthropic.MessageParam[] = [
     ...orderedHistory
       .filter((m: any) => m.role === "user" || m.role === "assistant")
       .map((m: any) => ({ role: m.role, content: m.content })),
-    { role: "user" as const, content: trimmedMessage },
+    ...(resend ? [] : [{ role: "user" as const, content: trimmedMessage }]),
   ];
 
   const client = new Anthropic({ apiKey: env.anthropicApiKey });
@@ -448,7 +457,8 @@ export async function POST(req: Request) {
         if (chargedCents > 0) {
           controller.enqueue(
             encoder.encode(
-              `\n\n_Note: this message put you over the free tier. $${(chargedCents / 100).toFixed(2)} added to your account._`,
+              // Plain text: the chat bubble doesn't render markdown.
+              `\n\nNote: this message put you over the free tier. $${(chargedCents / 100).toFixed(2)} added to your account.`,
             ),
           );
         }
@@ -475,20 +485,19 @@ export async function POST(req: Request) {
         // #7). This line is the only trace it leaves — it used to leave none
         // on the server at all. The student gets a plain instruction instead
         // of the provider's raw error JSON; what streamed before the failure
-        // stays on their screen above it. A failure after the reply was saved
-        // (quota accrual, the title) costs them nothing, so it says nothing.
+        // stays on their screen above it, and sending the question again
+        // answers the saved one instead of saving it twice. A failure after
+        // the reply was saved (quota accrual, the title) costs them nothing,
+        // so it says nothing.
         console.error("[ai-chat] stream failed", {
           conversationId,
           streamedChars: assembled.length,
           saved,
+          resend,
           error: err?.message ?? String(err),
         });
         if (!saved) {
-          controller.enqueue(
-            encoder.encode(
-              `\n\n_The reply was cut off by an error on our side and wasn't saved. Send your message again._`,
-            ),
-          );
+          controller.enqueue(encoder.encode(replyFailedNotice(assembled.length)));
         }
       } finally {
         controller.close();
