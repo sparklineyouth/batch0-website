@@ -21,7 +21,11 @@ import {
 
 export type MintedChatUpload = { path: string; token: string; name: string };
 
-/** One-shot upload URLs for files the caller may post in this channel. */
+/**
+ * One-shot upload URLs for files the caller may post in this channel. Like
+ * verifyChatUploads, `error` is words for the sender, and a storage fault
+ * behind one is logged here.
+ */
 export async function mintChatUploads(
   channelId: string,
   userId: string,
@@ -49,6 +53,10 @@ export async function mintChatUploads(
  * content. What the browser said about size and type is replaced by what
  * storage recorded. All-or-nothing, so a message never posts with a file
  * quietly missing.
+ *
+ * `error` is always words for the sender. The one that isn't their doing —
+ * storage couldn't be read — is logged here, so the caller can hand every
+ * answer back as a refusal.
  */
 export async function verifyChatUploads(
   raw: unknown,
@@ -63,7 +71,13 @@ export async function verifyChatUploads(
   for (const f of parsed.files) {
     const slash = f.path.lastIndexOf("/");
     const { data, error } = await bucket.list(f.path.slice(0, slash), { search: f.path.slice(slash + 1), limit: 5 });
-    if (error) return { ok: false, error: "Couldn't check your attachments. Try sending again." };
+    if (error) {
+      // Storage failing is a fault, not a rule — logged here because the
+      // caller answers with refuse(), which isn't (lib/action-result.ts), the
+      // same split as the mint below.
+      console.error("[chat-files] attachment check failed", error.message);
+      return { ok: false, error: "Couldn't check your attachments. Try sending again." };
+    }
     const hit = (data ?? []).find((o) => o.name === f.path.slice(slash + 1)) as
       | { metadata?: { size?: unknown; mimetype?: unknown } | null }
       | undefined;

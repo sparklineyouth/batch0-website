@@ -1,4 +1,4 @@
-# Migrations 0093–0107 (October 2026)
+# Migrations 0093–0109 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -86,6 +86,13 @@ check-ins, in-app files, discussions and the old recorder at once:
    "Follow-ups aren't set up yet", the Overview's attention list leaves
    follow-ups out, and `settings.manage` holders see "run migration 0107" on
    the Overview; everything else on both pages works.
+9. **Any time: 0109.** It only drops `intro_requests`' client write
+   policies and narrows what the API roles may read; the app reads and writes
+   that table with the service role only, so no code depends on which runs
+   first. Until it runs, the five-waiting-requests cap on investor intros is
+   enforced by the app alone: an investor calling the API directly with
+   their own session could get past it, and could read the team's notes on
+   their request. (Production has no investor accounts today.)
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -180,6 +187,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0105 | `0105_assignment_drafts.sql` | `course_assignment_drafts`: a student's private, autosaved unsubmitted assignment work, readable by its owner only (no staff policy), with a version that only goes up (a submit empties the row instead of deleting it). `save_course_assignment_draft()` re-checks access on every save and refuses one from a tab holding an older version; `clear_course_assignment_draft()` empties it after a submit. Both service role only. Adds only; changes no existing data. |
 | 0106 | `0106_sms_messaging.sql` | Texting: `messaging_consent` (consent per number, no promotional consent on a student's number), the append-only `messaging_consent_log`, `sms_outbox`, `sms_campaigns`, `sms_events`, and the `sms_settings` singleton seeded with no credentials. Service-role only (RLS on, no policies, no grants). Creates only new tables, changes no data, and sends nothing: texting stays off until a number and credentials are saved. See `docs/sms.md`. |
 | 0107 | `0107_student_followups.sql` | `student_followups`: who on the team owns a check on a student, the next check date and a factual note (one open per student), written from the drawer on `/admin/progress` and due ones listed in the Overview's attention list. RLS on with no policies, every API privilege revoked. Changes no data and sends nothing. |
+| 0109 | `0109_intro_requests_server_writes.sql` | Investor intro requests lose their client write policies and table write privileges (an investor's own JWT could file requests past the five-waiting cap, or set their row back to `requested` or on to `wired`); writes go through server actions. Reads are unchanged except `admin_notes`, which only the service role reads now. Changes no rows. |
 
 ## Verify
 
@@ -321,6 +329,14 @@ select to_regclass('public.student_followups') is not null
                  and indexname = 'student_followups_one_open_idx')
    and (select relrowsecurity from pg_class
         where oid = to_regclass('public.student_followups')) as ok;
+
+-- 0109
+select has_column_privilege('authenticated', 'public.intro_requests', 'status', 'SELECT')
+   and not has_table_privilege('authenticated', 'public.intro_requests', 'SELECT')
+   and not has_column_privilege('authenticated', 'public.intro_requests', 'admin_notes', 'SELECT')
+   and not exists (select 1 from pg_policies
+                   where schemaname = 'public' and tablename = 'intro_requests'
+                     and cmd <> 'SELECT') as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,

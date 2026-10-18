@@ -6,6 +6,7 @@ import { ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
 import { Input, Label, FieldError } from "@/components/ui/input";
 import { friendlyAuthError } from "@/lib/auth-errors";
 import { stashRefFromLocation } from "@/lib/referral-code";
+import { HONEYPOT_FIELD } from "@/lib/honeypot";
 import { signUpAction } from "./actions";
 
 // Mirrors safeNext in app/(auth)/login/login-form.tsx — same-origin paths
@@ -95,6 +96,8 @@ export function SignupForm({ applying = false }: { applying?: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  // The honeypot (lib/honeypot.ts): no person can see or reach it.
+  const [trap, setTrap] = useState("");
   const [error, setError] = useState<string | undefined>();
   // Its own state, so "tell us your name" marks the NAME field — the shared
   // `error` is wired to the password input, where server errors belong.
@@ -123,7 +126,7 @@ export function SignupForm({ applying = false }: { applying?: boolean }) {
     // Email verification is disabled for now. Create the account
     // server-side with the email pre-confirmed, then sign the user
     // straight in — no "check your inbox" round-trip.
-    const result = await signUpAction({ email, password, fullName });
+    const result = await signUpAction({ email, password, fullName, trap });
     if (!result.ok) {
       setError(result.error);
       setLoading(false);
@@ -238,6 +241,24 @@ export function SignupForm({ applying = false }: { applying?: boolean }) {
         <p id="password-hint" className="mt-1.5 text-xs text-ink-faint">
           At least 8 characters. Use letters and numbers — avoid common words.
         </p>
+      </div>
+      {/* Honeypot. Visually clipped rather than display:none (form-filling bots skip
+          what they can tell is hidden), out of the tab order and the
+          accessibility tree, and flagged for password managers to leave
+          alone — so only software ever puts anything in it. */}
+      <div aria-hidden="true" className="sr-only">
+        <label htmlFor={HONEYPOT_FIELD}>Leave this empty</label>
+        <input
+          id={HONEYPOT_FIELD}
+          name={HONEYPOT_FIELD}
+          type="text"
+          tabIndex={-1}
+          autoComplete="off"
+          data-1p-ignore=""
+          data-lpignore="true"
+          value={trap}
+          onChange={(e) => setTrap(e.target.value)}
+        />
       </div>
       <FieldError id="signup-error">{error}</FieldError>
       <button

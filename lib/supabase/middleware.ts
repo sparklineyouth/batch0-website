@@ -18,6 +18,14 @@ import {
 } from "@/lib/permissions";
 import { isAppHost, isMarketingPath, MAIN_ORIGIN } from "@/lib/app-host";
 import { bouncesFromDashboard, isSupportPath } from "@/lib/dashboard-gate";
+import { classifyClaimsError, quietStaleSessionLogs } from "@/lib/stale-session";
+
+// A visitor whose session ended elsewhere (signed out on another device, a
+// revoked refresh token) is signed out here, quietly — see the getClaims block
+// below. auth-js logs that case on its own as well, once per Supabase client
+// listener, so its bare `console.error(err)` for exactly that error is dropped
+// at the sink (lib/stale-session.ts). Once per isolate; nothing else changes.
+quietStaleSessionLogs(console);
 
 type CookiesToSet = {
   name: string;
@@ -263,21 +271,32 @@ export async function updateSession(request: NextRequest) {
   // Treating those as a dead session AND expiring the cookie would take a
   // live, signed-in user and log them out permanently: refresh tokens rotate,
   // so the one in the cookie we just deleted is already spent.
+  //
+  // The one 400 that is NOT transient is a session that has ended:
+  // `refresh_token_not_found` and its relatives (STALE_SESSION_CODES). The
+  // access token in the cookie expired, the refresh token it carries no longer
+  // exists, and no retry will ever bring it back. That visitor is signed out —
+  // and since it is the ordinary end of a session rather than a fault, it is
+  // not logged. auth-js has already queued the cookie's removal onto
+  // `response` through setAll by the time getClaims returns; marking it
+  // definitely invalid makes any redirect below expire it as well.
   let claims: Record<string, unknown> | null = null;
   let tokenDefinitelyInvalid = false;
   try {
     const { data: claimsData, error } = await supabase.auth.getClaims();
     if (error) {
-      // Only a token the server actively rejected is "definitely invalid".
-      // 401/403 mean the JWT itself is bad. Everything else — network,
-      // 5xx, refresh races, anything unrecognised — is assumed transient.
-      const status = (error as { status?: number }).status;
-      tokenDefinitelyInvalid = status === 401 || status === 403;
-      console.error(
-        `[middleware] getClaims failed on ${request.nextUrl.pathname}:`,
-        status ?? "(no status)",
-        error.message,
-      );
+      // Only a session the server has ended, or a token it actively rejected
+      // (401/403), is "definitely invalid". Everything else — network, 5xx,
+      // refresh races, anything unrecognised — is assumed transient.
+      const failure = classifyClaimsError(error);
+      tokenDefinitelyInvalid = failure !== "transient";
+      if (failure !== "signed-out") {
+        console.error(
+          `[middleware] getClaims failed on ${request.nextUrl.pathname}:`,
+          (error as { status?: number }).status ?? "(no status)",
+          error.message,
+        );
+      }
     } else {
       claims = (claimsData?.claims as Record<string, unknown>) ?? null;
     }

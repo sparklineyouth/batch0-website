@@ -5,6 +5,11 @@ import { getAllPostsMeta, formatPostDate } from "@/lib/blog";
 // URL can be submitted as a secondary sitemap. Regenerated from the same
 // frontmatter the pages use, so it can't drift.
 export const dynamic = "force-static";
+// Hourly, like /blog. Publishing regenerates it at once (revalidatePath in the
+// admin blog actions); this is for a build that couldn't reach the database,
+// which bakes in the committed posts only (lib/blog.ts, OnBlogDbFailure) and
+// would otherwise keep that feed until the next deploy.
+export const revalidate = 3600;
 
 const SITE = "https://batch0.org";
 const FEED_URL = `${SITE}/blog/rss.xml`;

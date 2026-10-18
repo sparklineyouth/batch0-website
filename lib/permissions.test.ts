@@ -6,6 +6,7 @@ import {
   PERMISSION_BY_KEY,
   PERMISSION_GROUPS,
   canAccessAdmin,
+  canSeeAssignmentProgress,
   canViewAdminPath,
   capabilitiesFrom,
   can,
@@ -323,4 +324,21 @@ test("every built-in kind of role opens a section", () => {
   }
   // A retired key next to a live one doesn't matter.
   assert.equal(opensNoSection(capabilitiesFrom("intern", ["pulse.view", "people.view"])), false);
+});
+
+test("assignment progress on a team's admin page: only for those who can see it elsewhere", () => {
+  // /admin/teams/[id] needs only teams.manage; its readiness card shows each
+  // member's missing assignments only to a viewer who could read them on the
+  // matrix or the student's profile anyway.
+  const teamsOnly = capabilitiesFrom("custom", ["teams.manage"]);
+  assert.equal(canViewAdminPath(teamsOnly, "/admin/teams/abc"), true);
+  assert.equal(canSeeAssignmentProgress(teamsOnly), false);
+  assert.equal(canSeeAssignmentProgress(capabilitiesFrom("custom", ["teams.manage", "people.view"])), true);
+  assert.equal(canSeeAssignmentProgress(capabilitiesFrom("custom", ["teams.manage", "assignments.manage"])), true);
+  assert.equal(canSeeAssignmentProgress(capabilitiesFrom("admin", ["*"])), true);
+  assert.equal(canSeeAssignmentProgress(null), false);
+  // The card's matrix link is shown on assignments.manage alone: that's what
+  // the matrix page itself requires.
+  assert.equal(canViewAdminPath(capabilitiesFrom("custom", ["teams.manage", "people.view"]), "/admin/assignments"), false);
+  assert.equal(canViewAdminPath(capabilitiesFrom("custom", ["teams.manage", "assignments.manage"]), "/admin/assignments"), true);
 });

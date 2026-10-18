@@ -17,6 +17,7 @@ import {
   formatPostDate,
 } from "@/lib/blog-shared";
 import { pickRelated } from "@/lib/seo-meta";
+import { isMissingSchemaError } from "@/lib/schema-ready";
 
 // Hybrid blog. Posts come from two sources, merged into one namespace:
 //
@@ -211,30 +212,89 @@ function blogReadClient() {
   );
 }
 
-// Fetch published DB posts. Wrapped in try/catch so the whole blog still
-// builds if the `blog_posts` table doesn't exist yet (migration not applied)
-// or Supabase is unreachable at build time — file posts always render.
-const getPublishedRows = cache(async function getPublishedRows(): Promise<
-  BlogRow[]
-> {
+// ---------------------------------------------------------------------------
+// When the DB posts can't be read
+// ---------------------------------------------------------------------------
+
+/**
+ * What a caller wants when the published DB posts can't be read, for any
+ * reason but the table not existing yet (migration not applied — that is
+ * simply "no DB posts", silently):
+ *
+ *   "throw"       The blog's own pages, llms.txt, rss.xml and the sitemap —
+ *                 the default. They're cached (ISR, or regenerated on
+ *                 revalidatePath), and when a regeneration throws Next keeps
+ *                 serving the last good copy and tries again on the next
+ *                 request. Returning without the DB posts instead CACHED the
+ *                 degraded copy: one Supabase 504 on 2026-10-15 meant /blog
+ *                 and its category pages without the admin-written posts, and
+ *                 a cached 404 for each of those posts, for up to an hour.
+ *   "files-only"  The homepage, which renders per request: a failed read
+ *                 costs that one request the DB posts, so it renders the
+ *                 committed ones rather than failing the whole page.
+ *
+ * During `next build` both fall back to the committed posts. A deploy
+ * shouldn't fail on a Supabase blip, CI builds with no database at all, and
+ * every route that reads DB posts revalidates hourly, so a degraded build
+ * heals within the hour.
+ */
+export type OnBlogDbFailure = "throw" | "files-only";
+
+function isBuildPhase(): boolean {
+  // Set by `next build` before it spawns the static-generation workers.
+  return process.env.NEXT_PHASE === "phase-production-build";
+}
+
+/** A failed read: thrown, or logged and survived — see OnBlogDbFailure. */
+function blogDbFailed(why: string, onFailure: OnBlogDbFailure): void {
+  const message = `[blog] failed to load DB posts: ${why}`;
+  if (onFailure === "files-only" || isBuildPhase()) {
+    console.error(message);
+    return;
+  }
+  throw new Error(message);
+}
+
+/** No database configured (a CI build): nothing to read, not a failure. */
+function blogDbConfigured(): boolean {
+  return !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+}
+
+type RowsRead = { rows: BlogRow[]; failure: string | null };
+
+function failureOf(error: { message?: string; code?: string } | null | undefined): string | null {
+  if (!error) return null;
+  // blog_posts not there yet: no DB posts, the file posts carry the blog.
+  if (isMissingSchemaError(error)) return null;
+  return error.message || error.code || "unknown error";
+}
+
+// Fetch published DB posts, once per render. The outcome is cached, not
+// thrown, so the callers sharing it can each decide what a failure means.
+const readPublishedRows = cache(async function readPublishedRows(): Promise<RowsRead> {
+  if (!blogDbConfigured()) return { rows: [], failure: null };
   try {
     const sb = blogReadClient();
     const { data, error } = await sb
       .from("blog_posts")
       .select(BLOG_COLS)
       .eq("status", "published");
-    if (error) {
-      console.error("[blog] failed to load DB posts:", error.message);
-      return [];
-    }
-    return (data ?? []) as BlogRow[];
+    if (error) return { rows: [], failure: failureOf(error) };
+    return { rows: (data ?? []) as BlogRow[], failure: null };
   } catch (e) {
-    console.error("[blog] blog_posts unavailable:", (e as Error).message);
-    return [];
+    return { rows: [], failure: (e as Error).message || "unknown error" };
   }
 });
 
+async function getPublishedRows(onFailure: OnBlogDbFailure): Promise<BlogRow[]> {
+  const read = await readPublishedRows();
+  if (read.failure) blogDbFailed(read.failure, onFailure);
+  return read.rows;
+}
+
 async function getPublishedRowBySlug(slug: string): Promise<BlogRow | null> {
+  if (!blogDbConfigured()) return null;
+  let failure: string | null;
   try {
     const sb = blogReadClient();
     const { data, error } = await sb
@@ -243,11 +303,15 @@ async function getPublishedRowBySlug(slug: string): Promise<BlogRow | null> {
       .eq("slug", slug)
       .eq("status", "published")
       .maybeSingle();
-    if (error) return null;
-    return (data as BlogRow) ?? null;
-  } catch {
-    return null;
+    if (!error) return (data as BlogRow) ?? null;
+    failure = failureOf(error);
+  } catch (e) {
+    failure = (e as Error).message || "unknown error";
   }
+  // Only ever read for a post page, which is ISR: a failure must not become
+  // a cached notFound() for a post that exists.
+  if (failure) blogDbFailed(failure, "throw");
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -256,11 +320,11 @@ async function getPublishedRowBySlug(slug: string): Promise<BlogRow | null> {
 
 // Metadata for every published post, newest first. Merges file + DB posts;
 // on slug collision the DB row wins.
-export const getAllPostsMeta = cache(async function getAllPostsMeta(): Promise<
-  PostMeta[]
-> {
+export const getAllPostsMeta = cache(async function getAllPostsMeta(
+  onDbFailure: OnBlogDbFailure = "throw",
+): Promise<PostMeta[]> {
   const [rows, fileMetas] = await Promise.all([
-    getPublishedRows(),
+    getPublishedRows(onDbFailure),
     Promise.resolve(getFilePostsMeta()),
   ]);
   const bySlug = new Map<string, PostMeta>();
@@ -271,7 +335,7 @@ export const getAllPostsMeta = cache(async function getAllPostsMeta(): Promise<
 
 // Every renderable slug (file + published DB). Used by generateStaticParams.
 export async function getPostSlugs(): Promise<string[]> {
-  const rows = await getPublishedRows();
+  const rows = await getPublishedRows("throw");
   return [...new Set([...getFileSlugs(), ...rows.map((r) => r.slug)])];
 }
 
@@ -347,8 +411,11 @@ export async function getPostsByCategory(
  * blog was built. Falls back to newest-first so the section is never empty
  * if every flag is cleared.
  */
-export async function getFeaturedPosts(limit = 6): Promise<PostMeta[]> {
-  const all = await getAllPostsMeta();
+export async function getFeaturedPosts(
+  limit = 6,
+  onDbFailure: OnBlogDbFailure = "throw",
+): Promise<PostMeta[]> {
+  const all = await getAllPostsMeta(onDbFailure);
   const featured = all.filter((p) => p.featured);
   return (featured.length ? featured : all).slice(0, limit);
 }

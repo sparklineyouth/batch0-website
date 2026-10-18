@@ -11,8 +11,10 @@ import { GoogleDrivePanel } from "@/components/team/google-drive-panel";
 import { PitchLinkPreview } from "@/components/team/pitch-links";
 import { loadTeamDrive } from "@/lib/team-drive";
 import { getCapabilities } from "@/lib/auth";
-import { can } from "@/lib/permissions";
+import { can, canSeeAssignmentProgress } from "@/lib/permissions";
 import { RecapButton } from "@/app/admin/demo-day/recap-button";
+import { loadCohortBoard } from "@/lib/assignments-server";
+import { TeamReadiness } from "./team-readiness";
 
 export const metadata = { title: "Edit team · Admin" };
 
@@ -59,6 +61,21 @@ export default async function AdminTeamDetail(
   const p = pitch as
     | { deck_url?: string | null; video_url: string | null; notes: string | null; submitted_at: string | null }
     | null;
+  // The cohort's completion matrix, cut down to this team below. It waits on
+  // the team row for its cohort; `ready: false` (0093 not applied) reads as
+  // "not set up yet" rather than as a team with nothing handed in.
+  //
+  // Who is behind on what is assignment data, and this page only needs
+  // teams.manage. The same counts elsewhere need assignments.manage (the
+  // matrix) or people.view (a student's profile), so a role with neither gets
+  // the Demo Day line and not the board — which isn't even loaded for it.
+  const seesAssignments = canSeeAssignmentProgress(caps);
+  const board =
+    team.cohort_id && seesAssignments ? await loadCohortBoard(admin, team.cohort_id) : null;
+  const memberRows = ((members ?? []) as any[]).map((m) => {
+    const u = Array.isArray(m.user) ? m.user[0] : m.user;
+    return { userId: m.user_id as string, name: (u?.full_name || u?.email || "Member") as string };
+  });
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -70,6 +87,15 @@ export default async function AdminTeamDetail(
         {team.is_public ? "Public" : "Private"} · slug{" "}
         <code className="rounded bg-wash px-1.5 font-mono text-ink-soft">{team.slug}</code>
       </p>
+
+      <TeamReadiness
+        cohortId={team.cohort_id ?? null}
+        assignments={seesAssignments}
+        matrixLink={can(caps, "assignments.manage")}
+        board={board?.ready ? board : null}
+        members={memberRows}
+        pitch={p}
+      />
 
       <Card className="mt-6">
         <TeamForm

@@ -94,8 +94,10 @@ export default async function Home() {
       getPublicSiteConfig({ countryCode: "IN" }),
       getActiveChallenge(),
       getPublicWinners(),
-      getFeaturedPosts(6),
-      getAllPostsMeta(),
+      // Per-request page: a failed DB-posts read shows the committed posts
+      // for this one request instead of failing the homepage (lib/blog.ts).
+      getFeaturedPosts(6, "files-only"),
+      getAllPostsMeta("files-only"),
     ]);
 
   // ---------- The sale, as structured data ----------

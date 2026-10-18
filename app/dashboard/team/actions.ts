@@ -1,10 +1,21 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { unstable_rethrow } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertSelf } from "@/lib/server-guards";
 import { notify } from "@/lib/notifications";
 import { reserveTeamSlug, slugify } from "@/lib/team";
 import { cohortHasStarted, todayISO } from "@/lib/pre-cohort";
+import { isRefusal, refuse, runAction, type ActionResult } from "@/lib/action-result";
+import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  exactEmailLookup,
+  INVITE_LOOKUP_LIMIT,
+  INVITE_LOOKUP_WINDOW_SECONDS,
+  NO_STUDENT_ACCOUNT,
+  parseInviteEmails,
+  TEAM_MAX_MEMBERS,
+} from "@/lib/team-invites";
 
 function safeSegment(s: string) {
   return s
@@ -42,25 +53,32 @@ async function getEnrollment(userId: string) {
   return (upcoming ?? rows[0])?.cohortId ?? null;
 }
 
+// The lookups behind a refusal throw when the read itself fails. A refusal
+// isn't logged (lib/action-result.ts), so a database fault read as "no row"
+// would tell someone "you aren't on that team" or "they aren't enrolled" and
+// leave no trace anywhere.
+
 async function assertTeamMember(userId: string, teamId: string) {
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("team_members")
     .select("id, role")
     .eq("team_id", teamId)
     .eq("user_id", userId)
     .maybeSingle();
-  if (!data) throw new Error("You aren't a member of that team.");
+  if (error) throw new Error(error.message);
+  if (!data) refuse("You aren't a member of that team.");
   return data;
 }
 
 async function getTeamCohortId(teamId: string): Promise<string | null> {
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("teams")
     .select("cohort_id")
     .eq("id", teamId)
     .maybeSingle();
+  if (error) throw new Error(error.message);
   return data?.cohort_id ?? null;
 }
 
@@ -69,13 +87,14 @@ async function isEnrolledInCohort(
   cohortId: string,
 ): Promise<boolean> {
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("enrollments")
     .select("id")
     .eq("user_id", userId)
     .eq("cohort_id", cohortId)
     .limit(1)
     .maybeSingle();
+  if (error) throw new Error(error.message);
   return !!data;
 }
 
@@ -471,37 +490,40 @@ export async function inviteStudent(input: {
   const admin = createAdminClient();
 
   // Cap team size at 5 to keep cohort dynamics sane. Adjust later if needed.
-  const { count } = await admin
+  const { count, error: countErr } = await admin
     .from("team_members")
     .select("id", { count: "exact", head: true })
     .eq("team_id", input.teamId);
-  if ((count ?? 0) >= 5) {
-    throw new Error("Teams are capped at 5 members.");
+  if (countErr) throw new Error(countErr.message);
+  if ((count ?? 0) >= TEAM_MAX_MEMBERS) {
+    refuse(`Teams are capped at ${TEAM_MAX_MEMBERS} members.`);
   }
 
-  const { data: invitee } = await admin
+  const { data: invitee, error: inviteeErr } = await admin
     .from("profiles")
     .select("id, role, full_name, email")
     .eq("id", input.inviteeId)
     .maybeSingle();
+  if (inviteeErr) throw new Error(inviteeErr.message);
   if (!invitee || invitee.role !== "student") {
-    throw new Error("You can only invite students.");
+    refuse("You can only invite students.");
   }
 
   // Invitee must be enrolled in the team's cohort. Without this the
   // student gets a notification they can't meaningfully accept.
   const cohortId = await getTeamCohortId(input.teamId);
   if (!cohortId || !(await isEnrolledInCohort(input.inviteeId, cohortId))) {
-    throw new Error("That student isn't enrolled in this cohort.");
+    refuse("That student isn't enrolled in this cohort.");
   }
 
   // Block if invitee already on another team.
-  const { data: onTeam } = await admin
+  const { data: onTeam, error: onTeamErr } = await admin
     .from("team_members")
     .select("id")
     .eq("user_id", input.inviteeId)
     .maybeSingle();
-  if (onTeam) throw new Error("That student is already on a team.");
+  if (onTeamErr) throw new Error(onTeamErr.message);
+  if (onTeam) refuse("That student is already on a team.");
 
   const { data: team } = await admin
     .from("teams")
@@ -537,43 +559,56 @@ export async function inviteStudent(input: {
 }
 
 /**
- * Direct-by-email variant of {@link inviteStudent}. Resolves an email to a
- * student profile and sends them a pending invite — no search step needed.
- * The recipient still has to accept on their dashboard before they're on
- * the team, so this is just a convenience wrapper, not a way to add
- * someone silently.
+ * Direct-by-email variant of {@link inviteStudent}, for one address of a
+ * paste (inviteStudentsByEmail). Resolves an email to a student profile and
+ * sends them a pending invite — no search step needed. The recipient still
+ * has to accept on their dashboard before they're on the team, so this is
+ * just a convenience wrapper, not a way to add someone silently.
+ *
+ * Not exported: every export of a "use server" file is an endpoint, and the
+ * only caller is the paste below, which has already checked the team.
+ *
+ * What it can tell the sender is kept to what the teammate search already
+ * shows them. The address is matched literally (exactEmailLookup), anything
+ * that isn't one student account gets the same answer (NO_STUDENT_ACCOUNT),
+ * and lookups are rate limited per sender, so the box can't be used to test
+ * guesses about who has an account.
  */
-export async function inviteStudentByEmail(input: {
+async function inviteOneByEmail(input: {
+  userId: string;
   teamId: string;
   email: string;
   message?: string;
 }) {
-  const { userId } = await assertSelf();
-  await assertTeamMember(userId, input.teamId);
-
   const email = input.email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new Error("That doesn't look like a valid email.");
+    refuse("That doesn't look like a valid email.");
   }
+
+  const rl = await checkRateLimit({
+    kind: "team-invite-email",
+    identifier: input.userId,
+    limit: INVITE_LOOKUP_LIMIT,
+    windowSeconds: INVITE_LOOKUP_WINDOW_SECONDS,
+  });
+  if (!rl.ok) refuse("That's a lot of invites in a few minutes. Wait a little, then send the rest.");
 
   const admin = createAdminClient();
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("id, role, email")
-    .ilike("email", email)
-    .maybeSingle();
-
-  if (!profile) {
-    throw new Error(
-      "No batch0 account found for that email. Ask them to sign up first, then send the invite.",
-    );
+  const lookup = exactEmailLookup(email);
+  const base = admin.from("profiles").select("id, role");
+  const { data: matches, error } = await (lookup.op === "eq"
+    ? base.eq("email", lookup.value)
+    : base.ilike("email", lookup.value)
+  ).limit(2);
+  if (error) throw new Error(error.message);
+  // Two accounts differing only by case is possible in principle; refuse to
+  // guess between them rather than invite the wrong person.
+  const profile = matches && matches.length === 1 ? matches[0] : null;
+  if (!profile) refuse(NO_STUDENT_ACCOUNT);
+  if (profile.id === input.userId) {
+    refuse("You can't invite yourself.");
   }
-  if (profile.id === userId) {
-    throw new Error("You can't invite yourself.");
-  }
-  if (profile.role !== "student") {
-    throw new Error("You can only invite students.");
-  }
+  if (profile.role !== "student") refuse(NO_STUDENT_ACCOUNT);
 
   // Delegate to the shared invite logic so capacity caps, dedupe, and
   // notifications stay consistent with the search-based flow.
@@ -581,6 +616,60 @@ export async function inviteStudentByEmail(input: {
     teamId: input.teamId,
     inviteeId: profile.id,
     message: input.message,
+  });
+}
+
+export type EmailInviteOutcome =
+  | { email: string; ok: true }
+  | { email: string; ok: false; error: string };
+
+/**
+ * Invite several people from one paste (Team tab → By email). Each address
+ * goes through inviteOneByEmail, so the size cap, the cohort check, the
+ * dedupe and the bell are exactly a single invite's, and one address that
+ * fails doesn't stop the rest. Sequential on purpose: each invite re-reads the
+ * member count.
+ *
+ * Answers per address instead of throwing. A thrown message is stripped in
+ * production, and "no student account for that email" is the whole point of
+ * the reply — so each refusal is reported with its own words, while anything
+ * unexpected is logged and reported generically. Those words are only ever
+ * about a student the sender typed the exact address of (inviteOneByEmail).
+ */
+export async function inviteStudentsByEmail(input: {
+  teamId: string;
+  emails: string;
+  message?: string;
+}): Promise<
+  ActionResult<{ results: EmailInviteOutcome[]; invalid: string[]; overflow: string[] }>
+> {
+  return runAction({ name: "team.invite_by_email" }, async () => {
+    const { userId } = await assertSelf();
+    await assertTeamMember(userId, input.teamId);
+    const parsed = parseInviteEmails(input.emails);
+    if (parsed.emails.length === 0) {
+      refuse(
+        parsed.invalid.length > 0
+          ? `${parsed.invalid[0]} doesn't look like a valid email.`
+          : "Add their batch0 email.",
+      );
+    }
+    const results: EmailInviteOutcome[] = [];
+    for (const email of parsed.emails) {
+      try {
+        await inviteOneByEmail({ userId, teamId: input.teamId, email, message: input.message });
+        results.push({ email, ok: true });
+      } catch (err) {
+        unstable_rethrow(err);
+        if (isRefusal(err)) {
+          results.push({ email, ok: false, error: err.message });
+        } else {
+          console.error("[team] invite by email failed", err);
+          results.push({ email, ok: false, error: "Couldn't send that invite. Try again." });
+        }
+      }
+    }
+    return { results, invalid: parsed.invalid, overflow: parsed.overflow };
   });
 }
 

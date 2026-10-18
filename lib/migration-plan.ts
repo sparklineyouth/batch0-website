@@ -150,6 +150,12 @@ where permissions @> array['ai_usage.view']::text[];`,
                  and indexname = 'student_followups_one_open_idx')
    and (select relrowsecurity from pg_class
         where oid = to_regclass('public.student_followups')) as ok;`,
+  "0109": `select has_column_privilege('authenticated', 'public.intro_requests', 'status', 'SELECT')
+   and not has_table_privilege('authenticated', 'public.intro_requests', 'SELECT')
+   and not has_column_privilege('authenticated', 'public.intro_requests', 'admin_notes', 'SELECT')
+   and not exists (select 1 from pg_policies
+                   where schemaname = 'public' and tablename = 'intro_requests'
+                     and cmd <> 'SELECT') as ok;`,
 };
 
 /**

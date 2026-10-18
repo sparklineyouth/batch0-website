@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPermission, requireActor } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
-import { runAction, type ActionResult } from "@/lib/action-result";
+import { refuse, runAction, type ActionResult } from "@/lib/action-result";
 import { notify, notifyMany } from "@/lib/notifications";
 import { sendEmail } from "@/lib/email/send";
 import { Templates } from "@/lib/email/templates";
@@ -49,6 +49,10 @@ import {
  * re-checks authorization here (a server action is its own entry point),
  * writes through the service role, and answers with an ActionResult so the
  * person sees the real reason when something is refused.
+ *
+ * A rule saying no ("That time is in the past.") is `refuse(...)`, which
+ * reaches the form the same way but stays out of the error log; only a
+ * database failure is a thrown Error (lib/action-result.ts).
  */
 
 const PATHS = ["/dashboard/calls", "/mentor/calls", "/investor/calls", "/admin/calls"];
@@ -70,14 +74,14 @@ function timingOf(row: any): CallTiming {
 }
 
 async function readCall(admin: Admin, id: string): Promise<any> {
-  if (typeof id !== "string" || !id) throw new Error("That call no longer exists.");
+  if (typeof id !== "string" || !id) refuse("That call no longer exists.");
   const { data, error } = await admin.from("call_invites").select(ROW).eq("id", id).maybeSingle();
   // A malformed id (22P02) is "no such call"; any other failure is not.
   if (error && error.code !== "22P02") {
     console.error("[calls] read failed", error.message);
     throw new Error("Couldn't load that call. Try again in a moment.");
   }
-  if (!data) throw new Error("That call no longer exists.");
+  if (!data) refuse("That call no longer exists.");
   return data;
 }
 
@@ -154,22 +158,24 @@ async function createInviteNow(input: InviteInput): Promise<{ id: string }> {
   const now = new Date();
   const startsAt = input.startNow ? startOfMinute(now) : new Date(input.startsAt ?? "");
   const timeProblem = callStartProblem(startsAt, now);
-  if (timeProblem) throw new Error(timeProblem);
+  if (timeProblem) refuse(timeProblem);
   const durationProblem = callDurationProblem(input.durationMinutes);
-  if (durationProblem) throw new Error(durationProblem);
+  if (durationProblem) refuse(durationProblem);
   const duration = Math.round(input.durationMinutes);
   const topic = (input.topic ?? "").trim() || null;
 
   // The picker only offers students, but the picker is not the boundary.
-  const { data: invitee } = await admin
+  const { data: invitee, error: inviteeErr } = await admin
     .from("profiles")
     .select("id, role, email, full_name")
     .eq("id", input.inviteeId)
     .maybeSingle();
+  // A failed read is a fault, not "that isn't a student": refusals aren't logged.
+  if (inviteeErr) throw new Error(inviteeErr.message);
   if (!invitee || (invitee as any).role !== "student") {
-    throw new Error("You can only invite students.");
+    refuse("You can only invite students.");
   }
-  if ((invitee as any).id === actor.userId) throw new Error("You can't invite yourself.");
+  if ((invitee as any).id === actor.userId) refuse("You can't invite yourself.");
 
   const cohosts = await resolveCohosts(admin, input.cohostIds, {
     hostId: actor.userId,
@@ -190,7 +196,7 @@ async function createInviteNow(input: InviteInput): Promise<{ id: string }> {
     .single();
   if (error) {
     // Unique (host_id, invitee_id, starts_at): a double-submit.
-    if (error.code === "23505") throw new Error("You already have a call with them at that time.");
+    if (error.code === "23505") refuse("You already have a call with them at that time.");
     throw new Error(error.message);
   }
   const id = created!.id as string;
@@ -275,10 +281,10 @@ async function updateInviteNow(input: UpdateInput): Promise<{ changed: boolean }
   const row = await readCall(admin, input.id);
   const parties = await partiesOf(admin, row);
   if (!isStaffOnCall(parties, actor.userId) && !actor.caps.superAdmin) {
-    throw new Error("Only the people running this call can change it.");
+    refuse("Only the people running this call can change it.");
   }
   if (!canEditCall(timingOf(row))) {
-    throw new Error(whyNotActive(callListPhase(timingOf(row), new Date(), "staff"), "changed"));
+    refuse(whyNotActive(callListPhase(timingOf(row), new Date(), "staff"), "changed"));
   }
 
   const startsAt = new Date(input.startsAt);
@@ -288,12 +294,12 @@ async function updateInviteNow(input: UpdateInput): Promise<{ changed: boolean }
   // that is running must not fail on its own start.
   if (moved) {
     const problem = callStartProblem(startsAt);
-    if (problem) throw new Error(problem);
+    if (problem) refuse(problem);
   } else if (Number.isNaN(startsAt.getTime())) {
-    throw new Error("That time isn't valid.");
+    refuse("That time isn't valid.");
   }
   const durationProblem = callDurationProblem(input.durationMinutes);
-  if (durationProblem) throw new Error(durationProblem);
+  if (durationProblem) refuse(durationProblem);
   const duration = Math.round(input.durationMinutes);
   const topic = (input.topic ?? "").trim() || null;
   const resized = duration !== row.duration_minutes;
@@ -313,11 +319,11 @@ async function updateInviteNow(input: UpdateInput): Promise<{ changed: boolean }
     .in("status", ["invited", "accepted"])
     .select("id");
   if (error) {
-    if (error.code === "23505") throw new Error("There's already a call with them at that time.");
+    if (error.code === "23505") refuse("There's already a call with them at that time.");
     throw new Error(error.message);
   }
   if (!updated || updated.length === 0) {
-    throw new Error("That call was cancelled, declined or ended in the meantime.");
+    refuse("That call was cancelled, declined or ended in the meantime.");
   }
 
   await logAudit({
@@ -402,16 +408,16 @@ async function addCallCohostsNow(
   const onStaff = isStaffOnCall(parties, actor.userId);
   const joiningAny = actor.userId !== parties.inviteeId && can(actor.caps, "calls.join_any");
   if (!onStaff && !joiningAny) {
-    throw new Error("You're not on this call, so you can't add anyone to it.");
+    refuse("You're not on this call, so you can't add anyone to it.");
   }
   if (!canAddCallCohosts(timingOf(row))) {
-    throw new Error(whyNotActive(callListPhase(timingOf(row), new Date(), "staff"), "joined"));
+    refuse(whyNotActive(callListPhase(timingOf(row), new Date(), "staff"), "joined"));
   }
 
   const plan = cohostsToAdd(Array.isArray(cohostIds) ? cohostIds : [], parties);
   if (plan.ids.length === 0) return { added: [] };
   if (!plan.fits) {
-    throw new Error(
+    refuse(
       plan.room === 0
         ? `This call already has ${MAX_CALL_COHOSTS} from the team besides its host.`
         : `This call has room for ${plan.room} more from the team.`,
@@ -498,10 +504,10 @@ export async function declineInvite(id: string): Promise<ActionResult> {
     const actor = await requireActor();
     const admin = createAdminClient();
     const row = await readCall(admin, id);
-    if (row.invitee_id !== actor.userId) throw new Error("Only the student on a call can decline it.");
+    if (row.invitee_id !== actor.userId) refuse("Only the student on a call can decline it.");
     const phase = callPhase(timingOf(row));
     if (!canDeclineCall(timingOf(row))) {
-      throw new Error(
+      refuse(
         phase === "declined"
           ? "You already declined that call."
           : phase === "live"
@@ -522,7 +528,7 @@ export async function declineInvite(id: string): Promise<ActionResult> {
       .select("id");
     if (error) throw new Error(error.message);
     if (!updated || updated.length === 0) {
-      throw new Error("That call has started or was changed. Reload to see it.");
+      refuse("That call has started or was changed. Reload to see it.");
     }
 
     await refundScholarshipCreditFor(admin, row.id);
@@ -558,10 +564,10 @@ export async function cancelInvite(id: string): Promise<ActionResult> {
     const row = await readCall(admin, id);
     const parties = await partiesOf(admin, row);
     if (!isStaffOnCall(parties, actor.userId) && !actor.caps.superAdmin) {
-      throw new Error("Only the people running this call can cancel it.");
+      refuse("Only the people running this call can cancel it.");
     }
     if (!canCancelCall(timingOf(row))) {
-      throw new Error(whyNotActive(callListPhase(timingOf(row), new Date(), "staff"), "changed"));
+      refuse(whyNotActive(callListPhase(timingOf(row), new Date(), "staff"), "changed"));
     }
 
     const { data: updated, error } = await admin
@@ -572,7 +578,7 @@ export async function cancelInvite(id: string): Promise<ActionResult> {
       .in("status", ["invited", "accepted"])
       .select("id");
     if (error) throw new Error(error.message);
-    if (!updated || updated.length === 0) throw new Error("That call was already changed.");
+    if (!updated || updated.length === 0) refuse("That call was already changed.");
 
     await refundScholarshipCreditFor(admin, row.id);
     await logAudit({ action: "call_invite.cancelled", targetType: "call_invite", targetId: row.id });
@@ -619,7 +625,7 @@ export async function endCall(id: string): Promise<ActionResult<{ completed: boo
     const actor = await requireActor();
     const admin = createAdminClient();
     const row = await readCall(admin, id);
-    if (!(await onCall(admin, row, actor.userId))) throw new Error("You're not on this call.");
+    if (!(await onCall(admin, row, actor.userId))) refuse("You're not on this call.");
     if (row.status === "completed") return { completed: true };
     if (!canMarkCallCompleted(timingOf(row))) return { completed: false };
 
