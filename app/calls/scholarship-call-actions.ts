@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { notifyMany } from "@/lib/notifications";
 import { listInterviewTeamIds } from "@/lib/interview-requests";
 import { refuse, runAction, type ActionResult } from "@/lib/action-result";
+import { isMissingSchemaError } from "@/lib/schema-ready";
 import { callCreditsForUser, loadWindowCohort } from "@/lib/scholarships";
 import { callTimeProblem, scholarshipCallWindow } from "@/lib/scholarship-window";
 
@@ -96,7 +97,12 @@ export async function requestScholarshipCall(input: {
       if (error.code === "23505") {
         refuse("You already have a request waiting. Withdraw it to ask again.");
       }
-      if (/scholarship_application_id/i.test(error.message)) {
+      // The column not being there yet (its migration not run) is the one
+      // database answer worth putting in the student's words — and it is
+      // still an incident, so it is logged. Anything else that mentions the
+      // column (a foreign-key violation on it) is a plain fault.
+      if (isMissingSchemaError(error) && /scholarship_application_id/i.test(error.message)) {
+        console.error("[scholarship-call] interview_requests.scholarship_application_id missing", error.message);
         refuse("Scholarship calls aren't switched on yet.");
       }
       throw new Error(error.message);

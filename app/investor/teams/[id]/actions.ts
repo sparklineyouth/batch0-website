@@ -8,11 +8,14 @@ import { introRequestDecision } from "@/lib/intro-requests";
 
 async function getRole(userId: string): Promise<string | null> {
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from("profiles")
     .select("role")
     .eq("id", userId)
     .maybeSingle();
+  // Thrown, not read as "no role": "Investors only." is a refusal, and
+  // refusals aren't logged, so a failed read would vanish behind it.
+  if (error) throw new Error(error.message);
   return data?.role ?? null;
 }
 
@@ -80,7 +83,7 @@ export async function createIntroRequest(input: {
       );
     }
     const admin = createAdminClient();
-    const [{ data: team }, { data: existing, error: existingErr }, { count: openCount, error: countErr }] =
+    const [{ data: team, error: teamErr }, { data: existing, error: existingErr }, { count: openCount, error: countErr }] =
       await Promise.all([
         admin.from("teams").select("name").eq("id", input.teamId).maybeSingle(),
         admin
@@ -95,6 +98,7 @@ export async function createIntroRequest(input: {
           .eq("investor_id", userId)
           .eq("status", "requested"),
       ]);
+    if (teamErr) throw new Error(teamErr.message);
     if (!team) {
       refuse("Team not found.");
     }

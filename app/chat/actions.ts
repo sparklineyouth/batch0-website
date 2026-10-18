@@ -415,6 +415,7 @@ export async function sendMessage(input: SendInput): Promise<ActionResult<{ chan
     await assertCanPost(viewer, channel, reported);
 
     const files = await verifyChatUploads(input.attachments, channel.id, viewer.userId);
+    // A storage fault behind the answer is logged inside verifyChatUploads.
     if (!files.ok) refuse(files.error);
 
     let replyTo: { id: string; senderId: string | null; kind: string } | null = null;
@@ -1084,7 +1085,9 @@ export async function mintUploads(
       await rateLimit("chat-upload", viewer.userId, 40, 3600, "That's a lot of uploads in an hour. Try again later.");
     }
     const minted = await mintChatUploads(found.channel.id, viewer.userId, files);
-    if (!minted.ok) throw new Error(minted.error);
+    // Too many files, too big, a blocked type: the sender's to fix. A storage
+    // fault behind the answer is logged inside mintChatUploads.
+    if (!minted.ok) refuse(minted.error);
     return { uploads: minted.uploads };
   });
 }

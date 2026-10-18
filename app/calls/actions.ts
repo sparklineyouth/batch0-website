@@ -165,11 +165,13 @@ async function createInviteNow(input: InviteInput): Promise<{ id: string }> {
   const topic = (input.topic ?? "").trim() || null;
 
   // The picker only offers students, but the picker is not the boundary.
-  const { data: invitee } = await admin
+  const { data: invitee, error: inviteeErr } = await admin
     .from("profiles")
     .select("id, role, email, full_name")
     .eq("id", input.inviteeId)
     .maybeSingle();
+  // A failed read is a fault, not "that isn't a student": refusals aren't logged.
+  if (inviteeErr) throw new Error(inviteeErr.message);
   if (!invitee || (invitee as any).role !== "student") {
     refuse("You can only invite students.");
   }

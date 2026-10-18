@@ -12,7 +12,7 @@ import path from "node:path";
 const logged: unknown[][] = [];
 console.error = (...args: unknown[]) => void logged.push(args);
 
-const state = { permissionChecks: 0, dbReads: 0 };
+const state = { permissionChecks: 0, dbReads: 0, db: null as unknown };
 (globalThis as any).__actionResultTest = state;
 const root = fileURLToPath(new URL("../", import.meta.url));
 const fake = (source: string) => `data:text/javascript,${encodeURIComponent(source)}`;
@@ -25,9 +25,14 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
         "export const unstable_rethrow=e=>{if(e&&typeof e.digest==='string'&&e.digest.startsWith('NEXT_REDIRECT'))throw e;};",
       "next/cache": "export const revalidatePath=()=>{};",
       "@/lib/server-guards":
-        g + "export const assertPermission=async()=>{t.permissionChecks++;return{userId:'host',role:'admin',caps:{superAdmin:true,permissions:new Set(['*'])}};};export const requireActor=async()=>({userId:'host'});",
+        g + "export const assertPermission=async()=>{t.permissionChecks++;return{userId:'host',role:'admin',caps:{superAdmin:true,permissions:new Set(['*'])}};};export const requireActor=async()=>({userId:'stu',role:'student'});",
       "@/lib/supabase/admin":
-        g + "export const createAdminClient=()=>new Proxy({},{get(){t.dbReads++;throw Error('no database in this test');}});",
+        g + "export const createAdminClient=()=>t.db??new Proxy({},{get(){t.dbReads++;throw Error('no database in this test');}});",
+      "@/lib/access": "export const getStudentAccess=async()=>({staff:false,enrolled:true,cohortId:'fall'});",
+      "@/lib/scholarships":
+        "export const callCreditsForUser=async()=>({applicationId:'sch1',cohortId:'fall',window:{open:true,until:null,cohortName:'Fall'},credits:{granted:2,remaining:2}});" +
+        "export const loadWindowCohort=async()=>null;",
+      "@/lib/interview-requests": "export const listInterviewTeamIds=async()=>[];",
       "@/lib/audit": "export const logAudit=async()=>{throw Error('Unexpected audit');};",
       "@/lib/notifications": "export const notify=async()=>{throw Error('Unexpected notification');};export const notifyMany=notify;",
       "@/lib/email/send": "export const sendEmail=async()=>{throw Error('Unexpected email');};",
@@ -91,4 +96,77 @@ test("booking a 1:1 in the past is answered inline, before any read, and not log
   assert.equal(state.permissionChecks, 1, "the permission is still checked first");
   assert.equal(state.dbReads, 0);
   assert.deepEqual(logged, []);
+});
+
+/** One table, one answer: what `from(table)` resolves to, whatever the chain. */
+function oneAnswerDb(answers: Record<string, { data: unknown; error: unknown }>) {
+  return {
+    from(table: string) {
+      const chain: any = {
+        then: (ok: any, no: any) => Promise.resolve(answers[table] ?? { data: null, error: null }).then(ok, no),
+      };
+      for (const m of ["select", "insert", "eq", "maybeSingle", "single", "limit", "order"]) chain[m] = () => chain;
+      return chain;
+    },
+  };
+}
+
+test("a failed read behind a refusal is a logged fault, not 'You can only invite students.'", async () => {
+  logged.length = 0;
+  state.db = oneAnswerDb({ profiles: { data: null, error: { message: "upstream request timeout" } } });
+  try {
+    const { createInvite } = await import("../app/calls/actions.ts");
+    const result = await createInvite({
+      inviteeId: "student",
+      startsAt: new Date(Date.now() + 24 * 3600_000).toISOString(),
+      durationMinutes: 30,
+      topic: "",
+    });
+    assert.equal(result.ok, false);
+    assert.notEqual(!result.ok && result.error, "You can only invite students.");
+    assert.equal(logged.length, 1, "the fault reaches the error log");
+    assert.equal(logged[0][0], "[action:createInvite]");
+  } finally {
+    state.db = null;
+  }
+});
+
+test("a scholarship call: only a missing column reads 'not switched on', and even that is logged", async () => {
+  const { requestScholarshipCall } = await import("../app/calls/scholarship-call-actions.ts");
+  const book = () =>
+    requestScholarshipCall({ preferredAt: new Date(Date.now() + 48 * 3600_000).toISOString() });
+  try {
+    // A foreign-key violation names the column too; it used to be answered
+    // "Scholarship calls aren't switched on yet." with no log line at all.
+    logged.length = 0;
+    state.db = oneAnswerDb({
+      interview_requests: {
+        data: null,
+        error: {
+          code: "23503",
+          message:
+            'insert or update on table "interview_requests" violates foreign key constraint "interview_requests_scholarship_application_id_fkey"',
+        },
+      },
+    });
+    const fk = await book();
+    assert.equal(fk.ok, false);
+    assert.notEqual(!fk.ok && fk.error, "Scholarship calls aren't switched on yet.");
+    assert.equal(logged.length, 1);
+    assert.equal(logged[0][0], "[action:requestScholarshipCall]");
+
+    // The column itself missing (0071 not run): the student's words, plus a log line.
+    logged.length = 0;
+    state.db = oneAnswerDb({
+      interview_requests: {
+        data: null,
+        error: { code: "PGRST204", message: "Could not find the 'scholarship_application_id' column of 'interview_requests' in the schema cache" },
+      },
+    });
+    assert.deepEqual(await book(), { ok: false, error: "Scholarship calls aren't switched on yet." });
+    assert.equal(logged.length, 1);
+    assert.match(String(logged[0][0]), /\[scholarship-call\]/);
+  } finally {
+    state.db = null;
+  }
 });
