@@ -20,10 +20,15 @@ Two migrations, applied around the deploy (expand → deploy → contract):
    policy (the new code writes only through validated server actions) and
    stamps any entry the old code wrote in the gap.
 
-Both are idempotent. `supabase db push` refuses in this repo (two `0071_*`
-files share a version, and 0085/0086 on the live database came from another
-branch), so apply with `supabase db query --linked -f …` and record the
-version in `supabase_migrations.schema_migrations`.
+Both are idempotent. Supabase's GitHub integration applies a file to
+production, and records it, when the file reaches `main`
+(`docs/migrations-2026-10.md`, *Versions*), so the order is the order things
+reach `main`: 0087 in a pull request of its own, then the code, then 0088 in
+another once that deploy is live. Running an expand step like 0087 by hand
+before it merges (the `supabase db query` above) is fine, but don't record
+it then: a version production has recorded and `main` has no file for stops
+the integration on every push to `main` until the file lands. The
+integration runs it again on arrival and records it itself.
 
 ## Running one
 
