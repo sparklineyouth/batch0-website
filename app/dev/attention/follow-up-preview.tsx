@@ -6,7 +6,10 @@ import type { FollowUpDrawerData } from "@/app/admin/progress/actions";
 const ME = "00000000-0000-4000-8000-000000000001";
 const PRIYA = "00000000-0000-4000-8000-000000000002";
 
-/** Two states of the drawer, side by side: an open follow-up, and none yet with history. */
+/**
+ * The drawer's states side by side: an open follow-up, none yet with history,
+ * read-only, and one whose owner's role no longer lets them own it.
+ */
 export function FollowUpPreview() {
   const base: FollowUpDrawerData = {
     ready: true,
@@ -57,7 +60,13 @@ export function FollowUpPreview() {
   const [n, setN] = useState(0);
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      {[open, { ...base, history: [closed] }, { ...open, canEdit: false, owners: [] }].map((d, i) => (
+      {[
+        open,
+        { ...base, history: [closed] },
+        { ...open, canEdit: false, owners: [] },
+        // Priya's role changed: she still owns it, but isn't offered as owner.
+        { ...open, owners: base.owners.filter((o) => o.id !== PRIYA) },
+      ].map((d, i) => (
         <div key={`${i}:${n}`} className="max-w-xl rounded-lg border border-line px-5 py-5">
           <FollowUpDetails data={d} onChanged={() => setN((x) => x + 1)} />
         </div>
