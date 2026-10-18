@@ -42,7 +42,18 @@ export type PlannedMigration = MigrationFile & { status: MigrationStatus; why: s
  * fails if the two drift apart.
  */
 export const MIGRATION_CHECKS: Readonly<Record<string, string>> = {
-  "0093": `select to_regclass('public.course_assignments') is not null
+  // Production got 0078's column and check by hand but never its column
+  // comment, so the comment is what tells "0078 ran" apart: without it the
+  // check fails and 0078 runs (it's idempotent), rather than being recorded
+  // as live because later files ran.
+  "0078": `select exists (select 1 from pg_attribute a
+               where a.attrelid = to_regclass('public.events')
+                 and a.attname = 'display_viewer_count' and not a.attisdropped
+                 and col_description(a.attrelid, a.attnum) is not null)
+   and exists (select 1 from pg_constraint
+               where conrelid = to_regclass('public.events')
+                 and conname = 'events_display_viewer_count_check') as ok;`,
+  "0093":`select to_regclass('public.course_assignments') is not null
    and to_regclass('public.course_assignment_targets') is not null
    and to_regclass('public.course_assignment_submissions') is not null as ok;`,
   "0094": `select to_regclass('public.team_drive_links') is not null
@@ -149,6 +160,66 @@ export function sharedVersions(files: readonly Pick<MigrationFile, "file" | "ver
   return Array.from(byVersion, ([version, names]) => ({ version, files: names.sort() }))
     .filter((v) => v.files.length > 1)
     .sort((a, b) => a.version.localeCompare(b.version));
+}
+
+/**
+ * Versions of `files` whose file isn't on main yet. `mainFiles` is the file
+ * names in main's supabase/migrations; null when that couldn't be read, and
+ * then nothing is held back.
+ *
+ * Supabase's GitHub integration compares production's history with main's
+ * files on every push to main, and a recorded version main has no file for
+ * stops it before it runs anything ("Remote migration versions not found in
+ * local migrations directory"), push after push, until that file lands. So a
+ * branch's migration may be run by hand before it merges, but it's recorded
+ * only once it's on main: until then the integration runs it again when it
+ * lands (every file is idempotent) and records it itself. Matched by name: a
+ * main file with the same version under another name is a different file.
+ */
+export function versionsNotOnMain(files: readonly Pick<MigrationFile, "file" | "version">[], mainFiles: ReadonlySet<string> | null): Set<string> {
+  if (!mainFiles) return new Set();
+  return new Set(files.filter((f) => !mainFiles.has(f.file)).map((f) => f.version));
+}
+
+/**
+ * The migration files a pull request adds (or renames into place), from
+ * GitHub's list of its files ({ filename, status }).
+ */
+export function addedMigrationFiles(prFiles: readonly { filename: string; status: string }[]): string[] {
+  const dir = "supabase/migrations/";
+  return prFiles
+    .filter((f) => (f.status === "added" || f.status === "renamed" || f.status === "copied") && f.filename.startsWith(dir))
+    .map((f) => f.filename.slice(dir.length))
+    .filter((name) => parseMigrationFile(name, "") !== null);
+}
+
+/** A file holding a version somewhere else: on main, or added by another open pull request. */
+export type VersionClaim = { file: string; where: string };
+
+/**
+ * Files a branch adds whose version is already held, under another name, on
+ * main or by another open pull request. sharedVersions catches a shared
+ * version once both files are in one checkout, but a pull request's checks
+ * run against main as it was then: two branches that each take the next free
+ * number (how 0071 came to be shared) both pass, both merge, and on the
+ * second merge Supabase's integration fails that file's history INSERT and
+ * rolls it back, so its schema never reaches production while Vercel deploys
+ * its code. Comparing against the other open pull requests catches the pair
+ * while both are open: whichever runs its checks second fails. The same file
+ * on two branches (a stacked pull request) is no conflict.
+ */
+export function versionConflicts(added: readonly string[], claims: readonly VersionClaim[]): { file: string; version: string; claimedBy: VersionClaim }[] {
+  const out: { file: string; version: string; claimedBy: VersionClaim }[] = [];
+  for (const file of added) {
+    const ours = parseMigrationFile(file, "");
+    if (!ours) continue;
+    for (const claim of claims) {
+      if (claim.file !== file && parseMigrationFile(claim.file, "")?.version === ours.version) {
+        out.push({ file, version: ours.version, claimedBy: claim });
+      }
+    }
+  }
+  return out;
 }
 
 type Piece = { kind: "code" | "string" | "comment"; text: string; nested: boolean };
@@ -452,8 +523,9 @@ export function planMigrations(files: readonly MigrationFile[], state: DbState):
         ? "recorded, but its verify query fails: an earlier draft of it ran, so it runs again"
         : "its verify query fails"
       : `its tables are missing (${missingTables.join(", ")})`;
-    // Out of order: a later file ran. The October files (verify queries) are
-    // idempotent and documented to run out of order, so they're plain pending.
+    // Out of order: a later file ran. The files with verify queries (0078 and
+    // the October files) are idempotent and documented to run out of order,
+    // so they're plain pending.
     if (laterRan[i] && !hasCheck(f.version)) return { ...f, status: "gap" as const, why: `${why}, though later files ran` };
     return { ...f, status: "pending" as const, why };
   });

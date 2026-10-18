@@ -130,6 +130,10 @@ export function isLockTimeout(err: unknown): boolean {
  * statement. Either way a failure can leave part of it applied, and the
  * error says so.
  *
+ * `record: false` runs it without recording it: a file that isn't on main
+ * yet (versionsNotOnMain in lib/migration-plan.ts). Supabase's integration
+ * runs it again and records it once it lands there.
+ *
  * The lock wait is short on purpose: while a migration waits for a lock on a
  * busy table (profiles), every request that needs that table queues behind
  * it. Better to give up after a few seconds and try again (runWithRetry).
@@ -137,9 +141,10 @@ export function isLockTimeout(err: unknown): boolean {
 export async function applyMigration(
   db: Db,
   m: MigrationFile,
-  opts: { history: Set<string> | null; statementTimeout?: string; lockTimeout?: string },
+  opts: { history: Set<string> | null; record?: boolean; statementTimeout?: string; lockTimeout?: string },
 ): Promise<void> {
   const check = MIGRATION_CHECKS[m.version];
+  const record = opts.record ?? true;
   const mode = transactionMode(m.sql);
   const timeouts = `set statement_timeout = '${opts.statementTimeout ?? "15min"}'; set lock_timeout = '${opts.lockTimeout ?? "4s"}'`;
   if (mode === "wrap") {
@@ -150,7 +155,7 @@ export async function applyMigration(
       if (check && !(await runCheck(db, check, { inTransaction: true }))) {
         throw new MigrationError(m.file, `${m.file} ran, but its verify query still fails`, true);
       }
-      await recordVersion(db, m, opts.history);
+      if (record) await recordVersion(db, m, opts.history);
       await db.query("commit");
     } catch (err) {
       await db.query("rollback").catch(() => undefined);
@@ -176,7 +181,7 @@ export async function applyMigration(
   if (check && !(await runCheck(db, check))) {
     throw new MigrationError(m.file, `${m.file} ran, but its verify query still fails`, false);
   }
-  await recordVersion(db, m, opts.history);
+  if (record) await recordVersion(db, m, opts.history);
 }
 
 /**

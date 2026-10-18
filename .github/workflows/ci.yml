@@ -6,7 +6,10 @@
 # which is the point: it matches Supabase and Vercel, not a developer's laptop.
 #
 # Everything here is hermetic (PGlite in memory, no network, no secrets), so it
-# needs nothing from the repository settings.
+# needs nothing from the repository settings. The one exception is the
+# migration-version step on pull requests: it reads main's and the other open
+# pull requests' migration files from GitHub's API, with the workflow's own
+# read-only token.
 name: CI
 
 on:
@@ -20,6 +23,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   check:
@@ -45,3 +49,12 @@ jobs:
           npm run test:migrations-replay-db
           npm run test-blast-addressing
           node --test scripts/cohort-readiness-winter.test.mjs
+      # Two branches that each take the next free migration number both pass
+      # the tests above, and the second to merge breaks Supabase's integration
+      # (docs/migrations-2026-10.md, "Versions"). Read live, so re-running the
+      # job re-checks against main and the open pull requests as they are now.
+      - name: Migration versions (main and open pull requests)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run check:migration-versions

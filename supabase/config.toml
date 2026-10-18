@@ -32,5 +32,7 @@
 # If a migration is already live but unrecorded (this happened to 0040-0048),
 # repair the history rather than pushing — a push would re-execute it:
 #   supabase migration repair --status applied 0040 0041 ...
+# Only once its file is on main: a recorded version main has no file for
+# stops the GitHub integration on every push until it lands.
 
 project_id = "batch0"

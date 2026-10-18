@@ -133,6 +133,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 
 | # | File | What it does |
 |---|------|--------------|
+| 0078 | `0078_event_display_viewer_count.sql` | Not part of this release: September's webinar "shown attendees" count (`events.display_viewer_count`), renamed out of 0071 (*Versions* below). Production has the column and its check but not the column comment, so its verify query fails there until the file runs; Supabase's GitHub integration runs it when it reaches `main`. |
 | 0093 | `0093_assignments.sql` | Assignment tracker tables (`course_assignments`, `course_assignment_targets`, `course_assignment_submissions`), read-only to clients. Check-ins go read-only, the check-in reminder is disabled, and the running Fall cohort gets weeks 5–9 plus Demo Day (check-ins already posted for those weeks carry over as submissions). Check-in wording in lessons, two stored emails and the Fall Demo Day event becomes "weekly update"; old notification links are repointed. |
 | 0094 | `0094_google_drive.sql` | `team_drive_links` (a team's Drive folder and pinned files) and `pitch_submissions.deck_url`. Pitch links must be https: existing video links are repaired, or moved into the team's notes. The old in-app file stores freeze read-only, and links to the Files page point at the Drive tab. |
 | 0095 | `0095_recordings.sql` | `recording_sessions` (one continuous file per take), `recording_mint_part()`, and the private `recordings` bucket (16 MB parts, WebM/MP4). |
@@ -149,6 +150,15 @@ check-ins, in-app files, discussions and the old recorder at once:
 Each query returns one row, `ok = true`, once its migration has run.
 
 ```sql
+-- 0078
+select exists (select 1 from pg_attribute a
+               where a.attrelid = to_regclass('public.events')
+                 and a.attname = 'display_viewer_count' and not a.attisdropped
+                 and col_description(a.attrelid, a.attnum) is not null)
+   and exists (select 1 from pg_constraint
+               where conrelid = to_regclass('public.events')
+                 and conname = 'events_display_viewer_count_check') as ok;
+
 -- 0093
 select to_regclass('public.course_assignments') is not null
    and to_regclass('public.course_assignment_targets') is not null
@@ -228,13 +238,13 @@ Background for each change: `docs/assignments.md`, `docs/google-drive.md`,
 
 ## Versions
 
-A file's version is the four digits before its first `_`, and no two files
-may share one. The Supabase CLI (`supabase db push`, `supabase migration
-repair`) and Supabase's GitHub integration key a file by its version and
-record it in `supabase_migrations.schema_migrations`, whose primary key is the
-version.
+A file's version is the four digits before its first `_`. The Supabase CLI
+(`supabase db push`, `supabase migration repair`) and Supabase's GitHub
+integration key a file by its version and record it in
+`supabase_migrations.schema_migrations`, whose primary key is the version.
+Three rules follow from that.
 
-- **A shared version can't be recorded.** From 2026-09-20 two files were 0071
+- **No two files share a version.** From 2026-09-20 two files were 0071
   (`0071_scholarships.sql` and the webinar viewer count). The second one's
   history INSERT fails and rolls the file back: `supabase db push` refused
   (it wanted `--include-all`, which then fails that way), and the Supabase
@@ -242,30 +252,68 @@ version.
   history row for 0071 is that file, and 0072 has to run after it. The viewer
   count, which only needs `public.events`, is now
   `0078_event_display_viewer_count.sql`, renamed with its SQL unchanged.
-  Production ran it in September, so it is only recorded there, once, from a
-  checkout that has the file (repair reads its name and statements from it):
+  Production has its column and check (added by hand in September) but not
+  its column comment, so 0078 still runs there rather than only being
+  recorded: the integration runs it when the rename reaches `main` (the first
+  two statements find their work done, the comment is added) and records it.
+  Don't also `supabase migration repair --status applied 0078`: that records
+  the comment as applied without adding it, and a repair that commits while
+  the integration is running 0078 fails the integration's history INSERT
+  (23505), which turns the check red again. Afterwards, `supabase migration
+  list --linked` shows 0078 under both Local and Remote, and the 0078 verify
+  query above returns `ok`.
+- **A version is recorded in production only once its file is on `main`.**
+  On every push to `main` the integration first compares production's
+  history with `main`'s files, and a version production has recorded but
+  `main` has no file for stops it there, before it runs anything: "Remote
+  migration versions not found in local migrations directory" (on
+  2026-09-26 that was 0085 and 0086, recorded from a branch). Until the file
+  lands, every push to `main` fails the check and applies nothing, not even
+  other new files. So never `supabase migration repair --status applied` a
+  branch's file before it merges. To get a file live before its code deploys
+  (an expand step), merge it in a pull request of its own, which the
+  integration applies; or run it by hand without recording it (`supabase db
+  query --linked -f …`), and the integration runs it again when it reaches
+  `main` (every file is idempotent) and records it then. `npm run db:migrate`
+  does the same on its own: it runs a pending file that isn't on
+  `origin/main` yet but leaves it unrecorded, and refuses `--mark-applied`
+  for one.
+- **A new file takes a number neither `main` nor an open pull request
+  uses.** Two branches that each take the next free number both pass their
+  checks and both merge, and on the second merge the integration fails that
+  file's history INSERT: rolled back, so its schema never reaches production
+  while Vercel deploys its code. CI's *Migration versions* step
+  (`npm run check:migration-versions`) fails a pull request whose new file
+  has a version that `main`, or another open pull request, already holds,
+  read from GitHub when the step runs, so whichever of the pair runs its
+  checks second fails. It can't see a file pushed straight to `main`, or a
+  pull request merged while red; re-run the *check* job before merging a
+  migration if other migration pull requests merged since its checks ran.
+  Requiring branches to be up to date before merging (branch protection)
+  would close the rest; it isn't on.
 
-  ```sh
-  supabase migration repair --status applied 0078 --linked
-  supabase migration list --linked   # every row has both Local and Remote
-  ```
+How it's enforced: `npm test` fails when two files share a version or when
+name order and number order disagree (`lib/migration-plan.test.ts`);
+`npm run db:migrate` refuses to plan with a shared version; and
+`npm run test:migrations-replay-db` (in CI) replays every file onto an empty
+database the way the CLI does (its statement splitter, its order, its
+history rows), and plays production's history through the integration.
 
-- **Tests keep it that way.** `npm test` fails when two files share a version
-  or when name order and number order disagree (`lib/migration-plan.test.ts`);
-  `npm run db:migrate` refuses to plan with a shared version; and
-  `npm run test:migrations-replay-db` (in CI) replays every file onto an empty
-  database the way the CLI does: its statement splitter, its order, its
-  history rows.
-- **Supabase's GitHub integration applies migrations to production.** On
-  every push to `main` it runs the CLI against the production project (the
-  *Supabase Preview* check), files numbered below the newest recorded one
-  included. The shared 0071 stopped it at `0071_scholarships.sql` every time
-  (rolled back, so nothing changed). With every version unique and 0078
-  recorded, it applies any file production hasn't recorded as soon as that
-  file reaches `main`, typically before Vercel has finished deploying the
-  code. An additive file is fine there (the code treats a missing table or
-  column as "not set up yet"). A file that removes what the live code reads
-  (a contract step like 0088, or 0101) must reach `main` only once that code
-  is live, in a pull request of its own. To keep applying everything by hand
-  instead, turn the integration's production deploys off in Supabase →
-  Project Settings → Integrations → GitHub.
+**Supabase's GitHub integration applies migrations to production.** On every
+push to `main` it runs the CLI against the production project (the *Supabase
+Preview* check), files numbered below the newest recorded one included. The
+shared 0071 stopped it at `0071_scholarships.sql` every time (rolled back, so
+nothing changed). With every version unique, it applies any file production
+hasn't recorded as soon as that file reaches `main`, typically before Vercel
+has finished deploying the code. An additive file is fine there (the code
+treats a missing table or column as "not set up yet"). A file that removes
+what the live code reads (a contract step like 0088, or 0101) must reach
+`main` only once that code is live, in a pull request of its own. Since the
+integration applies a file itself, the step after merging one is to wait for
+the merge commit's *Supabase Preview* check and then run the file's verify
+query. Don't record it by hand meanwhile (`migration repair`, or
+`npm run db:migrate -- --apply`): a record that commits while the
+integration is running that file fails the integration's history INSERT
+(23505) and turns the check red, though nothing is lost. To keep applying
+everything by hand instead, turn the integration's production deploys off in
+Supabase → Project Settings → Integrations → GitHub.

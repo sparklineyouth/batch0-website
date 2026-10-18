@@ -31,7 +31,12 @@
  *      most 4s for a lock (a busy table) and tries again twice.
  *   5. Records each file in supabase_migrations.schema_migrations (creating
  *      that table if the project never had it), plus the ones found live but
- *      unrecorded, so `supabase migration list` agrees from then on.
+ *      unrecorded, so `supabase migration list` agrees from then on. Except
+ *      a file that isn't on origin/main yet (a branch's): it runs, but stays
+ *      unrecorded. Supabase's GitHub integration stops on every push to main
+ *      while production has recorded a version main has no file for, and it
+ *      runs the file again and records it when it lands (docs/migrations-
+ *      2026-10.md, "Versions").
  *   6. Tells PostgREST to reload its schema cache, then re-checks everything.
  *
  * Connection: SUPABASE_DB_URL (or DATABASE_URL / POSTGRES_URL_NON_POOLING /
@@ -48,7 +53,8 @@
  *   --skip-deploy-check     run gated migrations without the HTTP check
  *   --allow-gaps            run gap files too (after you've looked at them)
  *   --mark-applied=0086     record these versions as applied without running
- *                           them (they're live, history just lacks them)
+ *                           them (they're live, history just lacks them);
+ *                           only for files that are on origin/main
  *   --no-backup             skip the backup (not recommended)
  *   --allow-other-project   the database isn't the project in
  *                           NEXT_PUBLIC_SUPABASE_URL, and that's intended
@@ -72,6 +78,7 @@ import {
   sharedVersions,
   supabaseProjectRef,
   touchedTables,
+  versionsNotOnMain,
   type MigrationFile,
   type PlannedMigration,
 } from "../lib/migration-plan.ts";
@@ -368,6 +375,18 @@ async function loadMigrations(): Promise<MigrationFile[]> {
   return files;
 }
 
+/**
+ * The file names in origin/main's supabase/migrations, fetched first so it's
+ * main as it is now; null when git can't say (no git, no origin/main).
+ */
+function migrationsOnMain(): { files: Set<string>; fetched: boolean } | null {
+  const update = spawnSync("git", ["fetch", "--quiet", "origin", "main"], { cwd: ROOT, encoding: "utf8", timeout: 60_000 });
+  const ls = spawnSync("git", ["ls-tree", "--name-only", "origin/main", "--", "supabase/migrations/"], { cwd: ROOT, encoding: "utf8" });
+  if (ls.error || ls.status !== 0) return null;
+  const files = new Set(ls.stdout.split("\n").filter(Boolean).map((p) => path.posix.basename(p)));
+  return { files, fetched: !update.error && update.status === 0 };
+}
+
 async function main(): Promise<void> {
   for (const a of argv) {
     const name = a.replace(/^--/, "").split("=")[0];
@@ -422,6 +441,27 @@ async function main(): Promise<void> {
     fail(
       `Two migration files share a version: ${shared.map((v) => `${v.version} (${v.files.join(", ")})`).join("; ")}.\n` +
         "  Give one of them an unused number (docs/migrations-2026-10.md, \"Versions\") and run this again. Nothing was changed.",
+      2,
+    );
+  }
+  // A branch's file may run, but is recorded only once it's on main
+  // (versionsNotOnMain): a recorded version main has no file for stops
+  // Supabase's GitHub integration on every push to main until it lands.
+  const onMain = migrationsOnMain();
+  const unmerged = versionsNotOnMain(migrations, onMain?.files ?? null);
+  if (!onMain) {
+    say("  warn  couldn't read origin/main's migrations (no git checkout?), so every file this runs is recorded, as before.");
+    say("        Recording a file that isn't on main yet stops Supabase's integration until it is (docs/migrations-2026-10.md, \"Versions\").");
+  } else {
+    if (!onMain.fetched) say("  note  couldn't fetch origin/main; comparing with the copy from the last fetch");
+    if (unmerged.size) say(`  note  not on origin/main yet: ${[...unmerged].join(", ")}. Run here if pending, but left unrecorded until they merge.`);
+  }
+  const notOnMain = MARK.filter((v) => unmerged.has(v));
+  if (notOnMain.length) {
+    fail(
+      `--mark-applied names ${notOnMain.join(", ")}, whose file isn't on origin/main yet. Recorded now, it would stop\n` +
+        "  Supabase's GitHub integration on every push to main until it lands. Merge it first: the integration then\n" +
+        "  applies and records it itself. Nothing was changed.",
       2,
     );
   }
@@ -534,10 +574,12 @@ async function main(): Promise<void> {
     const tty = !!process.stdout.isTTY;
     for (const p of pending) {
       const started = Date.now();
+      const record = !unmerged.has(p.version);
       if (tty) process.stdout.write(`  …     ${p.file}`);
       try {
         await applyWithRetry(db, p, {
           history,
+          record,
           onRetry: (attempt, waitMs) => {
             if (tty) process.stdout.write("\n");
             say(`  wait  ${p.file}: a table it needs is busy (lock timeout); trying again in ${waitMs / 1000}s (retry ${attempt}/2)`);
@@ -553,13 +595,21 @@ async function main(): Promise<void> {
             "  Fix the cause and run the same command again — finished files are skipped.",
         );
       }
-      process.stdout.write(`${tty ? "\r" : ""}  ok    ${p.file}  (${((Date.now() - started) / 1000).toFixed(1)}s)\n`);
+      const note = record ? "" : ", not recorded: not on main yet";
+      process.stdout.write(`${tty ? "\r" : ""}  ok    ${p.file}  (${((Date.now() - started) / 1000).toFixed(1)}s${note})\n`);
     }
 
-    // Live but unrecorded (and --mark-applied): record them, so the CLI's history matches the database.
-    if (unrecorded.length) {
-      for (const p of unrecorded) await recordVersion(db, p, history);
-      say(`\nRecorded ${unrecorded.length} live-but-unrecorded file${unrecorded.length === 1 ? "" : "s"} in supabase_migrations, so \`supabase migration list\` agrees.`);
+    // Live but unrecorded (and --mark-applied): record them, so the CLI's
+    // history matches the database. Not a branch's file, though (above).
+    const toRecord = unrecorded.filter((p) => !unmerged.has(p.version));
+    if (toRecord.length) {
+      for (const p of toRecord) await recordVersion(db, p, history);
+      say(`\nRecorded ${toRecord.length} live-but-unrecorded file${toRecord.length === 1 ? "" : "s"} in supabase_migrations, so \`supabase migration list\` agrees.`);
+    }
+    const leftUnrecorded = [...pending, ...unrecorded].filter((p) => unmerged.has(p.version)).map((p) => p.version);
+    if (leftUnrecorded.length) {
+      say(`\nLeft unrecorded, as their files aren't on main yet: ${leftUnrecorded.join(", ")}. Supabase's GitHub integration runs`);
+      say("them again (they're idempotent) and records them when they reach main; then `supabase migration list` agrees.");
     }
 
     // PostgREST caches the schema; new tables 404 through the API until it reloads.
@@ -568,7 +618,10 @@ async function main(): Promise<void> {
     const after = planMigrations(migrations, await readState(db, migrations));
     printPlan(after, "After");
     if (heldBack) fail(`${heldBack.message}\n  Everything before ${heldBack.version} is applied.`, 3);
-    const left = after.filter((p) => p.status === "pending" || p.status === "gap");
+    // A branch's file that ran just now may still read as pending (unrecorded,
+    // and nothing else shows it ran): that's expected, not a failure.
+    const ranUnrecorded = new Set(pending.filter((p) => unmerged.has(p.version)).map((p) => p.version));
+    const left = after.filter((p) => (p.status === "pending" || p.status === "gap") && !ranUnrecorded.has(p.version));
     if (left.length && !ONLY.length) fail(`${left.length} still pending: ${left.map((p) => p.version).join(", ")}`);
     say(left.length ? "\nDone (the rest were left out by --only)." : "\nDone: every migration is applied and verified.");
     if (pending.some((p) => p.version === "0101")) {

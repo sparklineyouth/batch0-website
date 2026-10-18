@@ -6,9 +6,12 @@
 -- (its primary key), so the second 0071 could never be recorded and every
 -- push to main failed Supabase's check on it. Renamed, unchanged, into the
 -- unused 0078: it only needs public.events (0005), and no other file reads
--- the column. Production ran it in September, so there it only needs
--- recording (`supabase migration repair --status applied 0078`); running it
--- again changes nothing.
+-- the column. Production got the column and its check by hand in September
+-- but never the column comment below, so this file still has one thing to
+-- do there: Supabase's GitHub integration runs it when it reaches main (the
+-- first two statements find their work done; the comment is added), and
+-- records 0078. Don't `migration repair` it instead: that records the
+-- comment as applied without adding it.
 --
 -- By default a webinar hides its turnout: a viewer must not be able to tell
 -- whether they are one of three people or one of thirty (see canSeeRoster in

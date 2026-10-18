@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import {
   ABSENCE_CHECKS,
+  addedMigrationFiles,
   CHECK_REQUIRES,
   createdTables,
   droppedTables,
@@ -19,6 +20,8 @@ import {
   supabaseProjectRef,
   touchedTables,
   transactionMode,
+  versionConflicts,
+  versionsNotOnMain,
   type DbState,
   type MigrationFile,
 } from "./migration-plan.ts";
@@ -75,6 +78,53 @@ test("no two migration files share a version", () => {
     { version: "0003", files: ["0003_x.sql", "0003_y.sql"] },
     { version: "0071", files: ["0071_a.sql", "0071_b.sql"] },
   ]);
+});
+
+test("a version is recorded only once its file is on main", () => {
+  // Production's history holding a version main has no file for stops
+  // Supabase's integration on every push to main ("Remote migration versions
+  // not found in local migrations directory") until the file lands.
+  const files = [file("0102", "", "outbox"), file("0103", "", "admin_integrity"), file("0104", "", "chat_ids")];
+  const main = new Set(["0102_outbox.sql", "0104_other_name.sql"]);
+  assert.deepEqual([...versionsNotOnMain(files, main)].sort(), ["0103", "0104"]);
+  assert.deepEqual([...versionsNotOnMain(files, new Set(files.map((f) => f.file)))], []);
+  // main unknown (git couldn't say): nothing held back.
+  assert.deepEqual([...versionsNotOnMain(files, null)], []);
+});
+
+test("a pull request's new migration can't take a version main or another open pull request holds", () => {
+  const added = addedMigrationFiles([
+    { filename: "supabase/migrations/0108_mine.sql", status: "added" },
+    { filename: "supabase/migrations/0078_event_display_viewer_count.sql", status: "renamed" },
+    { filename: "supabase/migrations/0101_chat.sql", status: "modified" },
+    { filename: "supabase/migrations/0050_old.sql", status: "removed" },
+    { filename: "supabase/migrations/README.md", status: "added" },
+    { filename: "lib/0109_not_a_migration.sql", status: "added" },
+  ]);
+  assert.deepEqual(added, ["0108_mine.sql", "0078_event_display_viewer_count.sql"]);
+  const claims = [
+    { file: "0077_lock_profile_privileges.sql", where: "main" },
+    { file: "0078_event_display_viewer_count.sql", where: "#360" }, // the same file, stacked on this branch: fine
+    { file: "0108_theirs.sql", where: "#361" },
+    { file: "0109_later.sql", where: "#362" },
+  ];
+  assert.deepEqual(versionConflicts(added, claims), [{ file: "0108_mine.sql", version: "0108", claimedBy: { file: "0108_theirs.sql", where: "#361" } }]);
+  assert.deepEqual(versionConflicts(["0110_free.sql"], claims), []);
+  // Already on main under another name.
+  assert.deepEqual(versionConflicts(["0077_again.sql"], claims).map((c) => c.claimedBy.where), ["main"]);
+});
+
+test("0078 on production (column and check, never the comment) is pending, not 'live because later files ran'", () => {
+  const files = real.filter((m) => m.num <= 102);
+  const recorded = new Set(files.map((f) => f.version).filter((v) => v !== "0078"));
+  const checks = new Map(Object.keys(MIGRATION_CHECKS).map((v) => [v, v !== "0078"] as [string, boolean]));
+  const all = new Set([...productionTables(102), "profiles", "app_roles"]);
+  const plan = planMigrations(files, state({ recorded, checks, existingTables: all }));
+  const notApplied = plan.filter((p) => p.status !== "applied");
+  assert.deepEqual(notApplied.map((p) => [p.version, p.status, p.why]), [["0078", "pending", "its verify query fails"]]);
+  // Once it has run (the comment is there), it's live, and then recorded.
+  const ran = planMigrations(files, state({ recorded, checks: new Map([...checks, ["0078", true]]), existingTables: all }));
+  assert.deepEqual(ran.filter((p) => p.status !== "applied").map((p) => [p.version, p.status]), [["0078", "unrecorded"]]);
 });
 
 test("the verify queries match docs/migrations-2026-10.md exactly", () => {

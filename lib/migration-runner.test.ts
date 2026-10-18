@@ -149,6 +149,17 @@ test("CONCURRENTLY runs statement by statement, outside a transaction", async ()
   assert.deepEqual((await recorded(pg)).map((r) => r.version), ["0006"]);
 });
 
+test("record: false runs the file but leaves its version unrecorded (it isn't on main yet)", async () => {
+  // Recording a version production's history has but main has no file for
+  // stops Supabase's integration on every push to main until that file lands.
+  const { pg, db } = await setup();
+  await applyMigration(db, m("0103", "create table public.f (id int);", "branch_only"), { history: await historyColumns(db), record: false });
+  assert.equal(await tableExists(pg, "f"), true);
+  await applyMigration(db, m("0104", "create table public.g (id int);\ncreate index concurrently g_id on public.g (id);"), { history: await historyColumns(db), record: false });
+  assert.equal(await tableExists(pg, "g"), true);
+  assert.deepEqual(await recorded(pg), []);
+});
+
 test("a project that never had the CLI's history table gets one, in the CLI's shape", async () => {
   const { pg, db } = await setup(false);
   const cols = await ensureHistory(db);

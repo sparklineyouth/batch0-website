@@ -16,6 +16,7 @@
     "test:call-cohosts-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-call-cohosts-db.mts",
     "test:calls-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-calls-rls-db.mts",
     "test:migrations-replay-db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/test-migrations-replay-db.mts",
+    "check:migration-versions": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-migration-versions.mts",
     "db:migrate": "node --env-file-if-exists=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/db-migrate.mts",
     "seo-doctor": "node --env-file-if-exists=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/seo-doctor.mts",
     "onshape-doctor": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/onshape-doctor.mts",

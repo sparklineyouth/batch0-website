@@ -20,12 +20,15 @@ Two migrations, applied around the deploy (expand → deploy → contract):
    policy (the new code writes only through validated server actions) and
    stamps any entry the old code wrote in the gap.
 
-Both are idempotent. Apply each with `supabase db query --linked -f …`, then
-record it with `supabase migration repair --status applied <version> --linked`
-(or run `npm run db:migrate`, which does both). Supabase's GitHub integration
-also applies any file production hasn't recorded as soon as it reaches
-`main`, so a contract step like 0088 has to reach `main` after the deploy it
-waits for (`docs/migrations-2026-10.md`, *Versions*).
+Both are idempotent. Supabase's GitHub integration applies a file to
+production, and records it, when the file reaches `main`
+(`docs/migrations-2026-10.md`, *Versions*), so the order is the order things
+reach `main`: 0087 in a pull request of its own, then the code, then 0088 in
+another once that deploy is live. Running an expand step like 0087 by hand
+before it merges (the `supabase db query` above) is fine, but don't record
+it then: a version production has recorded and `main` has no file for stops
+the integration on every push to `main` until the file lands. The
+integration runs it again on arrival and records it itself.
 
 ## Running one
 

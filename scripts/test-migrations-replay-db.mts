@@ -41,6 +41,7 @@ import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { pg_trgm } from "@electric-sql/pglite/contrib/pg_trgm";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
+import { MIGRATION_CHECKS } from "../lib/migration-plan.ts";
 
 const DIR = new URL("../supabase/migrations/", import.meta.url);
 
@@ -449,6 +450,8 @@ test("a fresh database: every file applies, in the CLI's order, each under a ver
                  and table_name = 'events' and column_name = 'display_viewer_count') as ok`),
     true,
   );
+  // And every verify query db:migrate uses passes on the result.
+  for (const [version, sql] of Object.entries(MIGRATION_CHECKS)) assert.equal(await has(sql), true, `${version}'s verify query`);
 });
 
 test("the old layout, two files on 0071, fails the way the Supabase check did", async () => {
@@ -469,21 +472,30 @@ test("the old layout, two files on 0071, fails the way the Supabase check did", 
   await db.close();
 });
 
-test("production's history: only 0078 is pending; it changes nothing there, and `migration repair` alone settles it", async () => {
+test("production's history: only 0078 is pending, and the integration running it adds the one thing production lacks", async () => {
   const files = layout();
-  // Production ran both September files and recorded 0071 once, for
-  // scholarships; it has never recorded 0078. That's the fresh database with
-  // 0078's row taken out.
+  // Production recorded 0071 once, for scholarships, and never 0078. It has
+  // 0078's column and check, added by hand in September, but not its column
+  // comment (a read-only probe found col_description null). That's the fresh
+  // database with 0078's row and the comment taken out.
   const prod = fresh;
-  await prod.exec(`delete from supabase_migrations.schema_migrations where version = '0078'`);
+  const forget0078 = () => prod.exec(`delete from supabase_migrations.schema_migrations where version = '0078'`);
+  await forget0078();
+  await prod.exec(`comment on column public.events.display_viewer_count is null`);
   const viewerCount = async () =>
     (
-      await prod.query<{ cols: number; checks: number }>(`
+      await prod.query<{ cols: number; checks: number; commented: boolean }>(`
         select (select count(*)::int from information_schema.columns
                  where table_schema = 'public' and table_name = 'events' and column_name = 'display_viewer_count') as cols,
-               (select count(*)::int from pg_constraint where conname = 'events_display_viewer_count_check') as checks`)
+               (select count(*)::int from pg_constraint where conname = 'events_display_viewer_count_check') as checks,
+               (select col_description(attrelid, attnum) is not null from pg_attribute
+                 where attrelid = 'public.events'::regclass and attname = 'display_viewer_count') as commented`)
     ).rows[0];
-  assert.deepEqual(await viewerCount(), { cols: 1, checks: 1 });
+  // db:migrate's verify query for 0078 (lib/migration-plan.ts) tells this
+  // state apart from "0078 ran", so db:migrate runs it rather than recording it.
+  const verified = async () => (await prod.query<{ ok: boolean }>(MIGRATION_CHECKS["0078"])).rows[0].ok;
+  assert.deepEqual(await viewerCount(), { cols: 1, checks: 1, commented: false });
+  assert.equal(await verified(), false);
 
   // Before the rename, every push to main re-ran 0071_scholarships out of
   // order and failed on its INSERT (rolled back: nothing changed).
@@ -492,18 +504,41 @@ test("production's history: only 0078 is pending; it changes nothing there, and 
   await assert.rejects(push(prod, before), (err: unknown) => err instanceof CliError && err.code === "23505");
 
   // After it, 0078 is the only file the integration would run, out of order.
-  assert.deepEqual(cliPending(files, await recorded(prod)).map((f) => f.file), ["0078_event_display_viewer_count.sql"]);
+  const pending = cliPending(files, await recorded(prod));
+  assert.deepEqual(pending.map((f) => f.file), ["0078_event_display_viewer_count.sql"]);
 
-  // The repair route (prod_steps): record it without running anything.
+  // Why prod_steps don't `migration repair` 0078. Alone, it records the
+  // comment as applied without adding it:
   await repairApplied(prod, files, "0078");
   assert.deepEqual(cliPending(files, await recorded(prod)), []);
-  assert.deepEqual(await push(prod, files), []);
+  assert.deepEqual(await viewerCount(), { cols: 1, checks: 1, commented: false });
+  await forget0078();
+  // And committed while the integration is mid-run (it has listed 0078 as
+  // pending), it fails the integration's history INSERT: the check goes red.
+  await repairApplied(prod, files, "0078");
+  await assert.rejects(applyFile(prod, pending[0]), (err: unknown) => {
+    assert.ok(err instanceof CliError, String(err));
+    assert.equal(err.code, "23505");
+    assert.equal(err.statement, pending[0].statements.length);
+    return true;
+  });
+  await forget0078();
 
-  // And if the integration gets there first, running it is harmless: every
-  // statement is guarded, so the column and its check stay exactly as they were.
-  await prod.exec(`delete from supabase_migrations.schema_migrations where version = '0078'`);
+  // A version recorded before its file is on main (a branch's migration,
+  // repaired early) stops the integration before it runs anything, 0078
+  // included, on every push until that file lands.
+  await prod.exec(`insert into supabase_migrations.schema_migrations (version, name) values ('0199', 'branch_only')`);
+  await assert.rejects(push(prod, files), /Remote migration versions not found in local migrations directory: 0199/);
+  assert.equal(await verified(), false);
+  await prod.exec(`delete from supabase_migrations.schema_migrations where version = '0199'`);
+
+  // The route prod_steps take: the merge push runs 0078. Every statement is
+  // guarded, so the column and its check stay exactly as they were; the
+  // comment is added and 0078 recorded, and the next push has nothing to do.
   assert.deepEqual(await push(prod, files), ["0078_event_display_viewer_count.sql"]);
-  assert.deepEqual(await viewerCount(), { cols: 1, checks: 1 });
+  assert.deepEqual(await viewerCount(), { cols: 1, checks: 1, commented: true });
+  assert.equal(await verified(), true);
   assert.deepEqual(await recorded(prod), files.map((f) => f.version));
+  assert.deepEqual(await push(prod, files), []);
   await prod.close();
 });
