@@ -5,8 +5,6 @@ import { Card } from "@/components/ui/card";
 import { requirePermission } from "@/lib/auth";
 import { getAllRoles, getRole, getRoleMemberCounts } from "@/lib/roles";
 import {
-  ADMIN_EXACT_ROUTE_PERMISSIONS,
-  ADMIN_ROUTE_PERMISSIONS,
   ALL_PERMISSIONS,
   PERMISSION_BY_KEY,
   canAccessAdmin,
@@ -16,6 +14,7 @@ import {
   opensNoSection,
   roleColorClasses,
 } from "@/lib/permissions";
+import { adminPagesOpenedBy } from "@/lib/role-impact";
 import { RoleForm } from "../role-form";
 import { DeleteRole } from "./delete-role";
 
@@ -38,7 +37,7 @@ export default async function RoleDetailPage(
   }
 ) {
   const params = await props.params;
-  const { caps } = await requirePermission("roles.manage");
+  const { caps, profile: viewer } = await requirePermission("roles.manage");
   const [role, roles, counts] = await Promise.all([
     getRole(params.slug),
     getAllRoles(),
@@ -63,22 +62,19 @@ export default async function RoleDetailPage(
     ? null
     : ALL_PERMISSIONS.filter((p) => caps.permissions.includes(p));
 
-  // Where this role can navigate, derived from the same tables the guard
-  // uses (an exact rule may open on any of several keys).
-  const holds = (req: string | readonly string[]) =>
-    roleCaps.superAdmin ||
-    (typeof req === "string" ? [req] : req).some((p) => role.permissions.includes(p));
-  const reachable = [
-    ...new Set([
-      ...ADMIN_ROUTE_PERMISSIONS.filter(([, perm]) => holds(perm)).map(([prefix]) => prefix),
-      ...ADMIN_EXACT_ROUTE_PERMISSIONS.filter(([, req]) => holds(req)).map(([path]) => path),
-    ]),
-  ].sort();
+  // Where this role can navigate, by the guard's own predicate
+  // (canViewAdminPath over the route tables). It used to test each row's key
+  // alone, so a role holding calls.invite without any admin-area key (the
+  // mentor role) was shown /admin/calls, which the middleware never lets it
+  // open.
+  const reachable = adminPagesOpenedBy(role.permissions).map((p) => p.href);
 
+  // Each with what it holds, so the delete dialog can say what moving
+  // everyone there does to them.
   const deleteTargets = roles
     .filter((r) => r.slug !== role.slug)
     .filter((r) => covers(caps, r.permissions))
-    .map((r) => ({ slug: r.slug, label: r.label }));
+    .map((r) => ({ slug: r.slug, label: r.label, permissions: r.permissions, home_path: r.home_path }));
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -135,6 +131,8 @@ export default async function RoleDetailPage(
           <RoleForm
             mode="edit"
             grantable={grantable}
+            members={members}
+            actorRole={viewer.role}
             initial={{
               slug: role.slug,
               label: role.label,
@@ -147,21 +145,25 @@ export default async function RoleDetailPage(
         </div>
       )}
 
-      {reachable.length > 0 && (
+      {(reachable.length > 0 || (!roleCaps.superAdmin && role.permissions.length > 0)) && (
         <Card className="mt-8">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
             Pages this role can open
           </h2>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {reachable.map((href) => (
-              <code
-                key={href}
-                className="rounded border border-line bg-paper px-2 py-0.5 font-mono text-[11px] text-ink-soft"
-              >
-                {href}
-              </code>
-            ))}
-          </div>
+          {reachable.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {reachable.map((href) => (
+                <code
+                  key={href}
+                  className="rounded border border-line bg-paper px-2 py-0.5 font-mono text-[11px] text-ink-soft"
+                >
+                  {href}
+                </code>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-ink-faint">No admin pages: it doesn&apos;t open the admin panel.</p>
+          )}
           {!roleCaps.superAdmin && role.permissions.length > 0 && (
             <>
               <h3 className="mt-5 text-sm font-semibold uppercase tracking-wider text-ink-soft">
@@ -222,6 +224,8 @@ export default async function RoleDetailPage(
             <DeleteRole
               slug={role.slug}
               label={role.label}
+              permissions={role.permissions}
+              homePath={role.home_path}
               members={members}
               targets={deleteTargets}
             />

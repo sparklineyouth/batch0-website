@@ -140,6 +140,12 @@ export default async function AdminStudentsPage(
   // (lib/role-change.ts). The
   // picker list above only has what the viewer can hand out.
   const roleBadges = roles.map((r) => ({ slug: r.slug, label: r.label, color: r.color }));
+  // What each role holds, for the picker's and the bulk change's previews of
+  // what a person would gain or lose (lib/role-impact.ts). Only sent to a
+  // viewer who can change roles.
+  const impactRoles = canChangeRoles
+    ? roles.map((r) => ({ slug: r.slug, label: r.label, permissions: r.permissions, home_path: r.home_path }))
+    : [];
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -244,12 +250,19 @@ export default async function AdminStudentsPage(
           canChangeRoles={canChangeRoles}
           roleOptions={roleOptions}
           roleBadges={roleBadges}
+          actor={canChangeRoles ? { userId: viewer.id, caps } : null}
+          impactRoles={impactRoles}
           rows={(profiles ?? []).map((p: any) => {
             const latestApp = (p.applications ?? [])[0];
             const enrollment = (p.enrollments ?? [])[0];
             const cohort = Array.isArray(enrollment?.cohort)
               ? enrollment?.cohort[0]
               : enrollment?.cohort;
+            // The same rule the action applies, so a row the server would
+            // refuse shows a badge instead of a picker, carrying the reason.
+            const lock = canChangeRoles
+              ? roleChangeLock({ userId: viewer.id, caps }, { id: p.id, role: p.role }, roles)
+              : null;
             return {
               id: p.id,
               // Placeholder addresses (people added without an email) are
@@ -257,11 +270,8 @@ export default async function AdminStudentsPage(
               email: isPlaceholderEmail(p.email) ? "" : p.email,
               full_name: p.full_name,
               role: p.role as Role,
-              // The same rule the action applies, so a row the server would
-              // refuse shows a badge instead of a picker.
-              role_locked:
-                !canChangeRoles ||
-                roleChangeLock({ userId: viewer.id, caps }, { id: p.id, role: p.role }, roles) !== null,
+              role_locked: !canChangeRoles || lock !== null,
+              role_lock_reason: lock,
               created_at: p.created_at,
               latest_app_status: latestApp?.status ?? null,
               cohort_name: cohort?.name ?? null,

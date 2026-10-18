@@ -31,6 +31,14 @@ export default async function AdminRolesPage() {
   const canAssign = can(caps, "people.roles");
   // You can only hand out what you hold — mirrors the check in actions.ts.
   const assignable = roles.filter((r) => covers(caps, r.permissions));
+  // What each role holds, for the form's preview of what the person would
+  // gain or lose (lib/role-impact.ts).
+  const impact = (r: (typeof roles)[number]) => ({
+    slug: r.slug,
+    label: r.label,
+    permissions: r.permissions,
+    home_path: r.home_path,
+  });
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -124,7 +132,9 @@ export default async function AdminRolesPage() {
             They sign up, then you assign.
           </p>
           <GrantRoleForm
-            roles={assignable.map((r) => ({ slug: r.slug, label: r.label }))}
+            roles={assignable.map(impact)}
+            allRoles={roles.map(impact)}
+            hiddenRoles={roles.length - assignable.length}
           />
         </Card>
       )}

@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertPermission } from "@/lib/server-guards";
 import { logAudit } from "@/lib/audit";
-import { getRole } from "@/lib/roles";
-import { changeRoles } from "@/lib/role-change-server";
+import { getRole, type AppRole } from "@/lib/roles";
+import { changeRoles, decideRoleChange } from "@/lib/role-change-server";
+import { roleSaveRefusal } from "@/lib/role-impact";
 import {
-  PERMISSION_BY_KEY,
   ROLE_SLUG_PATTERN,
   ROLE_COLOR_KEYS,
   WILDCARD,
@@ -18,9 +18,8 @@ import {
   isSystemRole,
   isValidRoleHome,
   slugifyRole,
-  unmetPermissionNeed,
 } from "@/lib/permissions";
-import type { ActionResult } from "@/lib/action-result";
+import { isRefusal, refuse, runAction, type ActionResult } from "@/lib/action-result";
 
 export type RoleInput = {
   slug: string;
@@ -75,35 +74,45 @@ async function assertCanGrant(permissions: string[], existing: string[] = []) {
   const added = permissions.filter((p) => !existing.includes(p));
   const missing = missingPermissions(actor.caps, added);
   if (missing.length > 0) {
-    throw new Error(
-      `You can't grant a permission you don't hold yourself: ${missing.join(", ")}.`,
-    );
+    refuse(`You can't grant a permission you don't hold yourself: ${missing.join(", ")}.`);
   }
   return actor;
 }
 
-function validate(input: RoleInput, permissions: string[]) {
+/**
+ * The form's own rules. The permission-list part (none ticked, a
+ * PERMISSION_NEEDS pair split, removing roles.manage from the role you hold)
+ * is roleSaveRefusal in lib/role-impact.ts, which the editor also runs as
+ * boxes are ticked, so it says the same thing before Save that this says
+ * after. Every rule here is a refusal (lib/action-result.ts), not logged.
+ */
+function validate(
+  input: RoleInput,
+  permissions: string[],
+  existing?: { role: AppRole; actorRole: string },
+) {
   const label = input.label.trim();
-  if (label.length < 2) throw new Error("Give the role a name.");
-  if (label.length > 40) throw new Error("Keep the role name under 40 characters.");
+  if (label.length < 2) refuse("Give the role a name.");
+  if (label.length > 40) refuse("Keep the role name under 40 characters.");
 
   if (!isValidRoleHome(input.homePath)) {
-    throw new Error("Pick a valid landing page for this role.");
+    refuse("Pick a valid landing page for this role.");
   }
   if (!ROLE_COLOR_KEYS.includes(input.color as any)) {
-    throw new Error("Pick a valid colour.");
+    refuse("Pick a valid colour.");
   }
-  if (permissions.length === 0) {
-    throw new Error(
-      "A role with no permissions can't reach anything. Tick at least one.",
-    );
-  }
-  const unmet = unmetPermissionNeed(permissions);
-  if (unmet) {
-    const [key, needs] = unmet.map((k) => PERMISSION_BY_KEY.get(k)?.label ?? k);
-    throw new Error(`"${key}" needs "${needs}" too.`);
-  }
+  const refusal = roleSaveRefusal({
+    permissions,
+    existing: existing?.role ?? null,
+    actorRole: existing?.actorRole ?? null,
+  });
+  if (refusal) refuse(refusal);
   return { label, description: input.description.trim().slice(0, 400) };
+}
+
+/** Log a failure; a refusal is the action answering, so it isn't logged. */
+function logFailure(name: string, err: unknown) {
+  if (!isRefusal(err)) console.error(`[action:${name}]`, err);
 }
 
 export async function createRole(input: RoleInput): Promise<ActionResult<{ slug: string }>> {
@@ -114,12 +123,12 @@ export async function createRole(input: RoleInput): Promise<ActionResult<{ slug:
 
     const slug = slugifyRole(input.slug || input.label);
     if (!ROLE_SLUG_PATTERN.test(slug)) {
-      throw new Error(
+      refuse(
         "The slug must start with a letter and use only lowercase letters, numbers, and hyphens.",
       );
     }
     if (isReservedSlug(slug)) {
-      throw new Error(`"${slug}" is reserved. Pick a different name.`);
+      refuse(`"${slug}" is reserved. Pick a different name.`);
     }
 
     const admin = createAdminClient();
@@ -127,7 +136,7 @@ export async function createRole(input: RoleInput): Promise<ActionResult<{ slug:
       .from("app_roles")
       .select("slug", { count: "exact", head: true });
     if ((count ?? 0) >= MAX_ROLES) {
-      throw new Error(`You already have ${MAX_ROLES} roles. Delete one first.`);
+      refuse(`You already have ${MAX_ROLES} roles. Delete one first.`);
     }
 
     const { error } = await admin.from("app_roles").insert({
@@ -142,7 +151,7 @@ export async function createRole(input: RoleInput): Promise<ActionResult<{ slug:
     });
     if (error) {
       if (error.code === "23505") {
-        throw new Error(`A role with the slug "${slug}" already exists.`);
+        refuse(`A role with the slug "${slug}" already exists.`);
       }
       throw new Error(error.message);
     }
@@ -158,7 +167,7 @@ export async function createRole(input: RoleInput): Promise<ActionResult<{ slug:
     revalidatePath("/admin/students");
     return { ok: true, data: { slug } };
   } catch (err: any) {
-    console.error("[action:createRole]", err);
+    logFailure("createRole", err);
     return { ok: false, error: err?.message ?? "Could not create the role." };
   }
 }
@@ -167,7 +176,7 @@ export async function updateRole(input: RoleInput): Promise<ActionResult> {
   try {
     const permissions = cleanPermissions(input.permissions);
     const existing = await getRole(input.slug);
-    if (!existing) throw new Error("That role no longer exists.");
+    if (!existing) refuse("That role no longer exists.");
 
     // Checked before the grant rules so the message is the useful one. The
     // built-in admin role keeps the wildcard: saving this form against it
@@ -176,25 +185,16 @@ export async function updateRole(input: RoleInput): Promise<ActionResult> {
     // renders an explanation instead of the form, so reaching here means a
     // hand-made request.
     if (existing.permissions.includes(WILDCARD)) {
-      throw new Error(
-        `"${existing.label}" has full access by definition and can't be narrowed here.`,
-      );
+      refuse(`"${existing.label}" has full access by definition and can't be narrowed here.`);
     }
 
     const actor = await assertCanGrant(permissions, existing.permissions);
-    const { label, description } = validate(input, permissions);
-
-    // A role that can manage roles can otherwise quietly remove that ability
-    // from the role it's standing on and lock everyone out of this page.
-    if (
-      existing.permissions.includes("roles.manage") &&
-      !permissions.includes("roles.manage") &&
-      actor.role === existing.slug
-    ) {
-      throw new Error(
-        "That would remove your own ability to manage roles. Ask a full admin to do it.",
-      );
-    }
+    // Includes "you can't remove roles.manage from the role you hold", which
+    // would otherwise lock everyone out of this page.
+    const { label, description } = validate(input, permissions, {
+      role: existing,
+      actorRole: actor.role,
+    });
 
     const admin = createAdminClient();
     const { error } = await admin
@@ -225,7 +225,7 @@ export async function updateRole(input: RoleInput): Promise<ActionResult> {
     revalidatePath("/admin", "layout");
     return { ok: true };
   } catch (err: any) {
-    console.error("[action:updateRole]", err);
+    logFailure("updateRole", err);
     return { ok: false, error: err?.message ?? "Could not save the role." };
   }
 }
@@ -241,23 +241,21 @@ export async function deleteRole(
   try {
     const actor = await assertPermission("roles.manage");
     if (isSystemRole(slug)) {
-      throw new Error("Built-in roles can't be deleted.");
+      refuse("Built-in roles can't be deleted.");
     }
     if (slug === reassignTo) {
-      throw new Error("Pick a different role to move people to.");
+      refuse("Pick a different role to move people to.");
     }
     if (actor.role === slug) {
-      throw new Error("You can't delete the role you're currently holding.");
+      refuse("You can't delete the role you're currently holding.");
     }
 
     const target = await getRole(reassignTo);
-    if (!target) throw new Error("Pick a role to move people to.");
+    if (!target) refuse("Pick a role to move people to.");
     // Deleting a role must not be a backdoor to handing out access the
     // deleter doesn't have.
     if (!covers(actor.caps, target.permissions)) {
-      throw new Error(
-        `You can't move people into "${target.label}" — it holds permissions you don't have.`,
-      );
+      refuse(`You can't move people into "${target.label}" — it holds permissions you don't have.`);
     }
 
     // Move first, then delete — the FK would reject the delete otherwise.
@@ -287,9 +285,33 @@ export async function deleteRole(
     revalidatePath("/admin/students");
     return { ok: true, data: { moved: moved?.length ?? 0 } };
   } catch (err: any) {
-    console.error("[action:deleteRole]", err);
+    logFailure("deleteRole", err);
     return { ok: false, error: err?.message ?? "Could not delete the role." };
   }
+}
+
+/**
+ * The account an email belongs to, for the email form and its preview.
+ * Refuses with the form's own words when there is none.
+ */
+async function accountByEmail(email: string) {
+  const clean = email.trim().toLowerCase();
+  if (!clean || !clean.includes("@")) refuse("Enter a valid email.");
+
+  const admin = createAdminClient();
+  const { data: profile, error: findErr } = await admin
+    .from("profiles")
+    .select("id, email, full_name, role")
+    .ilike("email", clean)
+    .maybeSingle();
+  if (findErr) throw new Error(findErr.message);
+  if (!profile) {
+    refuse(`No account for ${clean}. Ask them to sign up first, then assign the role.`);
+  }
+  return {
+    clean,
+    profile: profile as { id: string; email: string; full_name: string | null; role: string },
+  };
 }
 
 /**
@@ -312,33 +334,17 @@ export async function grantRoleByEmail(
     const actor = await assertPermission("people.roles");
 
     const role = await getRole(slug);
-    if (!role) throw new Error("That role doesn't exist.");
+    if (!role) refuse("That role doesn't exist.");
     // Same escalation rule as role editing: you can't hand out more than you
     // hold. Checked again by changeRoles; here so the message comes before
     // the email lookup, as it always has.
     if (!covers(actor.caps, role.permissions)) {
-      throw new Error(
-        `You can't assign "${role.label}" — it holds permissions you don't have.`,
-      );
+      refuse(`You can't assign "${role.label}" — it holds permissions you don't have.`);
     }
 
-    const clean = email.trim().toLowerCase();
-    if (!clean || !clean.includes("@")) throw new Error("Enter a valid email.");
-
-    const admin = createAdminClient();
-    const { data: profile, error: findErr } = await admin
-      .from("profiles")
-      .select("id, email, full_name, role")
-      .ilike("email", clean)
-      .maybeSingle();
-    if (findErr) throw new Error(findErr.message);
-    if (!profile) {
-      throw new Error(
-        `No account for ${clean}. Ask them to sign up first, then assign the role.`,
-      );
-    }
+    const { clean, profile } = await accountByEmail(email);
     if (profile.role === slug) {
-      throw new Error(`${clean} already holds the ${role.label} role.`);
+      refuse(`${clean} already holds the ${role.label} role.`);
     }
 
     const res = await changeRoles({
@@ -347,9 +353,12 @@ export async function grantRoleByEmail(
       role: slug,
       via: "roles_page",
     });
+    // The destination was checked above, so an error here is a failed read.
     if (res.error !== null) throw new Error(res.error);
-    const refused = res.skipped[0] ?? res.failed[0];
-    if (refused) throw new Error(refused.reason);
+    // A skip is the guard saying no (your own role, someone holding admin
+    // powers you don't); a failure is a write that didn't land, and is logged.
+    if (res.skipped[0]) refuse(res.skipped[0].reason);
+    if (res.failed[0]) throw new Error(res.failed[0].reason);
 
     revalidatePath("/admin/roles");
     revalidatePath("/admin/students");
@@ -358,7 +367,44 @@ export async function grantRoleByEmail(
       data: { name: profile.full_name || profile.email, email: profile.email },
     };
   } catch (err: any) {
-    console.error("[action:grantRoleByEmail]", err);
+    logFailure("grantRoleByEmail", err);
     return { ok: false, error: err?.message ?? "Could not assign the role." };
   }
+}
+
+/**
+ * Who an email belongs to, the role they hold now, and whether assigning
+ * `slug` would be refused, and why: the email form's preview, shown before
+ * Assign is pressed. Reads only. The refusal is changeRoles' own decision on
+ * the same reads (decideRoleChange), so the preview and the write agree;
+ * what the person would gain or lose is worked out in the form from the
+ * role definitions (lib/role-impact.ts).
+ *
+ * Gated like the write, on people.roles. It says nothing grantRoleByEmail's
+ * own answers don't: that account's name and role ("already holds…").
+ */
+export async function previewRoleGrant(
+  email: string,
+  slug: string,
+): Promise<
+  ActionResult<{ name: string; email: string; role: string; refusal: string | null }>
+> {
+  return runAction({ name: "previewRoleGrant" }, async () => {
+    const actor = await assertPermission("people.roles");
+    const role = await getRole(slug);
+    if (!role) refuse("That role doesn't exist.");
+    const { clean, profile } = await accountByEmail(email);
+    const name = profile.full_name || profile.email;
+    let refusal: string | null = null;
+    if (!covers(actor.caps, role.permissions)) {
+      refusal = `You can't assign "${role.label}" — it holds permissions you don't have.`;
+    } else if (profile.role === slug) {
+      refusal = `${clean} already holds the ${role.label} role.`;
+    } else {
+      const decided = await decideRoleChange({ actor, userIds: [profile.id], role: slug });
+      if (decided.error !== null) throw new Error(decided.error);
+      refusal = decided.plan.skipped[0]?.reason ?? null;
+    }
+    return { name, email: profile.email, role: profile.role, refusal };
+  });
 }

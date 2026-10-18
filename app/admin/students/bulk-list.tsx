@@ -7,11 +7,15 @@ import { LocalTime } from "@/components/ui/local-time";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/dialog";
-import { CheckSquare, Square } from "lucide-react";
+import { CheckSquare, Lock, Square } from "lucide-react";
 import { RoleSelect, type RoleOption } from "./role-select";
 import { bulkChangeUserRole } from "./actions";
 import { getActionError } from "@/lib/action-error";
 import { roleColorClasses } from "@/lib/permissions";
+import { ADMIN_PAGES } from "@/lib/nav-config";
+import { previewRoleAssignment, type ImpactRole } from "@/lib/role-impact";
+import type { RoleChangeActor } from "@/lib/role-change";
+import { AccessImpact } from "@/components/admin/role-impact";
 import type { Role } from "@/lib/types";
 
 type Row = {
@@ -21,6 +25,8 @@ type Row = {
   role: Role;
   /** The viewer may not change this person's role (see lib/role-change.ts). */
   role_locked: boolean;
+  /** Why, in the guard's words, when the viewer may change roles at all. */
+  role_lock_reason: string | null;
   created_at: string;
   latest_app_status: string | null;
   cohort_name: string | null;
@@ -31,6 +37,8 @@ export function StudentsBulkList({
   roleOptions,
   roleBadges,
   canChangeRoles,
+  actor,
+  impactRoles,
 }: {
   rows: Row[];
   /** Assignable roles, from public.app_roles. */
@@ -39,6 +47,10 @@ export function StudentsBulkList({
   roleBadges: RoleOption[];
   /** False when the viewer can read the directory but not re-role anyone. */
   canChangeRoles: boolean;
+  /** The viewer, for the bulk change's preview of what the guard will do. */
+  actor: RoleChangeActor | null;
+  /** Every role with what it holds, for the previews (empty without people.roles). */
+  impactRoles: ImpactRole[];
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -51,6 +63,24 @@ export function StudentsBulkList({
   const [lastResult, setLastResult] = useState<string | undefined>();
 
   const allIds = useMemo(() => rows.map((r) => r.id), [rows]);
+
+  // The guard's answer for the selection, before Apply (lib/role-impact.ts).
+  // Only rows on this page can be previewed; a selection carried over from
+  // another page is still sent, and the server decides those too.
+  const preview = useMemo(() => {
+    if (!confirmRole || !actor) return null;
+    const targets = rows
+      .filter((r) => selected.has(r.id))
+      .map((r) => ({ id: r.id, role: r.role as string }));
+    return {
+      unseen: selected.size - targets.length,
+      ...previewRoleAssignment({ actor, roles: impactRoles, targets, nextRole: confirmRole, pages: ADMIN_PAGES }),
+    };
+  }, [confirmRole, actor, rows, selected, impactRoles]);
+  const names = useMemo(
+    () => Object.fromEntries(rows.map((r) => [r.id, r.full_name || r.email || "Someone"])),
+    [rows],
+  );
   const allSelected =
     allIds.length > 0 && allIds.every((id) => selected.has(id));
   const someSelected = selected.size > 0;
@@ -156,9 +186,11 @@ export function StudentsBulkList({
                   userId={p.id}
                   role={p.role}
                   options={roleOptions}
+                  roles={impactRoles}
+                  name={p.full_name || p.email}
                 />
               ) : (
-                <RoleBadge role={p.role} options={roleBadges} />
+                <RoleBadge role={p.role} options={roleBadges} lockedBecause={p.role_lock_reason} />
               )}
             </div>
             <div>
@@ -237,36 +269,113 @@ export function StudentsBulkList({
         }?`}
         confirmLabel="Update roles"
         pending={pending}
+        // Nothing would change: the description says why.
+        confirmDisabled={
+          !!preview && (preview.error !== null || (preview.moves.length === 0 && preview.unseen === 0))
+        }
         onCancel={() => !pending && setConfirmRole(null)}
         onConfirm={() => confirmRole && runBulk(confirmRole)}
         description={
-          <p className="text-sm text-ink-soft">
-            Their access changes right away. Your own account, anyone whose
-            role holds access you don&apos;t have, and anyone already in this
-            role are skipped.
-          </p>
+          preview ? (
+            <BulkPreview preview={preview} names={names} />
+          ) : (
+            <p className="text-sm text-ink-soft">
+              Their access changes right away. Your own account, anyone whose
+              role holds access you don&apos;t have, and anyone already in this
+              role are skipped.
+            </p>
+          )
         }
       />
     </div>
   );
 }
 
-/** Static role badge for viewers who can read the directory but not edit it. */
+/**
+ * What the bulk change will do, before Apply: who moves from which role and
+ * what that does to them, and who the guard skips, and why. Exported for the
+ * fixture preview at /dev/roles.
+ */
+export function BulkPreview({
+  preview,
+  names,
+}: {
+  preview: ReturnType<typeof previewRoleAssignment> & { unseen: number };
+  /** Display names by id, for the few people a reason skips. */
+  names: Record<string, string>;
+}) {
+  if (preview.error !== null) {
+    return <p className="text-sm text-red-700 dark:text-red-300">{preview.error}</p>;
+  }
+  const next = preview.next?.label ?? "";
+  return (
+    <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1">
+      {preview.moves.length === 0 && preview.unseen === 0 && (
+        <p className="text-sm text-ink-soft">Nobody selected would change.</p>
+      )}
+      {preview.moves.map((m) => (
+        <div key={m.from}>
+          <p className="mb-1.5 text-xs font-medium text-ink">
+            {m.ids.length} {m.fromLabel} → {next}
+          </p>
+          <AccessImpact diff={m.diff} showPermissions />
+        </div>
+      ))}
+      {preview.unseen > 0 && (
+        <p className="text-xs text-ink-faint">
+          {preview.unseen} more selected on another page are checked when you apply.
+        </p>
+      )}
+      {preview.skipped.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-xs font-medium text-ink">Skipped</p>
+          <ul className="space-y-1.5 text-xs leading-snug text-ink-soft">
+            {preview.skipped.map((s) => (
+              <li key={s.reason}>
+                <span className="tabular-nums">{s.ids.length}</span> · {s.reason}
+                {s.ids.length <= 3 && (
+                  <span className="text-ink-faint"> ({s.ids.map((id) => names[id] ?? "Someone").join(", ")})</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {(preview.moves.length > 0 || preview.unseen > 0) && (
+        <p className="text-xs text-ink-faint">Their access changes right away.</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Static role badge: for viewers who can read the directory but not edit it,
+ * and on rows the viewer may not re-role, with the guard's reason.
+ */
 function RoleBadge({
   role,
   options,
+  lockedBecause = null,
 }: {
   role: Role;
   options: RoleOption[];
+  lockedBecause?: string | null;
 }) {
   const match = options.find((o) => o.slug === role);
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider ${roleColorClasses(
+      title={lockedBecause ?? undefined}
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider ${roleColorClasses(
         match?.color ?? "slate",
       )}`}
     >
       {match?.label ?? role}
+      {lockedBecause && (
+        <>
+          <Lock aria-hidden className="h-3 w-3 opacity-60" />
+          <span className="sr-only">: {lockedBecause}</span>
+        </>
+      )}
     </span>
   );
 }

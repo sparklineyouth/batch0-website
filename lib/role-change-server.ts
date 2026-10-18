@@ -9,6 +9,7 @@ import {
   isFullAccessRole,
   isLastFullAdminError,
   planRoleChange,
+  type RoleChangePlan,
 } from "@/lib/role-change";
 
 /**
@@ -38,13 +39,22 @@ export type RoleChangeOutcome =
       failed: { id: string; reason: string }[];
     };
 
-export async function changeRoles(input: {
+type ProfileRow = { id: string; role: string; email: string | null };
+
+/**
+ * What changeRoles would do, without writing: the targets' current roles and
+ * the guard's plan on them. The email form's preview at /admin/roles asks
+ * this before Assign is pressed, so it reads the same rows and gets the same
+ * answer as the write that follows. Fails closed the same way.
+ */
+export async function decideRoleChange(input: {
   actor: { userId: string; caps: Capabilities };
   userIds: readonly string[];
   role: string;
-  /** Recorded on the audit rows, e.g. "roles_page". */
-  via?: string;
-}): Promise<RoleChangeOutcome> {
+}): Promise<
+  | { error: string }
+  | { error: null; plan: RoleChangePlan; byId: Map<string, ProfileRow>; missing: string[] }
+> {
   const { actor, role } = input;
   const ids = Array.from(new Set(input.userIds));
   const roles = await getAllRoles();
@@ -57,9 +67,7 @@ export async function changeRoles(input: {
   if (readErr) {
     return { error: `Couldn't read their current roles, so nothing was changed: ${readErr.message}` };
   }
-  const byId = new Map(
-    ((rows ?? []) as { id: string; role: string; email: string | null }[]).map((r) => [r.id, r]),
-  );
+  const byId = new Map(((rows ?? []) as ProfileRow[]).map((r) => [r.id, r]));
   const missing = ids.filter((id) => !byId.has(id));
   const targets = ids.filter((id) => byId.has(id)).map((id) => ({ id, role: byId.get(id)!.role }));
 
@@ -82,6 +90,21 @@ export async function changeRoles(input: {
 
   const plan = planRoleChange({ actor, roles, targets, nextRole: role, fullAdminIds });
   if (plan.error) return { error: plan.error };
+  return { error: null, plan, byId, missing };
+}
+
+export async function changeRoles(input: {
+  actor: { userId: string; caps: Capabilities };
+  userIds: readonly string[];
+  role: string;
+  /** Recorded on the audit rows, e.g. "roles_page". */
+  via?: string;
+}): Promise<RoleChangeOutcome> {
+  const { actor, role } = input;
+  const decided = await decideRoleChange(input);
+  if (decided.error !== null) return { error: decided.error };
+  const { plan, byId, missing } = decided;
+  const admin = createAdminClient();
 
   const skipped = [
     ...plan.skipped,

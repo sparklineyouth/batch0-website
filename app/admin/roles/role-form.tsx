@@ -9,9 +9,13 @@ import {
   PERMISSION_NEEDS,
   ROLE_COLOR_KEYS,
   ROLE_HOME_OPTIONS,
+  isKnownPermission,
   roleColorClasses,
   slugifyRole,
 } from "@/lib/permissions";
+import { ADMIN_PAGES } from "@/lib/nav-config";
+import { diffRoleAccess, landingFor, roleSaveRefusal } from "@/lib/role-impact";
+import { AccessImpact } from "@/components/admin/role-impact";
 import { createRole, updateRole, type RoleInput } from "./actions";
 
 export type RoleFormValues = {
@@ -27,16 +31,27 @@ export type RoleFormValues = {
  * Create/edit form for a role. The checkbox grid is generated from
  * PERMISSION_GROUPS, so a permission added to the catalog shows up here
  * without touching this file.
+ *
+ * Above Save, a preview of what the ticked boxes do (lib/role-impact.ts):
+ * which admin pages and panels the role's holders gain or lose, whether it
+ * opens the admin panel at all, which grants are sensitive, and any reason
+ * the save would be refused, in the action's own words.
  */
 export function RoleForm({
   mode,
   initial,
   /** Permissions the signed-in admin can hand out. null = everything. */
   grantable,
+  members = 0,
+  actorRole = null,
 }: {
   mode: "create" | "edit";
   initial: RoleFormValues;
   grantable: string[] | null;
+  /** How many people hold the role now (edit). */
+  members?: number;
+  /** The signed-in admin's own role, for "you can't take roles.manage off your own role". */
+  actorRole?: string | null;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -68,6 +83,26 @@ export function RoleForm({
 
   const effectiveSlug = slugTouched ? slug : slugifyRole(label);
   const count = permissions.size;
+
+  // The list as the action will store it (known keys only), against the list
+  // as stored now: nothing for a new role.
+  const ticked = useMemo(
+    () => Array.from(permissions).filter(isKnownPermission).sort(),
+    [permissions],
+  );
+  const diff = useMemo(
+    () =>
+      diffRoleAccess(mode === "edit" ? initial.permissions : [], ticked, {
+        pages: ADMIN_PAGES,
+        home: mode === "edit" ? { before: initial.homePath, after: homePath } : undefined,
+      }),
+    [mode, initial.permissions, initial.homePath, ticked, homePath],
+  );
+  const refusal = roleSaveRefusal({
+    permissions: ticked,
+    existing: mode === "edit" ? { slug: initial.slug, permissions: initial.permissions } : null,
+    actorRole,
+  });
 
   // Keeps PERMISSION_NEEDS pairs whole: ticking a key ticks its companion,
   // unticking the companion unticks what needs it.
@@ -316,10 +351,42 @@ export function RoleForm({
         </div>
       </div>
 
+      <section className="rounded-xl border border-line bg-wash p-4">
+        <h3 className="text-[10px] font-mono font-semibold uppercase tracking-[0.18em] text-ink-faint">
+          {mode === "edit" ? "What saving changes" : "What this role will open"}
+        </h3>
+        <p className="mt-1 text-xs text-ink-faint">
+          {mode === "create"
+            ? "Nobody holds it until you assign it."
+            : members === 0
+              ? "Nobody holds this role right now."
+              : `For the ${members} ${members === 1 ? "person who holds" : "people who hold"} it, from their next page load.`}
+        </p>
+        <div className="mt-3">
+          <AccessImpact
+            diff={diff}
+            showPermissions={mode === "edit"}
+            showNeeds
+            emptyText={
+              mode === "edit" ? "Nothing about access has changed yet." : "Nothing yet: tick what this role can do."
+            }
+          />
+        </div>
+        {mode === "create" && ticked.length > 0 && (
+          <p className="mt-2 text-xs text-ink-faint">
+            Lands on <code className="font-mono text-[11px]">{landingFor(ticked, homePath)}</code>.
+          </p>
+        )}
+        {/* A broken pair is already listed above, each with its fix. */}
+        {refusal && diff.unmet.length === 0 && (
+          <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">Can&apos;t save yet: {refusal}</p>
+        )}
+      </section>
+
       <FieldError>{error}</FieldError>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-line pt-5">
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending || refusal !== null}>
           {pending
             ? "Saving…"
             : mode === "create"

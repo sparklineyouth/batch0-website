@@ -106,6 +106,10 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
     const doubles: Record<string, string> = {
       "server-only": "export {};",
       "next/cache": "export const revalidatePath=()=>{};",
+      // lib/action-result.ts's one import: Next's predicate, reduced to the
+      // shape a redirect throws (none of these actions redirect).
+      "next/navigation":
+        "export const unstable_rethrow=e=>{if(e&&typeof e.digest==='string'&&e.digest.startsWith('NEXT_REDIRECT'))throw e;};",
       "@/lib/supabase/admin": g + "export const createAdminClient=()=>t.db;",
       "@/lib/server-guards":
         g +
@@ -124,11 +128,12 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
   },
 });
 
-// The actions log their refusals; the assertions below are what matter.
-mock.method(console, "error", () => {});
+// Failures are logged; refusals no longer are (lib/action-result.ts), and
+// the email form's cases below count what reached the log.
+const errorLog = mock.method(console, "error", () => {});
 
 const { changeUserRole, bulkChangeUserRole } = await import("../app/admin/students/actions.ts");
-const { grantRoleByEmail } = await import("../app/admin/roles/actions.ts");
+const { grantRoleByEmail, previewRoleGrant } = await import("../app/admin/roles/actions.ts");
 
 function reset(profiles: Profile[], actor: Actor) {
   state.profiles = profiles.map((p) => ({ ...p }));
@@ -136,6 +141,7 @@ function reset(profiles: Profile[], actor: Actor) {
   state.audit = [];
   state.updates = 0;
   state.beforeUpdate = null;
+  errorLog.mock.resetCalls();
 }
 const p = (id: string, role: string): Profile => ({ id, email: `${id}@example.test`, full_name: id, role });
 const roleOf = (id: string) => state.profiles.find((r) => r.id === id)?.role;
@@ -271,4 +277,53 @@ test("the permission guard still throws for someone without people.roles", async
   await assert.rejects(changeUserRole("s1", "mentor"), /Forbidden/);
   await assert.rejects(bulkChangeUserRole({ userIds: ["s1"], role: "mentor" }), /Forbidden/);
   assert.equal(roleOf("s1"), "student");
+});
+
+// The email form's preview (previewRoleGrant) answers before Assign is
+// pressed, from the same reads and the same guard as the write, and writes
+// nothing.
+test("the email preview names the account and its role, and refuses what the write would", async () => {
+  reset([p("delegate", "limited"), p("s1", "student"), p("only-admin", "admin")], as("delegate", "limited"));
+  assert.deepEqual(await previewRoleGrant("S1@example.test", "mentor"), {
+    ok: true,
+    data: { name: "s1", email: "s1@example.test", role: "student", refusal: null },
+  });
+  const admin = await previewRoleGrant("only-admin@example.test", "student");
+  assert.equal(admin.ok, true);
+  assert.equal((admin as any).data.role, "admin");
+  assert.match((admin as any).data.refusal, /Only a full admin/);
+  const self = await previewRoleGrant("delegate@example.test", "mentor");
+  assert.match((self as any).data.refusal, /can't change your own role/);
+  const up = await previewRoleGrant("s1@example.test", "admin");
+  assert.match((up as any).data.refusal, /can't assign "Admin"/);
+  // Reads only.
+  assert.equal(state.updates, 0);
+  assert.deepEqual(state.audit, []);
+  assert.equal(roleOf("s1"), "student");
+});
+
+test("the email preview's answers for a missing account are refusals, not logged errors", async () => {
+  reset([p("actor", "admin"), p("s1", "student")], as("actor", "admin"));
+  assert.deepEqual(await previewRoleGrant("nobody@example.test", "mentor"), {
+    ok: false,
+    error: "No account for nobody@example.test. Ask them to sign up first, then assign the role.",
+  });
+  assert.deepEqual(await previewRoleGrant("not-an-email", "mentor"), { ok: false, error: "Enter a valid email." });
+  const already = await previewRoleGrant("s1@example.test", "student");
+  assert.match((already as any).data.refusal, /already holds the Student role/);
+  assert.equal(errorLog.mock.callCount(), 0);
+});
+
+test("the email form's refusals reach the form without reaching the error log", async () => {
+  reset([p("actor", "admin")], as("actor", "admin"));
+  const res = await grantRoleByEmail("actor@example.test", "student");
+  assert.match((res as any).error, /can't change your own role/);
+  const missing = await grantRoleByEmail("nobody@example.test", "student");
+  assert.match((missing as any).error, /No account for/);
+  assert.equal(errorLog.mock.callCount(), 0);
+});
+
+test("the email preview is gated like the write", async () => {
+  reset([p("m", "mentor"), p("s1", "student")], as("m", "mentor"));
+  assert.deepEqual(await previewRoleGrant("s1@example.test", "mentor"), { ok: false, error: "Forbidden" });
 });
