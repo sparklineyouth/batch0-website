@@ -88,8 +88,10 @@ export const FINISHED_TAIL_FRACTION = 0.05;
  * student had all but finished — reopening a finished video at its credits is
  * never what anyone wants. Otherwise the saved second, clamped inside the
  * video: a saved position past the end (the file was replaced by a shorter
- * cut) starts over. `duration` is unknown on the server unless the lesson
- * records one, and NaN/Infinity in a player that hasn't read the file yet.
+ * cut) starts over. `duration` is the file's own, which only the player knows
+ * (NaN/Infinity until it has read the file). Not `lessons.duration_seconds`:
+ * that's typed by hand in /admin/course, and a wrong one would skip a real
+ * resume, or zero one the player then couldn't put back.
  */
 export function resumePosition(saved: number | null | undefined, duration?: number | null): number {
   const s = typeof saved === "number" && Number.isFinite(saved) ? Math.floor(saved) : 0;
@@ -98,6 +100,22 @@ export function resumePosition(saved: number | null | undefined, duration?: numb
   const tail = Math.max(FINISHED_TAIL_SECONDS, duration * FINISHED_TAIL_FRACTION);
   if (s >= duration - tail) return 0;
   return Math.min(s, Math.floor(duration));
+}
+
+/** How long the player waits for its own read of the saved second before trusting the page's. */
+export const RESUME_READ_TIMEOUT_MS = 4000;
+
+/**
+ * The saved second to resume from: the player's own read of lesson_progress
+ * when it got one, else what the page rendered with. The page's can be old —
+ * Back/Forward shows the router cache's copy from the first visit, so a
+ * student who watched to 10:00, opened the assignment and pressed Back would
+ * otherwise get the "0" that page was first rendered with, and the next save
+ * would write over 10:00. `fromRead` null = the read failed or timed out.
+ */
+export function latestSavedSeconds(fromPage: number | null | undefined, fromRead: number | null): number {
+  const pick = fromRead ?? fromPage;
+  return typeof pick === "number" && Number.isFinite(pick) && pick > 0 ? Math.floor(pick) : 0;
 }
 
 /** How far the playhead must move before the periodic save writes again. */

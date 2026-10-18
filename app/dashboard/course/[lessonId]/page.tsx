@@ -14,8 +14,8 @@ import {
   lessonMaterials,
   lessonVideoHref,
   materialProblem,
-  resumePosition,
 } from "@/lib/lesson-assets";
+import { MaterialLink } from "./material-link";
 
 export const dynamic = "force-dynamic";
 
@@ -117,8 +117,10 @@ export default async function LessonPage(
           videoSrc={videoSrc}
           // Signed by the video route, so the player may ask it again.
           refreshable={Boolean(lesson.video_path)}
-          // The player re-checks against the real duration once it has it.
-          resumeAt={resumePosition(progress?.watched_seconds, lesson.duration_seconds)}
+          // As saved: the player applies the resume rules against the file's
+          // real duration (lessons.duration_seconds is typed by hand), and
+          // re-reads it in case this page came out of the router cache.
+          savedSeconds={progress?.watched_seconds ?? 0}
           completed={Boolean(progress?.completed_at)}
         />
       </div>
@@ -139,15 +141,13 @@ export default async function LessonPage(
           <ul className="space-y-2">
             {materials.map((m, i) => (
               <li key={i}>
-                <a
+                <MaterialLink
                   href={m.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 text-sm text-phosphor-ink hover:underline"
                 >
                   <FileText className="h-4 w-4" />
                   {m.title}
-                </a>
+                </MaterialLink>
               </li>
             ))}
           </ul>

@@ -5,6 +5,7 @@ import {
   MATERIAL_URL_TTL_SECONDS,
   findMaterial,
   formatPlayhead,
+  latestSavedSeconds,
   lessonMaterialHref,
   lessonMaterials,
   lessonVideoHref,
@@ -122,7 +123,10 @@ test("the lesson page signs nothing at render; the routes sign at request time",
   assert.doesNotMatch(page, /createAdminClient/);
   assert.match(page, /lessonMaterialHref\(/);
   assert.match(page, /lessonVideoHref\(/);
-  assert.match(page, /resumeAt=\{resumePosition\(progress\?\.watched_seconds/);
+  // The saved second as saved: the hand-typed lessons.duration_seconds no
+  // longer decides anything about resuming.
+  assert.match(page, /savedSeconds=\{progress\?\.watched_seconds \?\? 0\}/);
+  assert.doesNotMatch(page, /resumePosition|lesson\.duration_seconds/);
 
   const materials = read("app/dashboard/course/[lessonId]/materials/route.ts");
   // The lesson is read through the caller's RLS client, and only a path it
@@ -144,10 +148,45 @@ test("the lesson page signs nothing at render; the routes sign at request time",
   assert.ok(MATERIAL_URL_TTL_SECONDS >= 60);
 });
 
+test("the saved second comes from the player's own read when it has one", () => {
+  // Back to a lesson from the router cache: the page says 0, the database 600.
+  assert.equal(latestSavedSeconds(0, 600), 600);
+  // Rewound elsewhere since: the read wins either way.
+  assert.equal(latestSavedSeconds(600, 120), 120);
+  assert.equal(latestSavedSeconds(600, 0), 0);
+  // The read failed or timed out: the page's.
+  assert.equal(latestSavedSeconds(600, null), 600);
+  assert.equal(latestSavedSeconds(null, null), 0);
+  assert.equal(latestSavedSeconds(612.8, null), 612);
+  assert.equal(latestSavedSeconds(Number.NaN, null), 0);
+});
+
+test("a resume skipped as finished doesn't then save 0 over the real position", () => {
+  // 1190 s into a 1200 s file: inside the tail, so the video starts at 0…
+  const at = resumePosition(1190, 1200);
+  assert.equal(at, 0);
+  // …and the player records 0 as "already saved", so hiding the tab without
+  // touching the video writes nothing (it used to write 0 over 1190).
+  assert.equal(shouldSavePosition(0, at, true), false);
+  // Playing it again from the top does save, as a rewatch should.
+  assert.equal(shouldSavePosition(10, at), true);
+  // A hand-typed duration shorter than the file no longer zeroes a real
+  // resume: the rules run against the file's own length.
+  assert.equal(resumePosition(580, 647), 580);
+});
+
 test("the player seeks to the saved spot and recovers an expired source, even before hydration", () => {
   const player = readFileSync(new URL("../app/dashboard/course/[lessonId]/lesson-player.tsx", import.meta.url), "utf8");
-  // Resume is re-checked against the real duration once the file is read…
+  // Resume is decided against the real duration once the file is read…
   assert.match(player, /resumePosition\(pending\.at, v\.duration\)/);
+  // …lands as the last-saved second (an untouched video writes nothing)…
+  assert.match(player, /lastTimeRef\.current = at;\s*lastSavedRef\.current = at;/);
+  // …and waits for the player's own read of lesson_progress (Back/Forward
+  // replays the first visit's props), up to a timeout.
+  assert.match(player, /\.from\("lesson_progress"\)\s*\.select\("watched_seconds"\)/);
+  assert.match(player, /latestSavedSeconds\(savedSeconds, fromRead\)/);
+  assert.match(player, /if \(!v \|\| pending\?\.kind !== "resume" \|\| !resumeReadRef\.current \|\| v\.readyState < 1\) return;/);
+  assert.match(player, /RESUME_READ_TIMEOUT_MS/);
   // …and metadata or an error that arrived before the listeners did still counts.
   assert.match(player, /if \(v\.readyState >= 1\) onMeta\(\);/);
   assert.match(player, /if \(v\.error\) onError\(\);/);

@@ -3,9 +3,16 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2 } from "lucide-react";
-import { formatPlayhead, resumePosition, shouldSavePosition } from "@/lib/lesson-assets";
+import {
+  RESUME_READ_TIMEOUT_MS,
+  formatPlayhead,
+  latestSavedSeconds,
+  resumePosition,
+  shouldSavePosition,
+} from "@/lib/lesson-assets";
 
 type SupabaseBrowser = ReturnType<typeof import("@/lib/supabase/client").createClient>;
+type BrowserSession = { client: SupabaseBrowser; userId: string };
 
 /** Re-asking the video route more often than this means it isn't expiry. */
 const RECOVERY_WINDOW_MS = 60_000;
@@ -15,15 +22,19 @@ export function LessonPlayer({
   lessonId,
   videoSrc,
   refreshable,
-  resumeAt,
+  savedSeconds,
   completed: initialCompleted,
 }: {
   lessonId: string;
   videoSrc: string | null;
   /** videoSrc is the signing route (not an external URL), so asking it again gets a fresh signature. */
   refreshable: boolean;
-  /** The saved second to pick up from (0 = from the start), already through resumePosition(). */
-  resumeAt: number;
+  /**
+   * lesson_progress.watched_seconds as the page read it — as saved, with no
+   * rules applied: only the player knows the file's real length. May be the
+   * router cache's old copy (Back/Forward), so the player reads it again.
+   */
+  savedSeconds: number;
   completed: boolean;
 }) {
   const router = useRouter();
@@ -34,34 +45,107 @@ export function LessonPlayer({
   const [src, setSrc] = useState(videoSrc);
   const [resumedAt, setResumedAt] = useState<number | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
-  // The second last written to lesson_progress. Starts at the resume point,
-  // so seeking there isn't itself "a move worth saving".
-  const lastSavedRef = useRef(resumeAt);
+  // The second last written to lesson_progress, as far as this page knows.
+  // Set to wherever the resume lands, so a video nobody touches never writes:
+  // a resume skipped as "nearly finished" must not then save 0 over the real
+  // position just because the tab was hidden.
+  const lastSavedRef = useRef(0);
   // Where the playhead was at the last timeupdate — what a reload of an
   // expired source seeks back to (the element may have reset by then).
-  const lastTimeRef = useRef(resumeAt);
-  // A seek waiting for the file's metadata: the first load's resume, or the
-  // spot a refreshed source picks up from.
+  const lastTimeRef = useRef(0);
+  // A seek waiting to happen. The resume waits for two things: the file's
+  // metadata (its real duration) and the player's own read of the saved
+  // second. A refreshed source's "recover" waits for metadata only. Saves are
+  // held while one is pending: the element sits at 0 until it lands.
   const pendingSeekRef = useRef<{ at: number; kind: "resume" | "recover"; play: boolean } | null>(
-    resumeAt > 0 ? { at: resumeAt, kind: "resume", play: false } : null,
+    videoSrc ? { at: savedSeconds, kind: "resume", play: false } : null,
   );
+  const resumeReadRef = useRef(false);
   const playingRef = useRef(false);
   const recoveriesRef = useRef<number[]>([]);
+  const sessionRef = useRef<Promise<BrowserSession | null> | null>(null);
+
+  /**
+   * The browser Supabase client and the signed-in id, once per page.
+   * Deferred import keeps supabase-js out of the route's first-load JS; the
+   * resume read below starts it at mount, so it's in flight before the first
+   * save comes due. The session is local, and RLS still checks the row's
+   * user_id against the token on every read and write. A failure isn't kept:
+   * the next caller tries again.
+   */
+  function browserSession(): Promise<BrowserSession | null> {
+    sessionRef.current ??= (async () => {
+      const mod = await import("@/lib/supabase/client");
+      const client = mod.createClient();
+      const { data } = await client.auth.getSession();
+      const userId = data.session?.user.id ?? null;
+      return userId ? { client, userId } : null;
+    })()
+      .catch(() => null)
+      .then((s) => {
+        if (!s) sessionRef.current = null;
+        return s;
+      });
+    return sessionRef.current;
+  }
+
+  /** Seek to the saved spot once the read is in and the file's length is known. */
+  function applyResume() {
+    const v = videoRef.current;
+    const pending = pendingSeekRef.current;
+    if (!v || pending?.kind !== "resume" || !resumeReadRef.current || v.readyState < 1) return;
+    pendingSeekRef.current = null;
+    // Against the real duration — the lesson row may not record one, or
+    // record it wrong.
+    const at = resumePosition(pending.at, v.duration);
+    if (at > 0) v.currentTime = at;
+    lastTimeRef.current = at;
+    lastSavedRef.current = at;
+    if (at > 0) setResumedAt(at);
+    if (pending.play) void v.play().catch(() => {});
+  }
+
+  // The saved second as it stands now, not as the page was first rendered:
+  // Back/Forward replays the first visit's payload. Waits RESUME_READ_TIMEOUT_MS
+  // at most, then goes with the page's.
+  useEffect(() => {
+    if (!videoSrc) return;
+    let done = false;
+    const finish = (fromRead: number | null) => {
+      if (done) return;
+      done = true;
+      const pending = pendingSeekRef.current;
+      if (pending?.kind === "resume") {
+        pendingSeekRef.current = { ...pending, at: latestSavedSeconds(savedSeconds, fromRead) };
+      }
+      resumeReadRef.current = true;
+      applyResume();
+    };
+    const timer = window.setTimeout(() => finish(null), RESUME_READ_TIMEOUT_MS);
+    void (async () => {
+      const s = await browserSession();
+      if (!s) return finish(null);
+      const { data, error } = await s.client
+        .from("lesson_progress")
+        .select("watched_seconds")
+        .eq("user_id", s.userId)
+        .eq("lesson_id", lessonId)
+        .maybeSingle();
+      finish(error ? null : Number(data?.watched_seconds ?? 0));
+    })().catch(() => finish(null));
+    return () => {
+      done = true;
+      window.clearTimeout(timer);
+    };
+    // Refs and stable setters only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lessonId, videoSrc, savedSeconds]);
 
   // Persist the playhead: every ~10 seconds of movement while playing, and
   // whenever it stops (pause, the tab hidden, the page closing).
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    // Deferred import keeps supabase-js out of the route's first-load JS.
-    // Started here (not inside a handler) so the chunk is already in flight
-    // before the first save comes due. A load failure surfaces per save
-    // attempt; the noop handler keeps a never-played video from logging an
-    // unhandled rejection nothing awaited.
-    const clientModule = import("@/lib/supabase/client");
-    clientModule.catch(() => {});
-    let client: SupabaseBrowser | null = null;
-    let userId: string | null = null;
 
     // Saves are best-effort (results unchecked): a missing client or session
     // just skips this one rather than throwing out of an event listener.
@@ -72,18 +156,10 @@ export function LessonPlayer({
       const seconds = Math.floor(v.currentTime);
       if (!shouldSavePosition(seconds, lastSavedRef.current, flush)) return;
       lastSavedRef.current = seconds;
-      const mod = await clientModule.catch(() => null);
-      if (!mod) return;
-      client ??= mod.createClient();
-      if (!userId) {
-        // Once per page: the session is local, and RLS still checks the
-        // row's user_id against the token on every write.
-        const { data } = await client.auth.getSession();
-        userId = data.session?.user.id ?? null;
-        if (!userId) return;
-      }
-      await client.from("lesson_progress").upsert(
-        { user_id: userId, lesson_id: lessonId, watched_seconds: seconds },
+      const s = await browserSession();
+      if (!s) return;
+      await s.client.from("lesson_progress").upsert(
+        { user_id: s.userId, lesson_id: lessonId, watched_seconds: seconds },
         { onConflict: "user_id,lesson_id" },
       );
     };
@@ -117,31 +193,30 @@ export function LessonPlayer({
       document.removeEventListener("visibilitychange", onHidden);
       window.removeEventListener("pagehide", onLeave);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessonId]);
 
-  // Seek once the file's length is known: the saved spot on first load (re-
-  // checked against the real duration — the lesson row may not record one),
-  // or where playback was when an expired source had to be fetched again.
+  // Seek once the file's length is known: the saved spot on first load (via
+  // applyResume, which also waits for the read above), or where playback was
+  // when an expired source had to be fetched again.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
     const onMeta = () => {
       const pending = pendingSeekRef.current;
       if (!pending) return;
+      if (pending.kind === "resume") return applyResume();
       pendingSeekRef.current = null;
-      const at =
-        pending.kind === "resume"
-          ? resumePosition(pending.at, v.duration)
-          : Math.min(pending.at, Number.isFinite(v.duration) ? Math.max(0, v.duration - 1) : pending.at);
+      const at = Math.min(pending.at, Number.isFinite(v.duration) ? Math.max(0, v.duration - 1) : pending.at);
       if (at > 0) v.currentTime = at;
       lastTimeRef.current = at;
-      if (pending.kind === "resume" && at > 0) setResumedAt(at);
       if (pending.play) void v.play().catch(() => {});
     };
     v.addEventListener("loadedmetadata", onMeta);
     // Metadata can arrive before hydration attaches the listener.
     if (v.readyState >= 1) onMeta();
     return () => v.removeEventListener("loadedmetadata", onMeta);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
 
   // The signature on the file can run out mid-video (or a connection drop
@@ -163,7 +238,10 @@ export function LessonPlayer({
         return;
       }
       recoveriesRef.current = [...recent, now];
-      pendingSeekRef.current = { at: lastTimeRef.current, kind: "recover", play: playingRef.current };
+      // A resume that hasn't happened yet still should, on the new source.
+      if (pendingSeekRef.current?.kind !== "resume") {
+        pendingSeekRef.current = { at: lastTimeRef.current, kind: "recover", play: playingRef.current };
+      }
       const sep = videoSrc.includes("?") ? "&" : "?";
       setSrc(`${videoSrc}${sep}r=${now}`);
     };
