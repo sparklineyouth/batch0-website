@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { isAfter, toggleReaction as applyToggle } from "@/lib/chat-access";
 import { plainText } from "@/lib/chat-format";
-import { mergeMessages, reconcilePage } from "@/lib/chat-view";
+import { mergeMessages, reconcilePage, settledBy } from "@/lib/chat-view";
 import type { ChannelTarget } from "@/lib/chat-payload";
 import {
   deleteMessage,
@@ -22,8 +22,8 @@ import { NewConversationDialog, QuickSwitcher } from "./dialogs";
 import { useMessageFeed, usePing, usePresence, useTyping, pingDelay, type LiveRow } from "./use-chat-live";
 import { ChatReadError, NOT_AVAILABLE, READ_FAILED, chatApi, dropQueuedPush, holdChatUrl, serverSaidNo, tracked, writeChatUrl } from "./api";
 import type { ChatPerson, ChannelPayload, ChatViewerInfo, Panel, SidebarData, SidebarItem, UiMessage } from "./types";
-import { OFFLINE, resultError } from "./util";
-import { applyUpdate, bumpSidebarRow, has, localOnly, sameMessage, toQuote, toUiMessage, withoutMessage } from "./live-rows";
+import { OFFLINE, newClientId, resultError } from "./util";
+import { applyUpdate, bumpSidebarRow, has, localOnly, pendingTwin, sameMessage, toQuote, toUiMessage, withoutMessage } from "./live-rows";
 
 /**
  * batch0 Chat, the client. Owns the sidebar, the open channel, a small cache
@@ -639,8 +639,9 @@ export function ChatApp({
         const fresh = freshen(page.messages as UiMessage[], since, prev);
         const next = reconcilePage(prev, fresh, { asOf: page.asOf, complete: !page.hasMoreBefore, deleted: deleted.current });
         // Unsent and failed bubbles are only ever on this screen: whatever
-        // the server says, they stay until sent or discarded.
-        const lost = prev.filter((m) => localOnly(m) && !next.includes(m));
+        // the server says, they stay until sent or discarded — or until the
+        // page shows the message went in after all (its client id, 0104).
+        const lost = prev.filter((m) => localOnly(m) && !next.includes(m) && !settledBy(m, next));
         return lost.length ? mergeMessages(next, lost) : next;
       });
     } catch {
@@ -797,14 +798,15 @@ export function ChatApp({
         const msg = toUiMessage(row, messagesRef.current);
         setMessages((prev) => {
           if (prev.some((m) => m.id === row.id)) return prev;
-          // Our own echo can beat the send's reply: adopt the pending bubble.
-          if (!fromOther) {
-            const i = prev.findIndex((m) => m.pending && m.body === msg.body);
-            if (i !== -1) {
-              const next = [...prev];
-              next.splice(i, 1);
-              return mergeMessages(next, [msg]);
-            }
+          // Our own echo can beat the send's reply, or come after it failed.
+          // It carries the composer's client id (0104), and the merge settles
+          // the bubble it is, sending or failed. Without one (before 0104),
+          // adopt the bubble still sending with the same words.
+          const i = pendingTwin(prev, row, viewer.id);
+          if (i !== -1) {
+            const next = [...prev];
+            next.splice(i, 1);
+            return mergeMessages(next, [msg]);
           }
           return mergeMessages(prev, [msg]);
         });
@@ -959,6 +961,8 @@ export function ChatApp({
     body: string;
     reply: Reply | null;
     attachments: { path: string; name: string; size: number; type: string }[];
+    /** Made once when the message is written; every Retry sends it again (0104). */
+    clientId: string;
   };
 
   const sendWith = useCallback(
@@ -972,6 +976,7 @@ export function ChatApp({
         body: input.body,
         replyToId: input.reply?.id ?? null,
         attachments: input.attachments.map((a) => ({ path: a.path, name: a.name })),
+        clientId: input.clientId,
       };
       const optimistic: UiMessage = {
         id: tempId,
@@ -987,6 +992,7 @@ export function ChatApp({
         createdAt: new Date().toISOString(),
         editedAt: null,
         pinnedAt: null,
+        clientId: input.clientId,
         pending: true,
         retry,
       };
@@ -1004,10 +1010,12 @@ export function ChatApp({
           body: input.body,
           replyToId: retry.replyToId,
           attachments: retry.attachments,
+          clientId: input.clientId,
         }),
       ).catch(() => ({ ok: false as const, error: OFFLINE }));
       // The answer belongs to the bubble wherever it is now: on screen, or
-      // with the channel's cached copy if the person switched away.
+      // with the channel's cached copy if the person switched away. (Gone
+      // already: its echo or a resync brought the message itself.)
       if (!res.ok || !res.data) {
         const why = resultError(res, "Couldn't send. Try again.");
         applyWhereItIs(tempId, (prev) => prev.map((m) => (m.id === tempId ? { ...m, pending: false, failed: why } : m)));
@@ -1047,9 +1055,15 @@ export function ChatApp({
     [adopt, applyWhereItIs, hydrate, jumpToPresent, refreshSidebar, setMessages, stopTyping, viewer.id],
   );
 
+  // A new message from the composer gets its own client id here, once.
   const send = useCallback(
     (input: { body: string; replyTo: UiMessage | null; attachments: SendInput["attachments"] }) =>
-      void sendWith({ body: input.body, reply: input.replyTo ? toQuote(input.replyTo) : null, attachments: input.attachments }),
+      void sendWith({
+        body: input.body,
+        reply: input.replyTo ? toQuote(input.replyTo) : null,
+        attachments: input.attachments,
+        clientId: newClientId(),
+      }),
     [sendWith],
   );
 
@@ -1065,6 +1079,9 @@ export function ChatApp({
         body: retry.body,
         reply,
         attachments: retry.attachments.map((a) => ({ ...a, size: sizes.get(a.path)?.size ?? 0, type: sizes.get(a.path)?.type ?? "" })),
+        // The same message, so the same id: if the first try went in after
+        // all, the server hands that one back rather than posting it again.
+        clientId: retry.clientId,
       });
     },
     [sendWith, setMessages],
@@ -1300,6 +1317,7 @@ export function ChatApp({
       <NewConversationDialog
         open={newOpen}
         viewer={viewer}
+        self={people[viewer.id] ?? null}
         onClose={() => setNewOpen(false)}
         onOpenDraft={(userId) => {
           setNewOpen(false);

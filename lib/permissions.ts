@@ -58,6 +58,9 @@ export const PERMISSION_KEYS = [
   "email.templates",
   "email.automate",
   "email.settings",
+  "sms.view",
+  "sms.send",
+  "sms.settings",
   "referrals.view",
   "passes.manage",
   "scholarships.view",
@@ -292,6 +295,26 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         sensitive: true,
       },
       {
+        key: "sms.view",
+        label: "View texting",
+        description:
+          "Read the SMS outbox and who has opted in to texts, with the consent evidence, and record an opt-out someone asked for by email or a support request.",
+      },
+      {
+        key: "sms.send",
+        label: "Send texts",
+        description:
+          "Send SMS campaigns, send test texts, cancel queued ones, and email students asking them to opt in. Every text costs real money per message and reaches a phone, so this is deliberately separate from Send email.",
+        sensitive: true,
+      },
+      {
+        key: "sms.settings",
+        label: "Manage texting delivery",
+        description:
+          "Change the Twilio credentials and sending number, set quiet hours, and pause or resume all outgoing texts.",
+        sensitive: true,
+      },
+      {
         key: "referrals.view",
         label: "View referrals",
         description: "Read the referral leaderboard and payouts.",
@@ -431,6 +454,10 @@ export function isKnownPermission(key: string): key is Permission {
  */
 export const PERMISSION_NEEDS: Partial<Record<Permission, Permission>> = {
   "people.manage": "people.view",
+  // A queued campaign is followed on the outbox, and a test send's refusal is
+  // explained by the consent page: sending texts without seeing either is
+  // spending money blind.
+  "sms.send": "sms.view",
 };
 
 /** The first [key, needs] pair in `permissions` granted without its companion. */
@@ -559,6 +586,30 @@ export const EMAIL_TAB_ROUTES = [
   ["/admin/email/settings", "email.settings"],
 ] as const satisfies ReadonlyArray<readonly [string, Permission]>;
 
+/**
+ * The Texting section's tabs, in order, with the key each needs. Same shape as
+ * EMAIL_TAB_ROUTES: one sidebar row, /admin/sms forwards to the first tab the
+ * viewer holds. The outbox leads because it is where "is anything going out?"
+ * is answered, including the banner that says why not.
+ */
+export const SMS_TAB_ROUTES = [
+  ["/admin/sms/outbox", "sms.view"],
+  ["/admin/sms/blast", "sms.send"],
+  ["/admin/sms/consent", "sms.view"],
+  ["/admin/sms/collect", "sms.send"],
+  ["/admin/sms/settings", "sms.settings"],
+] as const satisfies ReadonlyArray<readonly [string, Permission]>;
+
+/** Every key that opens a tab of the Texting section. */
+export const SMS_PERMISSIONS: readonly Permission[] = Array.from(
+  new Set(SMS_TAB_ROUTES.map(([, perm]) => perm)),
+);
+
+/** Where /admin/sms sends this viewer, or null when no tab is theirs. */
+export function smsLandingFor(caps: Capabilities | null): string | null {
+  return SMS_TAB_ROUTES.find(([, perm]) => can(caps, perm))?.[0] ?? null;
+}
+
 /** /admin/teams: the team list (teams.manage) and the logo queue (moderation.manage). */
 export const TEAMS_PAGE_PERMISSIONS: readonly Permission[] = ["teams.manage", "moderation.manage"];
 
@@ -677,6 +728,16 @@ export const ADMIN_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Permission
   // Any other page under /admin/email. The landing itself is in
   // ADMIN_EXACT_ROUTE_PERMISSIONS below.
   ["/admin/email", "email.view"],
+  // Longest-prefix wins, so these resolve before the /admin/sms catch-all —
+  // the settings page in particular has to need sms.settings, or a read-only
+  // role could rotate the Twilio credentials. The landing itself is in
+  // ADMIN_EXACT_ROUTE_PERMISSIONS below.
+  ["/admin/sms/outbox", "sms.view"],
+  ["/admin/sms/blast", "sms.send"],
+  ["/admin/sms/consent", "sms.view"],
+  ["/admin/sms/collect", "sms.send"],
+  ["/admin/sms/settings", "sms.settings"],
+  ["/admin/sms", "sms.view"],
   ["/admin/referrals", "referrals.view"],
   ["/admin/passes", "passes.manage"],
   // Read-gated, not write-gated: the whole scholarship area opens on
@@ -710,6 +771,8 @@ export const ADMIN_EXACT_ROUTE_PERMISSIONS: ReadonlyArray<readonly [string, Requ
   // The sidebar's one Email row lands here and is forwarded to the first tab
   // the viewer holds, so it opens on any email key.
   ["/admin/email", EMAIL_PERMISSIONS],
+  // Same for the Texting row.
+  ["/admin/sms", SMS_PERMISSIONS],
   // The team list carries the logo review queue on top, so a moderator
   // without teams.manage opens it too (and sees only the queue). A team's
   // own pages stay on teams.manage.

@@ -39,6 +39,9 @@ const MUST_BE_STATIC = [
   "/terms",
   "/refund-policy",
   "/community-guidelines",
+  // Must stay prerendered: it is the URL every HELP reply prints, it goes on
+  // the toll-free verification form, and it reads nothing per-request.
+  "/texts",
   // The auth funnel prerenders because ?next/?error moved to client-side
   // reads — adding a searchParams prop or server session read back to either
   // page flips it to per-request rendering.

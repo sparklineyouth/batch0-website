@@ -10,6 +10,7 @@ import {
   mergeMessages,
   reconcilePage,
   sameData,
+  settledBy,
   typingLine,
   type Placeable,
 } from "./chat-view.ts";
@@ -168,6 +169,55 @@ test("reconcilePage keeps a failed send (its text and Retry) like a pending one"
       ["a", "pending-1"],
     );
   }
+});
+
+// A send whose answer was lost: the row committed, the bubble says it failed.
+// With the composer's client id on both (0104), the server's copy is the
+// bubble's message, whichever way it arrives.
+const STUDENT = "student";
+const failedSend = { id: "pending-local", body: "Here is my update", senderId: STUDENT, createdAt: "2026-10-16T10:00:00.000Z", failed: "Offline", clientId: "cid-1" };
+const committed = { id: "server-generated-id", body: "Here is my update", senderId: STUDENT, createdAt: "2026-10-16T10:00:00.010Z", clientId: "cid-1" };
+
+test("a failed send the server has after all gives way to the server's copy: one message, no Retry", () => {
+  const merged = reconcilePage([failedSend], [committed], { asOf: "2026-10-16T10:00:01.000Z", complete: true });
+  assert.deepEqual(merged.map((m) => m.id), ["server-generated-id"]);
+  assert.equal(merged.filter((m) => "failed" in m && m.failed).length, 0);
+  // The same through any merge: the Realtime echo, the send's answer, a page.
+  assert.deepEqual(mergeMessages([failedSend], [committed]).map((m) => m.id), ["server-generated-id"]);
+  const sending = { ...failedSend, failed: undefined, pending: true };
+  assert.deepEqual(mergeMessages([sending], [committed]).map((m) => m.id), ["server-generated-id"]);
+  assert.equal(settledBy(failedSend, [failedSend, committed]), true);
+  // Not the server copy itself, and not a bubble nothing has arrived for.
+  assert.equal(settledBy(committed, [failedSend, committed]), false);
+  assert.equal(settledBy(failedSend, [failedSend]), false);
+});
+
+test("two messages meant twice, word for word, stay two: each settles only by its own id", () => {
+  const a = { id: "pending-a", body: "ok", senderId: STUDENT, createdAt: "2026-10-16T10:00:00.000Z", pending: true, clientId: "cid-a" };
+  const b = { id: "pending-b", body: "ok", senderId: STUDENT, createdAt: "2026-10-16T10:00:00.500Z", pending: true, clientId: "cid-b" };
+  const a2 = { id: "srv-a", body: "ok", senderId: STUDENT, createdAt: "2026-10-16T10:00:00.100Z", clientId: "cid-a" };
+  const b2 = { id: "srv-b", body: "ok", senderId: STUDENT, createdAt: "2026-10-16T10:00:00.600Z", clientId: "cid-b" };
+  const one = mergeMessages([a, b], [a2]);
+  assert.deepEqual(one.map((m) => m.id), ["srv-a", "pending-b"]);
+  assert.deepEqual(mergeMessages(one, [b2]).map((m) => m.id), ["srv-a", "srv-b"]);
+  // An echo arriving for a copy already merged changes nothing.
+  const both = mergeMessages(one, [b2]);
+  assert.equal(mergeMessages(both, [a2]), both);
+});
+
+test("only the author and the id settle a bubble: not someone else's message, not a copy from before 0104", () => {
+  const theirs = { ...committed, id: "theirs", senderId: "someone-else" };
+  assert.deepEqual(
+    reconcilePage([failedSend], [theirs], { asOf: "2026-10-16T10:00:01.000Z", complete: true }).map((m) => m.id),
+    ["pending-local", "theirs"],
+  );
+  // A database from before 0104 has no client id to say so: the bubble and
+  // its Retry stay (Retry then sends without one, as it always did).
+  const { clientId: _gone, ...unmarked } = committed;
+  assert.deepEqual(
+    reconcilePage([failedSend], [unmarked], { asOf: "2026-10-16T10:00:01.000Z", complete: true }).map((m) => m.id),
+    ["pending-local", "server-generated-id"],
+  );
 });
 
 test("a resync that changes nothing returns the same array of the same objects", () => {

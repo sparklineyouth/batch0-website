@@ -54,6 +54,7 @@ import {
   listBlockedPeople,
   listChannelReportParties,
   listChannelSenderIds,
+  listDeletedForReport,
   listMembers,
   listModeratorIds,
   countChannelReports,
@@ -65,8 +66,11 @@ import {
   type ChannelRow,
   type ChatMessage,
   type ChatPerson,
+  type DeletedCursor,
+  type DeletedMessageStub,
   type SidebarData,
 } from "@/lib/chat";
+import { findSentMessage, insertMessageOnce, type SentRow } from "@/lib/chat-send";
 import { buildChannelPayload, peopleIn, personalLocks, type ChannelPayload, type ChannelTarget } from "@/lib/chat-payload";
 import { chatLink, clearChannelBells, clearChannelBellsMany, notifyNewMessage } from "@/lib/chat-notify";
 import { mintChatUploads, removeChannelFiles, verifyChatUploads, type MintedChatUpload } from "@/lib/chat-files";
@@ -212,9 +216,40 @@ export async function searchMessages(
   return { messages, people: Object.fromEntries(await getPeople(peopleIn(messages))) };
 }
 
-export async function searchPeople(query: string): Promise<ChatPerson[]> {
+/**
+ * Who a group being put together already holds, for the directory: an
+ * existing group's members (`channelId`, one the viewer is in) and the people
+ * picked so far (`withIds`). Without it the search is for a DM.
+ */
+export type DirectoryGroup = { channelId?: string | null; withIds?: string[] };
+
+/**
+ * The directory for a new DM or group (searchDirectory). `withheld`: someone
+ * matching was left out by the safeguarding rule alone, and a group with
+ * someone from the team in it would let them in.
+ */
+export async function searchPeople(
+  query: string,
+  group: DirectoryGroup | null = null,
+): Promise<{ people: ChatPerson[]; withheld: boolean }> {
   const r = await readerNow();
-  return searchDirectory(String(query ?? "").slice(0, 100), await getChatViewer(r.userId, r.caps));
+  const viewer = await getChatViewer(r.userId, r.caps);
+  let members: string[] | null = null;
+  if (group && typeof group === "object") {
+    // Picks are only ever the viewer's own claim about the group: the rule
+    // is asked about the people they name, by their real roles, and
+    // createGroup / addToGroup ask it again before anything is written.
+    const picked = Array.from(
+      new Set((Array.isArray(group.withIds) ? group.withIds : []).map(asUuid).filter((id): id is string => !!id)),
+    ).slice(0, GROUP_MAX_MEMBERS);
+    members = picked;
+    if (group.channelId) {
+      const found = await getChannelForViewer(String(group.channelId), viewer);
+      if (!found || found.channel.kind !== "group" || !isParticipant(found.channel, viewer)) refuse(NOT_AVAILABLE);
+      members = [...((await listMembers([found.channel.id])).get(found.channel.id) ?? []), ...picked];
+    }
+  }
+  return searchDirectory(String(query ?? "").slice(0, 100), viewer, 20, members);
 }
 
 /**
@@ -234,6 +269,30 @@ export async function searchChannelPeople(channelId: string, q: string): Promise
 
 export async function fetchBlockedPeople(): Promise<ChatPerson[]> {
   return listBlockedPeople((await readerNow()).userId);
+}
+
+/**
+ * "Report a deleted message": a text channel's recently deleted messages as
+ * stubs (who sent it and when, never what it said), so something posted and
+ * then deleted can still be reported. A page at a time, `before` the last
+ * stub shown, so a pile of deletes can't bury one. The reporter gets back
+ * nothing it said; the report page shows its earlier versions to moderators
+ * the report leaves out (lib/chat.ts listDeletedForReport, reportMessage below).
+ */
+export async function fetchDeletedMessages(
+  channelId: string,
+  before: DeletedCursor | null = null,
+): Promise<{ messages: DeletedMessageStub[]; hasMore: boolean; people: Record<string, ChatPerson> }> {
+  const r = await readerNow();
+  await rateLimit("chat-deleted-list", r.userId, 20, 60, "Too many lookups in a row. Give it a second.");
+  const found = await openChannelFor(String(channelId ?? ""), r.userId, r.caps);
+  if (!found) refuse(NOT_AVAILABLE);
+  const cursor =
+    before && typeof before === "object" && typeof before.deletedAt === "string" && asUuid(before.id)
+      ? { deletedAt: before.deletedAt.slice(0, 64), id: asUuid(before.id)! }
+      : null;
+  const { messages, hasMore } = await listDeletedForReport(found.channel, r.userId, { before: cursor });
+  return { messages, hasMore, people: Object.fromEntries(await getPeople(messages.map((m) => m.senderId))) };
 }
 
 // ---------------------------------------------------------------------------
@@ -380,105 +439,188 @@ export type SendInput = {
   body: string;
   replyToId?: string | null;
   attachments?: { path: string; name: string }[];
+  /**
+   * The composer's id for this message (a uuid), made once when it was
+   * written and sent again by every Retry. A resend of a message that went
+   * through gets the original back (0104, lib/chat-send.ts).
+   */
+  clientId?: string | null;
 };
+
+/** Bells go out after the response: the sender shouldn't wait on them. */
+function ringAfter(bell: Parameters<typeof notifyNewMessage>[0]): void {
+  after(async () => {
+    try {
+      await notifyNewMessage(bell);
+    } catch (err) {
+      console.error("[chat] notify failed", err);
+    }
+  });
+}
+
+/**
+ * A resend of a message that already went in: hand back that message, as
+ * the first send would have. Only to where it was sent — the same channel,
+ * or the DM with the same person a draft's first message created — and only
+ * while the sender can still read it there. Nothing is posted or marked read
+ * again.
+ *
+ * Its bells are asked for again, after the response. The first request may
+ * have died between its insert and ringing them (a killed function runs no
+ * after()), and a replay is the only request left that knows the message is
+ * there. That costs nobody a second bell: each one carries the message's
+ * dedupe key, so whoever the first send belled is skipped by the
+ * notifications index, and `postedAt` skips anyone who has read past it since.
+ */
+async function replaySent(viewer: ChatViewer, sent: SentRow, input: SendInput): Promise<{ channelId: string; message: ChatMessage }> {
+  const found = await getChannelForViewer(sent.channel_id, viewer);
+  if (!found) refuse(NOT_AVAILABLE);
+  const channel = found.channel;
+  const wanted = asUuid(input.channelId);
+  const to = asUuid(input.toUserId);
+  const same = wanted
+    ? wanted === channel.id
+    : !!to && to !== viewer.userId && channel.kind === "dm" && channel.dmKey === dmKey(viewer.userId, to);
+  if (!same) refuse("That message was already sent in another conversation.");
+  if (sent.deleted_at) refuse("That message was sent, and has been deleted since.");
+  const [message] = await getMessages([sent.id]);
+  if (!message) throw new Error("Sent, but couldn't load it back. Refresh to see it.");
+  ringAfter({
+    channelId: channel.id,
+    messageId: message.id,
+    senderId: viewer.userId,
+    mentions: message.mentions,
+    mentionEveryone: message.mentionEveryone,
+    channel,
+    postedAt: message.createdAt,
+  });
+  return { channelId: channel.id, message };
+}
 
 export async function sendMessage(input: SendInput): Promise<ActionResult<{ channelId: string; message: ChatMessage }>> {
   return runAction({ name: "chat.send" }, async () => {
     const viewer = await viewerNow();
-    const hasFiles = Array.isArray(input.attachments) && input.attachments.length > 0;
-    const body = cleanBody(input.body, { allowEmpty: hasFiles });
-    // Before anything is created: a first message the limit refuses must not
-    // leave an empty DM in the other person's sidebar.
-    await rateLimit("chat-message", viewer.userId, 30, 60, "Slow down — too many messages in a row.");
-
-    let channelId = asUuid(input.channelId);
-    if (!channelId && input.toUserId) {
-      // Files are staged against an existing channel (openDm makes it), so a
-      // first message that would create the DM can't carry any.
-      const to = asUuid(input.toUserId);
-      if (hasFiles && (!to || to === viewer.userId || !(await findDm(dmKey(viewer.userId, to))))) {
-        refuse("Attach the files again: the conversation they were for isn't there.");
-      }
-      // The block, safeguarding, mute and fine checks run inside resolveDm;
-      // the new-conversation rate limit only when a row is actually created.
-      const resolved = await resolveDm(viewer, input.toUserId);
-      channelId = resolved.channelId;
-      // resolveDm made sure the viewer is a member (created, raced or healed),
-      // but the viewer was resolved before that.
-      if (!viewer.memberOf.includes(channelId)) viewer.memberOf = [...viewer.memberOf, channelId];
+    const clientId = asUuid(input.clientId);
+    // A Retry of a message whose answer was lost on the way back: it went in,
+    // so it's that message, not a new one. Asked before every check the first
+    // send itself trips — slow mode's clock, the rate limit — or the retry of
+    // a message that's already there would be refused, and still show as failed.
+    if (clientId) {
+      const sent = await findSentMessage(viewer.userId, clientId);
+      if (sent) return replaySent(viewer, sent, input);
     }
-    if (!channelId) refuse("Pick a channel or a person first.");
-
-    const found = await getChannelForViewer(channelId, viewer);
-    if (!found) refuse(NOT_AVAILABLE);
-    const { channel, reported } = found;
-    await assertCanPost(viewer, channel, reported);
-
-    const files = await verifyChatUploads(input.attachments, channel.id, viewer.userId);
-    // A storage fault behind the answer is logged inside verifyChatUploads.
-    if (!files.ok) refuse(files.error);
-
-    let replyTo: { id: string; senderId: string | null; kind: string } | null = null;
-    if (input.replyToId) {
-      const target = await getMessageRow(input.replyToId);
-      if (!target || target.channel_id !== channel.id || target.deleted_at) {
-        refuse("The message you're replying to is gone.");
-      }
-      replyTo = { id: target.id, senderId: target.sender_id ?? null, kind: target.kind };
+    let posted: { channelId: string; message: ChatMessage } | { replay: SentRow };
+    try {
+      posted = await postNewMessage(viewer, input, clientId);
+    } catch (err) {
+      // A Retry racing a slow first send looked before that send committed,
+      // and was then refused by a check the first send itself just tripped:
+      // slow mode's clock started by it, the rate limit counting it. The
+      // message is there now, so it's that message — not a failed bubble for
+      // something that was sent. Looked up once more only to settle a
+      // refusal; a lookup that fails leaves the refusal as it was.
+      const sent = clientId ? await findSentMessage(viewer.userId, clientId).catch(() => null) : null;
+      if (!sent) throw err;
+      posted = { replay: sent };
     }
-
-    const mentions = await pingsFor(channel, viewer, body, replyTo);
-    const everyone = canMentionEveryone(channel, viewer) && mentionsEveryone(body);
-
-    const admin = createAdminClient();
-    const { data, error } = await admin
-      .from("chat_messages")
-      .insert({
-        channel_id: channel.id,
-        sender_id: viewer.userId,
-        body,
-        reply_to_id: replyTo?.id ?? null,
-        mentions,
-        mention_everyone: everyone,
-        attachments: files.attachments,
-      })
-      .select("id, created_at")
-      .single();
-    if (error) throw new Error(error.message);
-    const row = data as { id: string; created_at: string };
-
-    // The sender has read their own message; a closed conversation reopens.
-    await admin.from("chat_reads").upsert(
-      {
-        channel_id: channel.id,
-        user_id: viewer.userId,
-        last_read_at: row.created_at,
-        seen_at: new Date().toISOString(),
-        hidden_at: null,
-      },
-      { onConflict: "channel_id,user_id" },
-    );
-
-    // Bells go out after the response: the sender shouldn't wait on them.
-    after(async () => {
-      try {
-        await notifyNewMessage({
-          channelId: channel.id,
-          messageId: row.id,
-          senderId: viewer.userId,
-          mentions,
-          mentionEveryone: everyone,
-          channel,
-        });
-      } catch (err) {
-        console.error("[chat] notify failed", err);
-      }
-    });
-
-    const [message] = await getMessages([row.id]);
-    if (!message) throw new Error("Sent, but couldn't load it back. Refresh to see it.");
-    return { channelId: channel.id, message };
+    return "replay" in posted ? replaySent(viewer, posted.replay, input) : posted;
   });
+}
+
+/** sendMessage past the replay check: every check, then the one insert. */
+async function postNewMessage(
+  viewer: ChatViewer,
+  input: SendInput,
+  clientId: string | null,
+): Promise<{ channelId: string; message: ChatMessage } | { replay: SentRow }> {
+  const hasFiles = Array.isArray(input.attachments) && input.attachments.length > 0;
+  const body = cleanBody(input.body, { allowEmpty: hasFiles });
+  // Before anything is created: a first message the limit refuses must not
+  // leave an empty DM in the other person's sidebar.
+  await rateLimit("chat-message", viewer.userId, 30, 60, "Slow down — too many messages in a row.");
+
+  let channelId = asUuid(input.channelId);
+  if (!channelId && input.toUserId) {
+    // Files are staged against an existing channel (openDm makes it), so a
+    // first message that would create the DM can't carry any.
+    const to = asUuid(input.toUserId);
+    if (hasFiles && (!to || to === viewer.userId || !(await findDm(dmKey(viewer.userId, to))))) {
+      refuse("Attach the files again: the conversation they were for isn't there.");
+    }
+    // The block, safeguarding, mute and fine checks run inside resolveDm;
+    // the new-conversation rate limit only when a row is actually created.
+    const resolved = await resolveDm(viewer, input.toUserId);
+    channelId = resolved.channelId;
+    // resolveDm made sure the viewer is a member (created, raced or healed),
+    // but the viewer was resolved before that.
+    if (!viewer.memberOf.includes(channelId)) viewer.memberOf = [...viewer.memberOf, channelId];
+  }
+  if (!channelId) refuse("Pick a channel or a person first.");
+
+  const found = await getChannelForViewer(channelId, viewer);
+  if (!found) refuse(NOT_AVAILABLE);
+  const { channel, reported } = found;
+  await assertCanPost(viewer, channel, reported);
+
+  const files = await verifyChatUploads(input.attachments, channel.id, viewer.userId);
+  if (!files.ok) refuse(files.error);
+
+  let replyTo: { id: string; senderId: string | null; kind: string } | null = null;
+  if (input.replyToId) {
+    const target = await getMessageRow(input.replyToId);
+    if (!target || target.channel_id !== channel.id || target.deleted_at) {
+      refuse("The message you're replying to is gone.");
+    }
+    replyTo = { id: target.id, senderId: target.sender_id ?? null, kind: target.kind };
+  }
+
+  const mentions = await pingsFor(channel, viewer, body, replyTo);
+  const everyone = canMentionEveryone(channel, viewer) && mentionsEveryone(body);
+
+  const written = await insertMessageOnce(
+    {
+      channel_id: channel.id,
+      sender_id: viewer.userId,
+      body,
+      reply_to_id: replyTo?.id ?? null,
+      mentions,
+      mention_everyone: everyone,
+      attachments: files.attachments,
+    },
+    clientId,
+  );
+  // The same message, sent twice at once (a Retry racing a slow first
+  // send): the other request's row is it.
+  if ("duplicate" in written) return { replay: written.duplicate };
+  const row = written.inserted;
+
+  // The bells are asked for the moment the row exists, before anything else
+  // is awaited: after() still runs if this request fails from here on, so a
+  // message that went in is never one nobody was told about.
+  ringAfter({
+    channelId: channel.id,
+    messageId: row.id,
+    senderId: viewer.userId,
+    mentions,
+    mentionEveryone: everyone,
+    channel,
+  });
+
+  // The sender has read their own message; a closed conversation reopens.
+  await createAdminClient().from("chat_reads").upsert(
+    {
+      channel_id: channel.id,
+      user_id: viewer.userId,
+      last_read_at: row.created_at,
+      seen_at: new Date().toISOString(),
+      hidden_at: null,
+    },
+    { onConflict: "channel_id,user_id" },
+  );
+
+  const [message] = await getMessages([row.id]);
+  if (!message) throw new Error("Sent, but couldn't load it back. Refresh to see it.");
+  return { channelId: channel.id, message };
 }
 
 export async function editMessage(messageId: string, rawBody: string): Promise<ActionResult<{ message: ChatMessage }>> {

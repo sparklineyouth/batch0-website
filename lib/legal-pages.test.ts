@@ -12,7 +12,8 @@ function flat(src: string): string {
   return src.replace(/\{" "\}/g, " ").replace(/\s+/g, " ");
 }
 
-const PAGES = ["privacy", "refund-policy", "terms", "community-guidelines"] as const;
+// "texts" is the texting page HELP replies link to (app/(legal)/texts).
+const PAGES = ["privacy", "refund-policy", "terms", "community-guidelines", "texts"] as const;
 const page = (name: (typeof PAGES)[number]) =>
   flat(readFileSync(new URL(`../app/(legal)/${name}/page.tsx`, import.meta.url), "utf8"));
 const faq = () => flat(readFileSync(new URL("../components/faq.tsx", import.meta.url), "utf8"));

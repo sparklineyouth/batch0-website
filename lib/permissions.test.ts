@@ -12,6 +12,9 @@ import {
   can,
   canMeet,
   emailLandingFor,
+  smsLandingFor,
+  SMS_TAB_ROUTES,
+  permissionForAdminPath,
   isKnownPermission,
   opensNoSection,
   resolveHome,
@@ -186,6 +189,54 @@ test("the Email landing forwards to the first tab the viewer holds", () => {
     const caps = capabilitiesFrom("one", [key]);
     const landing = emailLandingFor(caps);
     assert.ok(landing && canViewAdminPath(caps, landing), `${key} → ${landing}`);
+  }
+});
+
+test("texting keys open the admin area, and only the Texting pages they name", () => {
+  // Admin-area by default (they aren't in NON_ADMIN_PERMISSIONS): a role that
+  // can read the SMS outbox belongs in /admin, and nowhere else in it.
+  for (const key of ["sms.view", "sms.send", "sms.settings"] as const) {
+    assert.ok(ADMIN_AREA_PERMISSIONS.includes(key), key);
+    const caps = capabilitiesFrom("one", [key]);
+    assert.equal(canAccessAdmin(caps), true, key);
+    assert.equal(canViewAdminPath(caps, "/admin/payments"), false, key);
+    assert.equal(canViewAdminPath(caps, "/admin/email/outbox"), false, `${key} is not an email key`);
+  }
+  // The settings page holds the provider credential: reading the outbox must
+  // not open it, and neither must sending.
+  const viewer = capabilitiesFrom("v", ["sms.view"]);
+  assert.equal(canViewAdminPath(viewer, "/admin/sms/outbox"), true);
+  assert.equal(canViewAdminPath(viewer, "/admin/sms/consent"), true);
+  assert.equal(canViewAdminPath(viewer, "/admin/sms/settings"), false);
+  assert.equal(canViewAdminPath(viewer, "/admin/sms/blast"), false, "sending costs money; viewing doesn't");
+  assert.equal(canViewAdminPath(capabilitiesFrom("s", ["sms.send", "sms.view"]), "/admin/sms/settings"), false);
+  // Texting is separate from email: email.send never sends a text.
+  assert.equal(canViewAdminPath(capabilitiesFrom("e", ["email.send"]), "/admin/sms/blast"), false);
+});
+
+test("the Texting landing forwards to the first tab the viewer holds", () => {
+  assert.equal(smsLandingFor(capabilitiesFrom("admin", ["*"])), "/admin/sms/outbox");
+  assert.equal(smsLandingFor(capabilitiesFrom("s", ["sms.send"])), "/admin/sms/blast");
+  assert.equal(smsLandingFor(capabilitiesFrom("c", ["sms.settings"])), "/admin/sms/settings");
+  assert.equal(smsLandingFor(capabilitiesFrom("o", ["email.view"])), null);
+  assert.equal(canViewAdminPath(capabilitiesFrom("o", ["email.view"]), "/admin/sms"), false);
+  for (const key of ["sms.view", "sms.send", "sms.settings"] as const) {
+    const caps = capabilitiesFrom("one", [key]);
+    const landing = smsLandingFor(caps);
+    assert.ok(landing && canViewAdminPath(caps, landing), `${key} → ${landing}`);
+    assert.equal(canViewAdminPath(caps, "/admin/sms"), true, `${key} opens the landing`);
+  }
+  // Each tab needs exactly the key the route guard checks, so the tab bar can
+  // never show a link to a page that redirects away.
+  for (const [href, perm] of SMS_TAB_ROUTES) assert.equal(permissionForAdminPath(href), perm, href);
+});
+
+test("sending texts needs seeing them", () => {
+  assert.equal(PERMISSION_NEEDS["sms.send"], "sms.view");
+  assert.deepEqual(unmetPermissionNeed(["sms.send"]), ["sms.send", "sms.view"]);
+  assert.equal(unmetPermissionNeed(["sms.send", "sms.view"]), null);
+  for (const key of ["sms.send", "sms.settings"]) {
+    assert.equal(PERMISSION_BY_KEY.get(key)?.sensitive, true, `${key} spends money or holds a credential`);
   }
 });
 

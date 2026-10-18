@@ -6,8 +6,12 @@ export type UiMessage = ChatMessage & {
   pending?: boolean;
   /** Why it didn't send; offers Retry / Discard. */
   failed?: string;
-  /** What to resend on Retry. */
-  retry?: { body: string; replyToId: string | null; attachments: { path: string; name: string }[] };
+  /**
+   * What to resend on Retry — with the id the composer gave the message
+   * (`clientId`, 0104), so a resend of one that went through gets the
+   * original back instead of posting it twice.
+   */
+  retry?: { body: string; replyToId: string | null; attachments: { path: string; name: string }[]; clientId: string };
 };
 
 export type ChatViewerInfo = {

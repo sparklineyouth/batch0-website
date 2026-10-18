@@ -6,7 +6,9 @@ import { can } from "@/lib/permissions";
 import { countTicketsNeedingReply } from "@/lib/support";
 import { countOverdueAssignments } from "@/lib/assignments-server";
 import { pendingMigrations } from "@/lib/pending-migrations-server";
-import { PENDING_MIGRATIONS_NOTICE } from "@/lib/pending-migrations";
+import { pendingMigrationsNotice } from "@/lib/pending-migrations";
+import { loadAttention } from "@/lib/attention-server";
+import { AttentionList } from "@/components/admin/attention-list";
 import { ArrowRight, Inbox, CreditCard, LifeBuoy, ClipboardList, TriangleAlert } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -26,7 +28,7 @@ export default async function AdminOverview() {
   // Every admin-area role lands here, so each block is gated by the same
   // permission as the page it links to — an intern without `payments.view`
   // must not learn revenue from the overview.
-  const { caps } = await requireAdminArea();
+  const { caps, profile } = await requireAdminArea();
   const seeApplications = can(caps, "applications.view");
   const seeRevenue = can(caps, "payments.view");
   const seeSupport = can(caps, "support.view");
@@ -43,6 +45,7 @@ export default async function AdminOverview() {
     openTickets,
     overdueAssignments,
     missingMigrations,
+    attention,
   ] = await Promise.all([
     seeApplications
       ? admin
@@ -62,6 +65,10 @@ export default async function AdminOverview() {
     // Student work past due with nothing handed in, across running cohorts.
     seeAssignments ? countOverdueAssignments(admin) : Promise.resolve(0),
     seeMigrations ? pendingMigrations().catch(() => []) : Promise.resolve([]),
+    // Work waiting on the team, from every source this viewer may open
+    // (lib/attention.ts). Each source's permission is checked before it's
+    // read; a source that fails is named, never shown as empty.
+    loadAttention({ userId: profile.id, caps, now: Date.now() }),
   ]);
 
   const inbox: InboxItem[] = [
@@ -115,7 +122,7 @@ export default async function AdminOverview() {
           className="mt-4 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-700 dark:text-amber-300"
         >
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-          {PENDING_MIGRATIONS_NOTICE}
+          {pendingMigrationsNotice(missingMigrations)}
         </p>
       )}
 
@@ -151,6 +158,8 @@ export default async function AdminOverview() {
         </section>
       )}
 
+      <AttentionList attention={attention} />
+
       {seeRevenue && (
         <Link
           href="/admin/payments"
@@ -169,7 +178,7 @@ export default async function AdminOverview() {
         </Link>
       )}
 
-      {inbox.length === 0 && !seeRevenue && (
+      {inbox.length === 0 && !seeRevenue && attention.sources.length === 0 && attention.failed.length === 0 && (
         <p className="mt-6 text-sm text-ink-soft">Your sections are in the sidebar.</p>
       )}
     </div>

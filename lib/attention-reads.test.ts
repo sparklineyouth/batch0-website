@@ -1,0 +1,209 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import * as nodeModule from "node:module";
+import { pathToFileURL, fileURLToPath } from "node:url";
+import path from "node:path";
+
+// The real reads behind two attention sources — loadFeedbackQueue
+// (lib/assignments-server.ts) and the follow-up reads
+// (lib/student-followups-server.ts) — against a scripted stand-in for
+// supabase-js. What they must get right is the difference between "not set
+// up" (0093/0107 not applied: say nothing) and "couldn't load" (a timeout, a
+// 5xx, a names read that errored: say so). lib/attention-server.test.ts
+// covers what the providers do with each.
+
+type Reply = { data?: any; error?: any; count?: number | null };
+type Ops = [string, any[]][];
+const script: { reply: (table: string, ops: Ops) => Reply; calls: { table: string; ops: Ops }[] } = {
+  reply: () => ({ data: [], error: null, count: 0 }),
+  calls: [],
+};
+
+/** Every builder method records itself and returns the chain; awaiting it asks `script`. */
+const db = {
+  from(table: string) {
+    const ops: Ops = [];
+    const chain: any = new Proxy(
+      {},
+      {
+        get(_t, prop: string) {
+          if (prop === "then") {
+            return (ok: any, bad: any) => {
+              script.calls.push({ table, ops });
+              const r = script.reply(table, ops);
+              return Promise.resolve({ data: r.data ?? null, error: r.error ?? null, count: r.count ?? null }).then(ok, bad);
+            };
+          }
+          return (...args: any[]) => {
+            ops.push([prop, args]);
+            return chain;
+          };
+        },
+      },
+    );
+    return chain;
+  },
+};
+(globalThis as any).__reads = { db };
+
+const root = fileURLToPath(new URL("../", import.meta.url));
+const fake = (source: string) => `data:text/javascript,${encodeURIComponent(source)}`;
+(nodeModule as any).registerHooks({
+  resolve(specifier: string, context: any, next: any) {
+    const doubles: Record<string, string> = {
+      "server-only": "export {};",
+      "@/lib/supabase/admin": "export const createAdminClient=()=>globalThis.__reads.db;",
+      "@/lib/roles": "export const getAllRoles=async()=>[{slug:'admin',permissions:['*']}];",
+    };
+    if (doubles[specifier]) return { url: fake(doubles[specifier]), shortCircuit: true };
+    if (specifier.startsWith("@/")) return next(pathToFileURL(path.join(root, specifier.slice(2) + ".ts")).href, context);
+    return next(specifier, context);
+  },
+});
+const { listDueFollowUps, listActiveFollowUps, getFollowUpThread, listFollowUpOwners } = await import(
+  "./student-followups-server.ts"
+);
+const { loadFeedbackQueue } = await import("./assignments-server.ts");
+
+const MISSING = { code: "PGRST205", message: "Could not find the table 'public.student_followups' in the schema cache" };
+const TIMEOUT = { code: "57014", message: "canceling statement due to statement timeout" };
+const BAD_GATEWAY = { code: "", message: "Bad gateway" };
+const STUDENT = "00000000-0000-4000-8000-0000000000a1";
+const OWNER = "00000000-0000-4000-8000-0000000000b2";
+
+const row = {
+  id: "f1",
+  student_id: STUDENT,
+  owner_id: OWNER,
+  next_check_on: "2026-10-15",
+  note: "Missed weeks 3 and 4; emailed Tuesday.",
+  status: "open",
+  closing_note: null,
+  created_by: OWNER,
+  updated_by: OWNER,
+  closed_by: null,
+  closed_at: null,
+  created_at: "2026-10-01T12:00:00.000Z",
+  updated_at: "2026-10-01T12:00:00.000Z",
+};
+const people = [
+  { id: STUDENT, full_name: "Ada Lovelace", email: "ada@example.com" },
+  { id: OWNER, full_name: "Sam Rivera", email: "sam@example.com" },
+];
+
+function quiet<T>(run: () => Promise<T>): Promise<T> {
+  // The reads log real failures; keep the test output to the assertions.
+  const original = console.error;
+  console.error = () => {};
+  return run().finally(() => {
+    console.error = original;
+  });
+}
+
+test("due follow-ups: a missing table is 'not set up', anything else is 'failed'", async () => {
+  script.reply = (t) => (t === "student_followups" ? { error: MISSING } : {});
+  assert.deepEqual(await quiet(() => listDueFollowUps({ today: "2026-10-17", limit: 8 })), {
+    ready: false,
+    failed: false,
+    total: 0,
+    rows: [],
+  });
+  for (const error of [TIMEOUT, BAD_GATEWAY]) {
+    script.reply = (t) => (t === "student_followups" ? { error } : {});
+    const r = await quiet(() => listDueFollowUps({ today: "2026-10-17", limit: 8 }));
+    assert.deepEqual(r, { ready: false, failed: true, total: 0, rows: [] }, error.message);
+  }
+});
+
+test("due follow-ups: a failed names read fails the read, rather than calling a live student 'Deleted account'", async () => {
+  script.reply = (t) => (t === "student_followups" ? { data: [row], count: 1 } : { error: TIMEOUT });
+  const r = await quiet(() => listDueFollowUps({ today: "2026-10-17", limit: 8 }));
+  assert.equal(r.ready, false);
+  assert.equal(r.failed, true);
+  assert.deepEqual(r.rows, []);
+});
+
+test("due follow-ups: read fine, names resolved, the count is the table's", async () => {
+  script.calls = [];
+  script.reply = (t) => (t === "student_followups" ? { data: [row], count: 3 } : { data: people });
+  const r = await listDueFollowUps({ today: "2026-10-17", limit: 8 });
+  assert.equal(r.ready, true);
+  assert.equal(r.failed, false);
+  assert.equal(r.total, 3);
+  assert.deepEqual(
+    r.rows.map((v) => [v.studentName, v.ownerName, v.nextCheckOn]),
+    [["Ada Lovelace", "Sam Rivera", "2026-10-15"]],
+  );
+  const q = script.calls.find((c) => c.table === "student_followups")!.ops;
+  assert.deepEqual(q.find(([m]) => m === "lte"), ["lte", ["next_check_on", "2026-10-17"]]);
+  assert.deepEqual(q.find(([m]) => m === "eq"), ["eq", ["status", "open"]]);
+});
+
+test("the roster column and the drawer tell the two failures apart the same way", async () => {
+  script.reply = () => ({ error: MISSING });
+  assert.deepEqual(
+    await quiet(async () => {
+      const r = await listActiveFollowUps([]);
+      return { ready: r.ready, failed: r.failed };
+    }),
+    { ready: false, failed: false },
+  );
+  script.reply = () => ({ error: TIMEOUT });
+  const active = await quiet(() => listActiveFollowUps([STUDENT]));
+  assert.equal(active.ready, false);
+  assert.equal(active.failed, true);
+  const thread = await quiet(() => getFollowUpThread(STUDENT));
+  assert.deepEqual(
+    { ready: thread.ready, failed: thread.failed, active: thread.active, history: thread.history },
+    { ready: false, failed: true, active: null, history: [] },
+  );
+});
+
+test("the owner list throws when it can't be read, instead of saying nobody can own a follow-up", async () => {
+  script.reply = () => ({ error: TIMEOUT });
+  await assert.rejects(() => quiet(() => listFollowUpOwners()), /Couldn't load who can own follow-ups/);
+  script.reply = () => ({ data: people });
+  assert.deepEqual(
+    (await listFollowUpOwners()).map((o: { name: string }) => o.name),
+    ["Ada Lovelace", "Sam Rivera"],
+  );
+});
+
+const submission = {
+  id: "s1",
+  assignment_id: "a1",
+  user_id: STUDENT,
+  submitted_at: "2026-10-16T10:00:00.000Z",
+  late: false,
+  assignment: { title: "Weekly update", week: 2, cohort_id: "c1" },
+  student: { full_name: "Ada Lovelace", email: "ada@example.com" },
+};
+
+test("feedback queue: a missing table is 'not set up', a timeout or a failed scope read is 'failed'", async () => {
+  script.reply = (t) => (t === "course_assignment_submissions" ? { error: { code: "42P01", message: 'relation "course_assignment_submissions" does not exist' } } : {});
+  assert.deepEqual(await quiet(() => loadFeedbackQueue(db as any, null, { limit: 8 })), {
+    ready: false,
+    failed: false,
+    total: 0,
+    items: [],
+  });
+  script.reply = (t) => (t === "course_assignment_submissions" ? { error: TIMEOUT } : {});
+  assert.equal((await quiet(() => loadFeedbackQueue(db as any, null, { limit: 8 }))).failed, true);
+  // A mentor's scope is read first (their cohorts' assignments); that failing is a failure too.
+  script.reply = (t) => (t === "course_assignments" ? { error: TIMEOUT } : { data: [submission], count: 1 });
+  const scoped = await quiet(() => loadFeedbackQueue(db as any, { cohortIds: ["c1"], studentIds: [] }, { limit: 8 }));
+  assert.deepEqual({ ready: scoped.ready, failed: scoped.failed }, { ready: false, failed: true });
+});
+
+test("feedback queue: read fine, the oldest waiting first and every one counted", async () => {
+  script.calls = [];
+  script.reply = (t) => (t === "course_assignment_submissions" ? { data: [submission], count: 12 } : {});
+  const r = await loadFeedbackQueue(db as any, null, { limit: 8 });
+  assert.equal(r.ready, true);
+  assert.equal(r.failed, false);
+  assert.equal(r.total, 12);
+  assert.deepEqual(r.items.map((i) => [i.studentName, i.assignment.title, i.assignment.cohortId]), [["Ada Lovelace", "Weekly update", "c1"]]);
+  const q = script.calls.find((c) => c.table === "course_assignment_submissions")!.ops;
+  assert.deepEqual(q.find(([m]) => m === "eq"), ["eq", ["status", "submitted"]]);
+  assert.deepEqual(q.find(([m]) => m === "order"), ["order", ["submitted_at", { ascending: true }]]);
+});

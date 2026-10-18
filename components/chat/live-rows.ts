@@ -50,7 +50,20 @@ export function toUiMessage(row: LiveRow, known: readonly UiMessage[]): UiMessag
     createdAt: row.created_at,
     editedAt: row.edited_at ?? null,
     pinnedAt: row.pinned_at ?? null,
+    ...(typeof row.client_id === "string" ? { clientId: row.client_id } : {}),
   };
+}
+
+/**
+ * The unsent bubble a live INSERT of our own is, when the row can't say by
+ * its client id (a database from before 0104): the oldest one still sending
+ * with the same words. A guess, and only ever about a bubble mid-send; with a
+ * client id, mergeMessages settles the bubble exactly, failed ones included.
+ */
+export function pendingTwin(list: readonly UiMessage[], row: LiveRow, viewerId: string): number {
+  if (row.client_id || row.sender_id !== viewerId) return -1;
+  const body = row.body ?? "";
+  return list.findIndex((m) => m.pending && m.senderId === viewerId && m.body === body);
 }
 
 export const has = (row: object, key: string) => Object.prototype.hasOwnProperty.call(row, key);

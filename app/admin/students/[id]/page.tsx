@@ -16,6 +16,8 @@ import { loadCheckinHistory } from "@/lib/checkin-history-server";
 import { EarlierCheckins } from "@/components/assignments/earlier-checkins";
 import { listTicketsForStaff } from "@/lib/support";
 import { STAFF_STATUS_LABELS, supportScopeFor } from "@/lib/support-access";
+import { hasAnyProfileAction, profileAccess } from "@/lib/people-profile-access";
+import { roleChangeLock } from "@/lib/role-change";
 import type { Role } from "@/lib/types";
 
 export const metadata = { title: "Manage user · Admin" };
@@ -70,6 +72,10 @@ export default async function AdminStudentDetail(
   // Assignable roles are capped by what the viewer holds, mirroring the
   // server action; a viewer without `people.roles` gets a read-only badge.
   const canChangeRoles = can(caps, "people.roles");
+  // Finance sections and Manage controls follow the permissions their own
+  // pages and actions need, not people.view (lib/people-profile-access.ts).
+  // Payment rows aren't even read for a viewer who may not see them.
+  const access = profileAccess(caps);
   // Their support requests, for a viewer who may read the queue at all. The
   // scope carries the confidentiality rule: a concern they filed is absent —
   // not even counted — for someone without support.sensitive.
@@ -81,9 +87,9 @@ export default async function AdminStudentDetail(
     { data: profile },
     { data: applications },
     { data: enrollments },
-    { data: payments },
+    payments,
     { data: cohorts },
-    { data: charges },
+    charges,
     supportRequests,
     checkins,
   ] = await Promise.all([
@@ -104,17 +110,25 @@ export default async function AdminStudentDetail(
       .select("*, cohort:cohorts(id, name, starts_on, ends_on)")
       .eq("user_id", params.id)
       .order("enrolled_at", { ascending: false }),
-    admin
-      .from("payments")
-      .select("*")
-      .eq("user_id", params.id)
-      .order("created_at", { ascending: false }),
+    access.readPayments
+      ? admin
+          .from("payments")
+          // A refunder who can't read the ledger only needs to know whether
+          // there's something to refund.
+          .select(access.payments ? "*" : "status, stripe_payment_intent_id")
+          .eq("user_id", params.id)
+          .order("created_at", { ascending: false })
+          .then(({ data }) => (data ?? []) as any[])
+      : Promise.resolve([] as any[]),
     admin.from("cohorts").select("id, name").order("starts_on"),
-    admin
-      .from("user_charges")
-      .select("*")
-      .eq("user_id", params.id)
-      .order("created_at", { ascending: false }),
+    access.charges
+      ? admin
+          .from("user_charges")
+          .select("*")
+          .eq("user_id", params.id)
+          .order("created_at", { ascending: false })
+          .then(({ data }) => (data ?? []) as any[])
+      : Promise.resolve([] as any[]),
     supportScope.canView
       ? listTicketsForStaff({ view: "all", userId: params.id, pageSize: 10 }, supportScope)
       : Promise.resolve(null),
@@ -131,6 +145,13 @@ export default async function AdminStudentDetail(
 
   // Deleting a full-access account is blocked server-side; mirror that here.
   const targetCaps = await capabilitiesForRole(profile.role);
+  // The role picker only where the action would accept a change: not your
+  // own role, and not someone whose role holds admin powers yours doesn't (so
+  // only a full admin re-roles a full admin). lib/role-change.ts is the one
+  // rule.
+  const roleLock = canChangeRoles
+    ? roleChangeLock({ userId: actor.id, caps }, { id: profile.id, role: profile.role }, allRoles)
+    : null;
 
   // Chat's safeguarding rule (lib/chat-access.ts conversationAllowed): only
   // chat staff may message a student privately. Anyone else here would land
@@ -140,12 +161,10 @@ export default async function AdminStudentDetail(
 
   const latestApp = (applications ?? [])[0] as any;
   const currentEnrollment = (enrollments ?? [])[0] as any;
-  const hasRefundable = (payments ?? []).some(
+  const hasRefundable = payments.some(
     (p: any) => p.status === "succeeded" && p.stripe_payment_intent_id,
   );
-  const pendingCharges = (charges ?? []).filter(
-    (c: any) => c.status === "pending",
-  );
+  const pendingCharges = charges.filter((c: any) => c.status === "pending");
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -173,6 +192,23 @@ export default async function AdminStudentDetail(
                 </Link>
               </>
             )}
+            {/* A guest ticket isn't a fee, so it lives here rather than in
+                Fees & fines, which a Demo Day organiser may not see. */}
+            {can(caps, "demoday.manage") && (
+              <>
+                {" · "}
+                <Link
+                  href={`/admin/demo-day/tickets?${new URLSearchParams({
+                    email: displayEmail(profile.email) ?? "",
+                    name: profile.full_name ?? "",
+                  }).toString()}`}
+                  prefetch={false}
+                  className="link-ink"
+                >
+                  Send a Demo Day ticket
+                </Link>
+              </>
+            )}
           </p>
           <p className="mt-1 text-xs text-ink-faint">
             Joined <LocalTime value={profile.created_at} mode="date" />
@@ -196,7 +232,7 @@ export default async function AdminStudentDetail(
           <span className="text-xs uppercase tracking-wider text-ink-faint">
             Role
           </span>
-          {canChangeRoles ? (
+          {canChangeRoles && !roleLock ? (
             <RoleSelect
               userId={profile.id}
               role={profile.role as Role}
@@ -204,6 +240,7 @@ export default async function AdminStudentDetail(
             />
           ) : (
             <span
+              title={roleLock ?? undefined}
               className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider ${roleColorClasses(
                 allRoles.find((r) => r.slug === profile.role)?.color ?? "slate",
               )}`}
@@ -306,34 +343,40 @@ export default async function AdminStudentDetail(
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-faint">
           Snapshot
         </h2>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className={`grid gap-3 ${access.charges ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
           <Mini label="Latest application" value={latestApp?.status ?? "—"} />
           <Mini
             label="Current cohort"
             value={currentEnrollment?.cohort?.name ?? "—"}
           />
-          <Mini
-            label="Pending charges"
-            value={pendingCharges.length.toString()}
-          />
+          {access.charges && (
+            <Mini
+              label="Pending charges"
+              value={pendingCharges.length.toString()}
+            />
+          )}
         </div>
       </Card>
 
-      <Card className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-faint">
-          Manage
-        </h2>
-        <ManagePanel
-          userId={profile.id}
-          isSelf={actor?.id === profile.id}
-          isAdminTarget={targetCaps.superAdmin}
-          hasRefundable={hasRefundable}
-          cohorts={(cohorts ?? []) as any}
-          currentCohortId={
-            currentEnrollment?.cohort_id ?? latestApp?.cohort_id ?? null
-          }
-        />
-      </Card>
+      {hasAnyProfileAction(access) && (
+        <Card className="mt-6">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-faint">
+            Manage
+          </h2>
+          <ManagePanel
+            userId={profile.id}
+            allowed={access.actions}
+            isSelf={actor?.id === profile.id}
+            isAdminTarget={targetCaps.superAdmin}
+            hasRefundable={hasRefundable}
+            cohorts={(cohorts ?? []) as any}
+            currentCohortId={
+              currentEnrollment?.cohort_id ?? latestApp?.cohort_id ?? null
+            }
+            enrolledCohortId={currentEnrollment?.cohort_id ?? null}
+          />
+        </Card>
+      )}
 
       <Card className="mt-6 !p-0 overflow-hidden">
         <div className="px-5 py-3 text-sm font-semibold uppercase tracking-wider text-ink-faint">
@@ -371,12 +414,16 @@ export default async function AdminStudentDetail(
                     {a.fee_waived ? "Yes" : "—"}
                   </td>
                   <td className="px-5 py-3 text-right">
-                    <Link
-                      href={`/admin/applications/${a.id}`}
-                      className="text-xs text-phosphor-ink hover:underline"
-                    >
-                      Open →
-                    </Link>
+                    {/* Gated on the destination's permission: people.view
+                        alone would be bounced off /admin/applications. */}
+                    {can(caps, "applications.view") && (
+                      <Link
+                        href={`/admin/applications/${a.id}`}
+                        className="text-xs text-phosphor-ink hover:underline"
+                      >
+                        Open →
+                      </Link>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -385,110 +432,105 @@ export default async function AdminStudentDetail(
         )}
       </Card>
 
-      <Card className="mt-6 !p-0 overflow-hidden">
-        <div className="px-5 py-3 text-sm font-semibold uppercase tracking-wider text-ink-faint">
-          Payments
-        </div>
-        {(payments?.length ?? 0) === 0 ? (
-          <p className="px-5 pb-5 text-sm text-ink-soft">No payments.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-y border-line bg-wash text-left text-xs font-mono uppercase tracking-wider text-ink-faint">
-                <th className="px-5 py-2">Date</th>
-                <th className="px-5 py-2">Amount</th>
-                <th className="px-5 py-2">Status</th>
-                <th className="px-5 py-2">Stripe intent</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(payments ?? []).map((p: any) => (
-                <tr
-                  key={p.id}
-                  className="border-b border-line last:border-0 hover:bg-wash"
-                >
-                  <td className="px-5 py-3 text-ink-soft">
-                    <LocalTime value={p.created_at} />
-                  </td>
-                  <td className="px-5 py-3 text-ink tabular-nums">
-                    {fmtMoney(p.amount_cents, p.currency)}
-                  </td>
-                  <td className="px-5 py-3">
-                    <StatusBadge status={p.status} />
-                  </td>
-                  <td className="px-5 py-3 text-xs text-ink-faint font-mono">
-                    {p.stripe_payment_intent_id ?? "—"}
-                  </td>
+      {access.payments && (
+        <Card className="mt-6 !p-0 overflow-hidden">
+          <div className="px-5 py-3 text-sm font-semibold uppercase tracking-wider text-ink-faint">
+            Payments
+          </div>
+          {payments.length === 0 ? (
+            <p className="px-5 pb-5 text-sm text-ink-soft">No payments.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-y border-line bg-wash text-left text-xs font-mono uppercase tracking-wider text-ink-faint">
+                  <th className="px-5 py-2">Date</th>
+                  <th className="px-5 py-2">Amount</th>
+                  <th className="px-5 py-2">Status</th>
+                  <th className="px-5 py-2">Stripe intent</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
+              </thead>
+              <tbody>
+                {payments.map((p: any) => (
+                  <tr
+                    key={p.id}
+                    className="border-b border-line last:border-0 hover:bg-wash"
+                  >
+                    <td className="px-5 py-3 text-ink-soft">
+                      <LocalTime value={p.created_at} />
+                    </td>
+                    <td className="px-5 py-3 text-ink tabular-nums">
+                      {fmtMoney(p.amount_cents, p.currency)}
+                    </td>
+                    <td className="px-5 py-3">
+                      <StatusBadge status={p.status} />
+                    </td>
+                    <td className="px-5 py-3 text-xs text-ink-faint font-mono">
+                      {p.stripe_payment_intent_id ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      )}
 
-      <Card className="mt-6 !p-0 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3">
-          <div className="text-sm font-semibold uppercase tracking-wider text-ink-faint">
-            Fees & fines
+      {access.charges && (
+        <Card className="mt-6 !p-0 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3">
+            <div className="text-sm font-semibold uppercase tracking-wider text-ink-faint">
+              Fees & fines
+            </div>
+            {access.issueCharge && (
+              <Link
+                href={`/admin/charges?user=${profile.id}`}
+                className="text-xs text-phosphor-ink hover:underline"
+              >
+                Issue a charge →
+              </Link>
+            )}
           </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <Link
-              href={`/admin/demo-day/tickets?${new URLSearchParams({
-                email: displayEmail(profile.email) ?? "",
-                name: profile.full_name ?? "",
-              }).toString()}`}
-              className="text-xs text-phosphor-ink hover:underline"
-            >
-              Send a Demo Day ticket →
-            </Link>
-            <Link
-              href={`/admin/charges?user=${profile.id}`}
-              className="text-xs text-phosphor-ink hover:underline"
-            >
-              Issue a charge →
-            </Link>
-          </div>
-        </div>
-        {(charges?.length ?? 0) === 0 ? (
-          <p className="px-5 pb-5 text-sm text-ink-soft">No charges.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-y border-line bg-wash text-left text-xs font-mono uppercase tracking-wider text-ink-faint">
-                <th className="px-5 py-2">Issued</th>
-                <th className="px-5 py-2">Type</th>
-                <th className="px-5 py-2">Amount</th>
-                <th className="px-5 py-2">Description</th>
-                <th className="px-5 py-2">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(charges ?? []).map((c: any) => (
-                <tr
-                  key={c.id}
-                  className="border-b border-line last:border-0 hover:bg-wash"
-                >
-                  <td className="px-5 py-3 text-ink-soft">
-                    <LocalTime value={c.created_at} mode="date" />
-                  </td>
-                  <td className="px-5 py-3 text-ink-soft capitalize">
-                    {c.kind}
-                  </td>
-                  <td className="px-5 py-3 text-ink tabular-nums">
-                    {fmtMoney(c.amount_cents)}
-                  </td>
-                  <td className="px-5 py-3 text-ink-soft max-w-xs truncate">
-                    {c.description}
-                  </td>
-                  <td className="px-5 py-3">
-                    <StatusBadge status={c.status} />
-                  </td>
+          {charges.length === 0 ? (
+            <p className="px-5 pb-5 text-sm text-ink-soft">No charges.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-y border-line bg-wash text-left text-xs font-mono uppercase tracking-wider text-ink-faint">
+                  <th className="px-5 py-2">Issued</th>
+                  <th className="px-5 py-2">Type</th>
+                  <th className="px-5 py-2">Amount</th>
+                  <th className="px-5 py-2">Description</th>
+                  <th className="px-5 py-2">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
+              </thead>
+              <tbody>
+                {charges.map((c: any) => (
+                  <tr
+                    key={c.id}
+                    className="border-b border-line last:border-0 hover:bg-wash"
+                  >
+                    <td className="px-5 py-3 text-ink-soft">
+                      <LocalTime value={c.created_at} mode="date" />
+                    </td>
+                    <td className="px-5 py-3 text-ink-soft capitalize">
+                      {c.kind}
+                    </td>
+                    <td className="px-5 py-3 text-ink tabular-nums">
+                      {fmtMoney(c.amount_cents)}
+                    </td>
+                    <td className="px-5 py-3 text-ink-soft max-w-xs truncate">
+                      {c.description}
+                    </td>
+                    <td className="px-5 py-3">
+                      <StatusBadge status={c.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      )}
 
       {supportRequests && (
         <Card className="mt-6 !p-0 overflow-hidden">

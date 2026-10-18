@@ -11,7 +11,7 @@ export default function TermsPage() {
     <>
       <h1 className="text-4xl font-bold tracking-tight">Terms of Service</h1>
       <p className="mt-2 text-sm text-ink-faint">
-        Last updated: October 15, 2026
+        Last updated: October 17, 2026
       </p>
 
       <p>
@@ -49,6 +49,33 @@ export default function TermsPage() {
         <a href="/support?topic=refund">batch0.org/support</a> or an email
         to <a href="mailto:hello@batch0.org">hello@batch0.org</a>; both
         count, as the refund policy explains.
+      </p>
+
+      <h2>Text messages</h2>
+      <p>
+        If you opt in at batch0.org/dashboard/phone, batch0 may text that
+        number about the program: a session starting, a schedule change, a
+        deadline. We don&rsquo;t send promotional or marketing texts. Opting in
+        is a separate choice from creating an account or paying:{" "}
+        <strong>
+          agreeing to texts is not a condition of applying, enrolling, or any
+          purchase
+        </strong>
+        , and declining costs you nothing — everything still reaches you by
+        email. Texts aren&rsquo;t offered to applicants under 13.
+      </p>
+      <p>
+        Message frequency varies. Message and data rates may apply; those are
+        charged by your mobile carrier, not by us. Reply <strong>STOP</strong>{" "}
+        to any message to stop all batch0 texts to that number,{" "}
+        <strong>START</strong> to resubscribe, or <strong>HELP</strong> for our
+        contact details. Carriers are not liable for delayed or undelivered
+        messages, and we don&rsquo;t guarantee that any particular text arrives
+        or arrives on time — your dashboard and email are the authoritative
+        record of schedules and deadlines. Only opt in a number that is yours.
+        The full explanation is at <a href="/texts">batch0.org/texts</a>,
+        and what we do with the number is in our{" "}
+        <a href="/privacy">Privacy Policy</a>.
       </p>
 
       <h2>Acceptable use</h2>
@@ -121,7 +148,7 @@ export default function TermsPage() {
           name: "Terms of Service",
           description:
             "The terms that govern batch0, the live online startup accelerator for high schoolers.",
-          dateModified: "2026-10-15",
+          dateModified: "2026-10-17",
         })}
       />
       <JsonLd data={breadcrumbJsonLd([{ name: "Terms", path: "/terms" }])} />

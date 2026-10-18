@@ -2,9 +2,11 @@ import Link from "next/link";
 import { Download } from "lucide-react";
 import { requirePermission } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { loadCohortBoard } from "@/lib/assignments-server";
+import { loadCohortBoard, loadFeedbackQueue } from "@/lib/assignments-server";
 import { cohortWeekCount, formatEastern, formatEasternDay } from "@/lib/assignments";
+import { isUuid } from "@/lib/support-access";
 import { buttonClasses } from "@/components/ui/button";
+import { LocalTime } from "@/components/ui/local-time";
 import { AssignmentEditor, type EditorAssignment } from "./assignment-editor";
 import { CompletionMatrix } from "./completion-matrix";
 
@@ -13,8 +15,11 @@ export const dynamic = "force-dynamic";
 
 const STATUS_NOTE: Record<string, string> = { draft: "Draft", archived: "Archived" };
 
+/** How many of the longest-waiting submissions the "Waiting for feedback" list shows; its count is exact. */
+const WAITING_LIST_MAX = 10;
+
 export default async function AdminAssignmentsPage(props: {
-  searchParams: Promise<{ cohort?: string; filter?: string }>;
+  searchParams: Promise<{ cohort?: string; filter?: string; review?: string }>;
 }) {
   await requirePermission("assignments.manage");
   const searchParams = await props.searchParams;
@@ -41,7 +46,7 @@ export default async function AdminAssignmentsPage(props: {
   }
 
   const now = new Date();
-  const [board, { data: modules }] = await Promise.all([
+  const [board, { data: modules }, waiting] = await Promise.all([
     loadCohortBoard(admin, cohort.id, now),
     admin
       .from("modules")
@@ -49,7 +54,12 @@ export default async function AdminAssignmentsPage(props: {
       .eq("cohort_id", cohort.id)
       .order("week", { ascending: true })
       .order("position", { ascending: true }),
+    // Program-wide, whichever cohort is selected: the same read, scope and
+    // count as the Overview's Feedback source for this permission, so the
+    // number there is a number here.
+    loadFeedbackQueue(admin, null, { limit: WAITING_LIST_MAX }),
   ]);
+  const cohortName = new Map(cohorts.map((c) => [c.id, c.name]));
   const lessons = (modules ?? []).flatMap((m: any) =>
     [...(m.lessons ?? [])]
       .sort((a: any, b: any) => a.position - b.position)
@@ -67,6 +77,13 @@ export default async function AdminAssignmentsPage(props: {
     if (s.status !== "excused") handedIn.set(s.assignment_id, (handedIn.get(s.assignment_id) ?? 0) + 1);
   }
   const nameOf = new Map(board.students.map((s) => [s.userId, s.name || s.email || "Student"]));
+  // ?review=<assignment id>:<student id> opens that cell's review drawer —
+  // the link a "Waiting for feedback" row on the Overview carries.
+  const [reviewAssignment, reviewStudent] = (searchParams.review ?? "").split(":");
+  const initialCell =
+    isUuid(reviewAssignment) && isUuid(reviewStudent)
+      ? { assignmentId: reviewAssignment.toLowerCase(), userId: reviewStudent.toLowerCase() }
+      : null;
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -107,6 +124,61 @@ export default async function AdminAssignmentsPage(props: {
         </p>
       ) : (
         <>
+          {waiting.failed ? (
+            <p role="status" className="mt-8 text-xs text-red-600 dark:text-red-400">
+              Couldn&apos;t load the work waiting for feedback just now. Reload to try again.
+            </p>
+          ) : (
+            waiting.total > 0 && (
+              <section id="waiting-feedback" className="mt-8 scroll-mt-24">
+                <h2 className="font-mono text-xs uppercase tracking-wider text-ink-faint">
+                  Waiting for feedback · {waiting.total.toLocaleString("en-US")}
+                </h2>
+                <ul className="mt-3 divide-y divide-line border-y border-line">
+                  {waiting.items.map((w) => (
+                    <li key={w.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
+                      <div className="min-w-0 flex-1 basis-56">
+                        <p className="truncate text-sm text-ink">
+                          {w.studentName || "Student"}
+                          <span className="text-ink-soft">
+                            {" "}
+                            · {w.assignment.title}
+                            {w.assignment.week ? ` · Week ${w.assignment.week}` : ""}
+                          </span>
+                        </p>
+                        <p className="mt-0.5 text-xs text-ink-faint">
+                          {cohorts.length > 1 && cohortName.get(w.assignment.cohortId)
+                            ? `${cohortName.get(w.assignment.cohortId)} · `
+                            : ""}
+                          {w.submittedAt ? (
+                            <>
+                              Submitted <LocalTime value={w.submittedAt} mode="datetime-short" />
+                            </>
+                          ) : (
+                            "Submitted"
+                          )}
+                          {w.late ? " · late" : ""}
+                        </p>
+                      </div>
+                      <Link
+                        href={`/admin/assignments?cohort=${w.assignment.cohortId}&review=${w.assignmentId}:${w.userId}`}
+                        prefetch={false}
+                        className={buttonClasses("secondary", "sm")}
+                      >
+                        Review
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+                {waiting.total > waiting.items.length && (
+                  <p className="mt-2 text-xs text-ink-faint">
+                    Showing the {waiting.items.length} longest-waiting of {waiting.total.toLocaleString("en-US")}.
+                  </p>
+                )}
+              </section>
+            )
+          )}
+
           <section className="mt-8">
             <h2 className="font-mono text-xs uppercase tracking-wider text-ink-faint">Progress</h2>
             <div className="mt-3">
@@ -114,6 +186,7 @@ export default async function AdminAssignmentsPage(props: {
                 columns={board.columns.map((a) => ({ id: a.id, title: a.title, week: a.week, dueAt: a.due_at }))}
                 rows={board.rows.map((r) => ({ ...r, name: nameOf.get(r.userId) ?? "Student" }))}
                 missingOnly={searchParams.filter === "missing"}
+                initialCell={initialCell}
               />
             </div>
           </section>

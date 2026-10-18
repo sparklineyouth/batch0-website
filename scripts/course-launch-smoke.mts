@@ -88,9 +88,27 @@ function visibleText(html: string) {
   return decodeHtml(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "").replace(/<!--[^]*?-->/g, "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ");
 }
 function hrefs(html: string) { return [...html.matchAll(/\bhref="([^"]+)"/g)].map((match) => decodeHtml(match[1])); }
-function noPrivateMaterial(html: string) {
-  assert.ok(!html.includes("/storage/v1/object/sign/course-materials/"), "Unauthorized page must not mint private material URLs");
-  assert.ok(!html.includes(firstLesson.title), "Unauthorized page must not expose lesson content");
+function noPrivateMaterial(html: string, { lessonContent = true } = {}) {
+  assert.ok(!html.includes("/storage/v1/object/sign/course-materials/"), "Pages must not mint private material URLs at render");
+  if (lessonContent) assert.ok(!html.includes(firstLesson.title), "Unauthorized page must not expose lesson content");
+}
+/**
+ * Request a lesson's materials route as the student's browser would, without
+ * following the redirect: a signed course-materials URL with a token when the
+ * student may read it, else null (with the redirect it sent instead).
+ */
+async function signedMaterial(route: string, cookie: string): Promise<string | null> {
+  const response = await request(new URL(route, base), { headers: cookie ? { cookie } : undefined });
+  const location = response.headers.get("location");
+  assert.ok([302, 303, 307, 308].includes(response.status) && location, `Materials route redirects: HTTP ${response.status}`);
+  const target = new URL(location, base);
+  // Anything else (the lesson, the course page, a middleware gate) isn't the file.
+  if (target.origin !== supabase.origin) return null;
+  assert.equal(response.headers.get("cache-control")?.includes("no-store"), true, "A signed redirect is never cached");
+  const path = new URL(route, base).searchParams.get("path");
+  assert.equal(decodeURIComponent(target.pathname), `/storage/v1/object/sign/course-materials/${path}`);
+  assert.ok(target.searchParams.has("token"));
+  return target.toString();
 }
 
 // All preflight failures happen before fixture creation.
@@ -181,13 +199,18 @@ try {
         assert.ok(links.includes(`/dashboard/course/${next.id}`), `${lesson.title} links to the next lesson`);
         assert.match(visibleText(result.body), /Next lesson/);
       } else assert.ok(!visibleText(result.body).includes("Next lesson"), "Final lesson does not loop");
+      // The page links to the materials route, which signs at click time
+      // (lib/lesson-assets.ts) — a URL minted at render was dead after ten
+      // minutes. Follow it the way a click does and check where it lands.
+      noPrivateMaterial(result.body, { lessonContent: false });
       for (const material of lesson.materials.filter((item) => item.path.endsWith(".pdf"))) {
-        const signed = links.find((href) => {
-          if (!href.startsWith(supabase.origin)) return false;
-          return decodeURIComponent(new URL(href).pathname) === `/storage/v1/object/sign/course-materials/${material.path}`;
+        const route = links.find((href) => {
+          if (!href.startsWith(`/dashboard/course/${lesson.id}/materials?`)) return false;
+          return new URL(href, base).searchParams.get("path") === material.path;
         });
-        assert.ok(signed, `${lesson.title} provides its signed workbook PDF`);
-        assert.ok(new URL(signed).searchParams.has("token"));
+        assert.ok(route, `${lesson.title} links its workbook PDF through the materials route`);
+        const signed = await signedMaterial(route, cookie);
+        assert.ok(signed, `${lesson.title}'s materials route redirects to a freshly signed workbook PDF`);
         pdfUrls.set(material.path, signed);
       }
     }));
@@ -210,6 +233,15 @@ try {
       assert.ok(!Buffer.from(await anonymous.arrayBuffer()).subarray(0, 5).equals(Buffer.from("%PDF-")));
     }
   }
+  const firstPdfLesson = lessons.find((lesson) => lesson.materials.some((item) => item.path.endsWith(".pdf")));
+  const firstPdf = firstPdfLesson?.materials.find((item) => item.path.endsWith(".pdf"));
+  assert.ok(firstPdfLesson && firstPdf);
+  const materialRoute = `/dashboard/course/${firstPdfLesson.id}/materials?path=${encodeURIComponent(firstPdf.path)}`;
+  const anonymousMaterial = await request(new URL(materialRoute, base));
+  assert.ok([303, 307, 308].includes(anonymousMaterial.status));
+  assert.equal(new URL(anonymousMaterial.headers.get("location") ?? "", base).pathname, "/login", "Signed-out material clicks go to sign-in");
+  const notListed = await request(new URL(`/dashboard/course/${firstPdfLesson.id}/materials?path=${encodeURIComponent("other-cohort/secret.pdf")}`, base), { headers: { cookie } });
+  assert.ok(!(notListed.headers.get("location") ?? "").startsWith(supabase.origin), "A path the lesson doesn't list is never signed");
   passed("All nine private PDF downloads match their reviewed files; anonymous storage reads are denied");
 
   const kickoff = await page("/dashboard/kickoff", cookie);
@@ -241,6 +273,8 @@ try {
   assert.match(visibleText(revoked.body), /Course unlocks at enrollment/);
   noPrivateMaterial(revoked.body);
   assert.equal((await api<unknown[]>(`/rest/v1/lessons?select=id&${lessonFilter}`, { headers: studentHeaders })).length, 0);
+  // A link copied while enrolled stops opening the file once they aren't.
+  assert.equal(await signedMaterial(materialRoute, cookie), null, "Revoked student's material link no longer signs");
   passed("Removing the temporary enrollment immediately revokes course access");
 } finally {
   if (fixtureId) {

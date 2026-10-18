@@ -34,6 +34,8 @@ import {
   GraduationCap,
   LifeBuoy,
   Hash,
+  Smartphone,
+  UserPlus,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -46,6 +48,8 @@ import {
   canMeet,
   EMAIL_PERMISSIONS,
   EMAIL_TAB_ROUTES,
+  SMS_PERMISSIONS,
+  SMS_TAB_ROUTES,
   TEAMS_PAGE_PERMISSIONS,
   type Capabilities,
   type Permission,
@@ -312,6 +316,14 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
         perm: EMAIL_PERMISSIONS,
         keywords: ["templates", "automations", "blast", "compose", "outbox"],
       },
+      // Same shape: one row, and SMS_TABS do the rest.
+      {
+        href: "/admin/sms",
+        label: "Texting",
+        icon: Smartphone,
+        perm: SMS_PERMISSIONS,
+        keywords: ["sms", "text messages", "campaign", "opt-in", "consent", "twilio"],
+      },
       // One row, not two. The queue is the only page in the section anyone
       // navigates to directly — a request's detail page is always reached by
       // clicking the row, never by typing the URL.
@@ -380,6 +392,18 @@ const EMAIL_TAB_LOOK: Record<(typeof EMAIL_TAB_ROUTES)[number][0], Pick<NavItem,
 };
 export const EMAIL_TABS: (NavItem & { perm: Permission })[] = EMAIL_TAB_ROUTES.map(
   ([href, perm]) => ({ href, perm, ...EMAIL_TAB_LOOK[href] }),
+);
+
+/** The Texting section's tab bar, from SMS_TAB_ROUTES the same way. */
+const SMS_TAB_LOOK: Record<(typeof SMS_TAB_ROUTES)[number][0], Pick<NavItem, "label" | "icon">> = {
+  "/admin/sms/outbox": { label: "Outbox", icon: Inbox },
+  "/admin/sms/blast": { label: "Campaign", icon: Send },
+  "/admin/sms/consent": { label: "Consent", icon: ShieldCheck },
+  "/admin/sms/collect": { label: "Collect numbers", icon: UserPlus },
+  "/admin/sms/settings": { label: "Settings", icon: Settings },
+};
+export const SMS_TABS: (NavItem & { perm: Permission })[] = SMS_TAB_ROUTES.map(
+  ([href, perm]) => ({ href, perm, ...SMS_TAB_LOOK[href] }),
 );
 
 /**

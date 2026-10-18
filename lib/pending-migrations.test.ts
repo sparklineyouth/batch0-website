@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   MIGRATION_PROBES,
-  PENDING_MIGRATIONS_NOTICE,
   PROBE_TTL_MS,
+  pendingMigrationsNotice,
   checkPendingMigrations,
   classifyProbe,
   isFresh,
@@ -53,19 +53,31 @@ test("a failed probe is not 'missing' and marks the answer incomplete", async ()
   assert.deepEqual(r, { missing: ["0094"], complete: false });
 });
 
-test("probes cover 0093–0096 and 0101 by schema, 0099–0101 by leftovers", () => {
+test("probes cover 0093–0096, 0101 and 0107 by schema, 0099–0101 by leftovers", () => {
   const schema = new Set(MIGRATION_PROBES.filter((p) => !p.leftover).map((p) => p.migration));
   const leftover = new Set(MIGRATION_PROBES.filter((p) => p.leftover).map((p) => p.migration));
-  assert.deepEqual([...schema].sort(), ["0093", "0094", "0095", "0096", "0101"]);
+  assert.deepEqual([...schema].sort(), ["0093", "0094", "0095", "0096", "0101", "0107"]);
   assert.deepEqual([...leftover].sort(), ["0099", "0100", "0101"]);
   for (const p of MIGRATION_PROBES) assert.match(p.table, /^[a-z_]+$/);
 });
 
-test("the notice is the one line the overview shows", () => {
+test("the notice is the one line the overview shows, naming what's missing", () => {
+  assert.equal(pendingMigrationsNotice(["0107"]), "Database update needed: run migration 0107 (docs/migrations-2026-10.md)");
   assert.equal(
-    PENDING_MIGRATIONS_NOTICE,
-    "Database update needed: run migrations 0093–0101 (docs/migrations-2026-10.md)",
+    pendingMigrationsNotice(["0107", "0101"]),
+    "Database update needed: run migrations 0101 and 0107 (docs/migrations-2026-10.md)",
   );
+  assert.equal(
+    pendingMigrationsNotice(["0093", "0101", "0107"]),
+    "Database update needed: run migrations 0093, 0101 and 0107 (docs/migrations-2026-10.md)",
+  );
+});
+
+test("a database without student follow-ups needs 0107, and only 0107", async () => {
+  const r = await checkPendingMigrations(async (p) => ({
+    error: p.table === "student_followups" ? { code: "PGRST205", message: "Could not find the table 'public.student_followups' in the schema cache" } : null,
+  }));
+  assert.deepEqual(r, { missing: ["0107"], complete: true });
 });
 
 test("cache freshness", () => {

@@ -6,7 +6,7 @@ import { isMissingSchemaError } from "@/lib/schema-ready";
 // Per server instance; a complete answer is reused for PROBE_TTL_MS.
 let cached: { at: number; missing: string[] } | null = null;
 
-/** Migrations from 0093–0100 this database is missing (see lib/pending-migrations.ts). */
+/** The October migrations this database is missing (see lib/pending-migrations.ts). */
 export async function pendingMigrations(): Promise<string[]> {
   const now = Date.now();
   if (cached && isFresh(cached.at, now)) return cached.missing;
