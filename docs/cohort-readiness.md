@@ -1,5 +1,7 @@
 # Winter curriculum preparation
 
+(The live per-cohort setup checklist on `/admin/cohorts` is a different thing: see "Cohort readiness" in `docs/admin.md`.)
+
 `scripts/cohort-readiness-winter.mjs` prepares a separate Winter 2026 curriculum from a complete, read-only MCP snapshot. It has no database connection, credential handling, event scheduling, or apply mode. Generated teaching content must stay in private storage or an ignored working directory because this repository is public.
 
 The current reviewed target is December 14, 2026–February 12, 2027. The preparer refuses changed target dates/status, existing Winter content, incomplete snapshots, or workbook sources that differ from the current live lesson text. These guards require a fresh review instead of overwriting later edits.

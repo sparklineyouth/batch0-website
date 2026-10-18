@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import {
   ABSENCE_CHECKS,
+  addedMigrationFiles,
   CHECK_REQUIRES,
   createdTables,
   droppedTables,
@@ -13,11 +14,14 @@ import {
   parseMigrationFile,
   planMigrations,
   sessionConnectionString,
+  sharedVersions,
   sortMigrations,
   stripSqlComments,
   supabaseProjectRef,
   touchedTables,
   transactionMode,
+  versionConflicts,
+  versionsNotOnMain,
   type DbState,
   type MigrationFile,
 } from "./migration-plan.ts";
@@ -37,13 +41,90 @@ const state = (over: Partial<DbState> = {}): DbState => ({
   ...over,
 });
 
-test("every migration file parses, in order, and two files may share a version", () => {
+test("every migration file parses, in the order the Supabase CLI applies them", () => {
   const names = readdirSync(DIR).filter((f) => f.endsWith(".sql"));
   assert.equal(real.length, names.length, "a file isn't named NNNN_name.sql");
-  for (let i = 1; i < real.length; i++) assert.ok(real[i - 1].num <= real[i].num);
-  assert.equal(real.filter((m) => m.version === "0071").length, 2);
+  for (let i = 1; i < real.length; i++) assert.ok(real[i - 1].num < real[i].num);
+  // The CLI applies files in directory order (by name) and compares versions
+  // as strings; this sorts by number. Four digits each keeps the two the same
+  // (a 00785_x.sql would run before 0079_y.sql there, after it here).
+  assert.deepEqual(real.map((m) => m.file), [...names].sort());
   assert.equal(parseMigrationFile("README.md", ""), null);
   assert.equal(parseMigrationFile("101_x.sql", ""), null);
+});
+
+test("no two migration files share a version", () => {
+  // Supabase records each file under its version, the history table's
+  // primary key: the second file's INSERT fails and rolls it back, which
+  // failed the Supabase check on every push to main from 2026-09-20 (two
+  // 0071s). Give the newer file an unused number instead.
+  assert.deepEqual(sharedVersions(real), [], "two files share a version");
+  // That pair: scholarships kept 0071, which production's history already
+  // holds for it, so 0072 still runs after it; the viewer count, which needs
+  // only public.events (0005), moved into the unused 0078.
+  assert.deepEqual(real.filter((m) => m.num >= 70 && m.num <= 80).map((m) => m.file), [
+    "0070_demo_day_tickets.sql",
+    "0071_scholarships.sql",
+    "0072_scholarship_award_percent.sql",
+    "0073_week1_field_guide.sql",
+    "0074_scholarship_perks.sql",
+    "0075_week1_intro_call.sql",
+    "0076_builtin_live.sql",
+    "0077_lock_profile_privileges.sql",
+    "0078_event_display_viewer_count.sql",
+    "0080_revenue_ledger.sql",
+  ]);
+  assert.deepEqual(sharedVersions([file("0071", "", "b"), file("0072"), file("0071", "", "a"), file("0003"), file("0003", "", "y")]), [
+    { version: "0003", files: ["0003_x.sql", "0003_y.sql"] },
+    { version: "0071", files: ["0071_a.sql", "0071_b.sql"] },
+  ]);
+});
+
+test("a version is recorded only once its file is on main", () => {
+  // Production's history holding a version main has no file for stops
+  // Supabase's integration on every push to main ("Remote migration versions
+  // not found in local migrations directory") until the file lands.
+  const files = [file("0102", "", "outbox"), file("0103", "", "admin_integrity"), file("0104", "", "chat_ids")];
+  const main = new Set(["0102_outbox.sql", "0104_other_name.sql"]);
+  assert.deepEqual([...versionsNotOnMain(files, main)].sort(), ["0103", "0104"]);
+  assert.deepEqual([...versionsNotOnMain(files, new Set(files.map((f) => f.file)))], []);
+  // main unknown (git couldn't say): nothing held back.
+  assert.deepEqual([...versionsNotOnMain(files, null)], []);
+});
+
+test("a pull request's new migration can't take a version main or another open pull request holds", () => {
+  const added = addedMigrationFiles([
+    { filename: "supabase/migrations/0108_mine.sql", status: "added" },
+    { filename: "supabase/migrations/0078_event_display_viewer_count.sql", status: "renamed" },
+    { filename: "supabase/migrations/0101_chat.sql", status: "modified" },
+    { filename: "supabase/migrations/0050_old.sql", status: "removed" },
+    { filename: "supabase/migrations/README.md", status: "added" },
+    { filename: "lib/0109_not_a_migration.sql", status: "added" },
+  ]);
+  assert.deepEqual(added, ["0108_mine.sql", "0078_event_display_viewer_count.sql"]);
+  const claims = [
+    { file: "0077_lock_profile_privileges.sql", where: "main" },
+    { file: "0078_event_display_viewer_count.sql", where: "#360" }, // the same file, stacked on this branch: fine
+    { file: "0108_theirs.sql", where: "#361" },
+    { file: "0109_later.sql", where: "#362" },
+  ];
+  assert.deepEqual(versionConflicts(added, claims), [{ file: "0108_mine.sql", version: "0108", claimedBy: { file: "0108_theirs.sql", where: "#361" } }]);
+  assert.deepEqual(versionConflicts(["0110_free.sql"], claims), []);
+  // Already on main under another name.
+  assert.deepEqual(versionConflicts(["0077_again.sql"], claims).map((c) => c.claimedBy.where), ["main"]);
+});
+
+test("0078 on production (column and check, never the comment) is pending, not 'live because later files ran'", () => {
+  const files = real.filter((m) => m.num <= 102);
+  const recorded = new Set(files.map((f) => f.version).filter((v) => v !== "0078"));
+  const checks = new Map(Object.keys(MIGRATION_CHECKS).map((v) => [v, v !== "0078"] as [string, boolean]));
+  const all = new Set([...productionTables(102), "profiles", "app_roles"]);
+  const plan = planMigrations(files, state({ recorded, checks, existingTables: all }));
+  const notApplied = plan.filter((p) => p.status !== "applied");
+  assert.deepEqual(notApplied.map((p) => [p.version, p.status, p.why]), [["0078", "pending", "its verify query fails"]]);
+  // Once it has run (the comment is there), it's live, and then recorded.
+  const ran = planMigrations(files, state({ recorded, checks: new Map([...checks, ["0078", true]]), existingTables: all }));
+  assert.deepEqual(ran.filter((p) => p.status !== "applied").map((p) => [p.version, p.status]), [["0078", "unrecorded"]]);
 });
 
 test("the verify queries match docs/migrations-2026-10.md exactly", () => {
@@ -181,15 +262,15 @@ function productionTables(upTo: number): Set<string> {
 test("plan against the real files: a production database that has everything up to 0100", () => {
   // Everything after 0100 hasn't run either: a later file's check passing
   // would (rightly) count as evidence that 0099 and 0100 ran.
-  const notYet = new Set(["0101", "0102", "0105"]);
+  const notYet = new Set(["0101", "0102", "0103", "0104", "0105"]);
   const checks = new Map(Object.keys(MIGRATION_CHECKS).map((v) => [v, !notYet.has(v)] as [string, boolean]));
   const plan = planMigrations(real, state({ checks, existingTables: productionTables(100) }));
   // 0099 and 0100 only check for an absence, and no later file proves they
   // ran, so they run again — they're idempotent; that's the safe answer.
-  assert.deepEqual(plan.filter((p) => p.status === "pending").map((p) => p.version), ["0099", "0100", "0101", "0102", "0105"]);
+  assert.deepEqual(plan.filter((p) => p.status === "pending").map((p) => p.version), ["0099", "0100", "0101", "0102", "0103", "0104", "0105"]);
   assert.equal(plan.filter((p) => p.status === "gap").length, 0);
-  // With the rest run, everything is accounted for.
-  const done = planMigrations(real, state({ checks: new Map([...checks, ["0101", true], ["0102", true], ["0105", true]]), existingTables: new Set([...productionTables(100), "profiles", "app_roles"]) }));
+  // With 0101–0105 run, everything is accounted for.
+  const done = planMigrations(real, state({ checks: new Map([...checks, ["0101", true], ["0102", true], ["0103", true], ["0104", true], ["0105", true]]), existingTables: new Set([...productionTables(100), "profiles", "app_roles"]) }));
   assert.deepEqual(done.filter((p) => p.status !== "unrecorded" && p.status !== "applied").map((p) => p.version), []);
 });
 
@@ -242,12 +323,10 @@ test("plan: an absence check passing is never evidence for older files", () => {
   for (const v of ABSENCE_CHECKS) assert.ok(MIGRATION_CHECKS[v], v);
 });
 
-test("plan: a version two files share proves only the file whose tables exist", () => {
+test("plan: files that share a version are refused, not guessed at", () => {
+  // A recorded 0071 can't say which of two 0071 files ran.
   const files = [file("0071", "alter table public.events add column v int;", "a_viewer_count"), file("0071", "create table public.scholarships (id int);", "b_scholarships")];
-  const p = planMigrations(files, state({ recorded: new Set(["0071"]) }));
-  assert.deepEqual(p.map((x) => x.status), ["applied", "pending"]);
-  assert.match(p[1].why, /version 0071 is shared/);
-  assert.equal(planMigrations(files, state({ recorded: new Set(["0071"]), existingTables: new Set(["scholarships"]) }))[1].status, "applied");
+  assert.throws(() => planMigrations(files, state({ recorded: new Set(["0071"]) })), /share a version: 0071 \(0071_a_viewer_count\.sql, 0071_b_scholarships\.sql\)/);
 });
 
 test("the lexer: strings, E-strings, identifiers, comments and dollar quotes", () => {

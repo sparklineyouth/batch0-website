@@ -69,6 +69,11 @@ export type LiveRow = {
   edited_at?: string | null;
   deleted_at?: string | null;
   pinned_at?: string | null;
+  /**
+   * The sender's composer id for it (0104): how the sending tab knows its own
+   * echo. Missing before 0104 runs (the column isn't there, or isn't granted).
+   */
+  client_id?: string | null;
 };
 
 /**

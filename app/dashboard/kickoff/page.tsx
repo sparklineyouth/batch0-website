@@ -4,6 +4,7 @@ import { requireUser, getProfile } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { cohortHasStarted, todayISO } from "@/lib/pre-cohort";
+import { PRE_COHORT_RESOURCES_HREF } from "@/lib/resource-search";
 import {
   daysLeftLabel,
   isExternalHref,
@@ -233,8 +234,11 @@ export default async function KickoffPage() {
               <p className="mt-2 text-sm leading-relaxed text-ink-soft">
                 {k.note}
               </p>
+              {/* On kickoff day the cohort has already started, so plain
+                  Resources is the whole library, with the pre-cohort block
+                  folded once its worksheets are done. The shelf opens it. */}
               <ButtonLink
-                href={isPast ? "/dashboard/course" : "/dashboard/resources"}
+                href={isPast ? "/dashboard/course" : PRE_COHORT_RESOURCES_HREF}
                 className="mt-4"
                 size="sm"
               >

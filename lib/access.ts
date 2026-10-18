@@ -16,6 +16,7 @@ import {
   isAcceptedStatus,
   type PreCohortCohort,
 } from "@/lib/pre-cohort";
+import { eventCohortIds } from "@/lib/event-history";
 
 /**
  * Staff previewing the student view. Anyone who can open the admin area gets
@@ -163,6 +164,21 @@ export const loadAccessRows = cache(async function loadAccessRows() {
     ]);
   return { enrollments, app, demoDayTicket: !!ticket };
 });
+
+/**
+ * Every cohort the signed-in user is enrolled in, sorted: the cohorts whose
+ * enrolled-only events the `events read` policy shows them. Read off the
+ * request-cached access rows, so it costs no round trip of its own.
+ *
+ * For the installed app's service-role event reads (lib/app-cache.ts), which
+ * must draw the policy's line themselves. Not getStudentAccess().cohortId:
+ * that is one cohort, possibly one the student is only accepted into, and it
+ * leaves out a returning student's earlier one.
+ */
+export async function enrolledCohortIds(): Promise<string[]> {
+  const rows = await loadAccessRows();
+  return eventCohortIds((rows?.enrollments ?? []).map((e) => e.cohort_id as string | null));
+}
 
 /**
  * Request-cached (React cache): the dashboard layout and the rendered
