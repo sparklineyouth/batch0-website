@@ -65,6 +65,10 @@ const MARKETING_PREFIXES = [
   "/terms",
   "/refund-policy",
   "/community-guidelines",
+  // The texting disclosure page every HELP reply links to. Public and
+  // indexable, so it belongs to the apex like the policies beside it. Not
+  // /messages: that path is Chat's (next.config.js redirects it to /chat).
+  "/texts",
   "/pass",
   "/teams",
   "/verify",

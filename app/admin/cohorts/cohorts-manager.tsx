@@ -1,5 +1,5 @@
 "use client";
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import { Pencil, Trash2, Plus, Flag, Megaphone } from "lucide-react";
 import { getActionError } from "@/lib/action-error";
 import { activePromo, promoPriceCents, type PromoConfig } from "@/lib/promo";
 import { easternDateOf } from "@/lib/cohort-eligibility";
+import type { CohortReadiness } from "@/lib/cohort-readiness";
+import { ReadinessChecklist, ReadinessToggle } from "./readiness-checklist";
 
 type Cohort = CohortInput & {
   id: string;
@@ -33,12 +35,16 @@ const empty: CohortInput = {
 export function CohortsManager({
   initialCohorts,
   promoConfig,
+  readiness = {},
 }: {
   initialCohorts: Cohort[];
   promoConfig: PromoConfig;
+  /** Launch checklists for upcoming and active cohorts, keyed by id. */
+  readiness?: Record<string, CohortReadiness>;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<CohortInput | null>(null);
+  const [openReadinessId, setOpenReadinessId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
@@ -117,80 +123,112 @@ export function CohortsManager({
           <Plus className="h-4 w-4" /> New cohort
         </Button>
       </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-line text-left text-xs font-mono uppercase tracking-wider text-ink-faint">
-            <th className="pb-3">#</th>
-            <th className="pb-3">Name</th>
-            <th className="pb-3">Dates</th>
-            <th className="pb-3">Capacity</th>
-            <th className="pb-3">Enrolled</th>
-            <th className="pb-3">Price</th>
-            <th className="pb-3">Status</th>
-            <th className="pb-3"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {initialCohorts.map((c) => (
-            <tr key={c.id} className="border-b border-line last:border-0 hover:bg-wash">
-              <td className="py-3 text-ink-soft tabular-nums">
-                {c.cohort_number != null ? `#${c.cohort_number}` : "—"}
-              </td>
-              <td className="py-3 text-ink">{c.name}</td>
-              <td className="py-3 text-ink-soft tabular-nums">
-                {c.starts_on || "—"} → {c.ends_on || "—"}
-              </td>
-              <td className="py-3 text-ink-soft tabular-nums">{c.capacity}</td>
-              <td className="py-3 text-ink-soft tabular-nums">
-                {c.enrollments?.[0]?.count ?? 0}
-              </td>
-              <td className="py-3 text-ink-soft tabular-nums">
-                ${(c.price_cents / 100).toFixed(0)}
-              </td>
-              <td className="py-3"><StatusBadge status={c.status} /></td>
-              <td className="py-3 text-right whitespace-nowrap">
-                <Link
-                  href={`/admin/cohorts/${c.id}/kickoff`}
-                  className="inline-block p-1.5 text-ink-faint hover:text-phosphor-ink"
-                  aria-label={`Edit kickoff page for ${c.name}`}
-                  title="Kickoff page"
-                >
-                  <Flag className="h-4 w-4" />
-                </Link>
-                <Link
-                  href={`/admin/cohorts/${c.id}/landing`}
-                  className="inline-block p-1.5 text-ink-faint hover:text-phosphor-ink"
-                  aria-label={`Edit landing page for ${c.name}`}
-                  title="Landing page"
-                >
-                  <Megaphone className="h-4 w-4" />
-                </Link>
-                <button
-                  onClick={() => setEditing(c)}
-                  className="p-1.5 text-ink-faint hover:text-ink"
-                  aria-label="Edit"
-                >
-                  <Pencil className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => setConfirmDeleteId(c.id!)}
-                  className="p-1.5 text-ink-faint hover:text-red-700 dark:hover:text-red-300"
-                  aria-label="Delete"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </td>
+      {/* Nine columns don't fit a phone: scroll the table, not the page.
+          `relative` keeps the toggles' sr-only labels (absolutely placed)
+          inside the scroller instead of widening the page. */}
+      <div className="relative overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-line text-left text-xs font-mono uppercase tracking-wider text-ink-faint">
+              <th className="pb-3">#</th>
+              <th className="pb-3">Name</th>
+              <th className="pb-3">Dates</th>
+              <th className="pb-3">Capacity</th>
+              <th className="pb-3">Enrolled</th>
+              <th className="pb-3">Price</th>
+              <th className="pb-3">Status</th>
+              <th className="pb-3">Readiness</th>
+              <th className="pb-3"></th>
             </tr>
-          ))}
-          {initialCohorts.length === 0 && (
-            <tr>
-              <td colSpan={8} className="py-6 text-center text-sm text-ink-faint">
-                No cohorts. Create your first.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {initialCohorts.map((c) => {
+              const ready = readiness[c.id];
+              const open = !!ready && openReadinessId === c.id;
+              const panelId = `readiness-${c.id}`;
+              return (
+                <Fragment key={c.id}>
+                  <tr className={`${open ? "" : "border-b border-line last:border-0"} hover:bg-wash`}>
+                    <td className="py-3 text-ink-soft tabular-nums">
+                      {c.cohort_number != null ? `#${c.cohort_number}` : "—"}
+                    </td>
+                    <td className="py-3 text-ink">{c.name}</td>
+                    <td className="py-3 text-ink-soft tabular-nums">
+                      {c.starts_on || "—"} → {c.ends_on || "—"}
+                    </td>
+                    <td className="py-3 text-ink-soft tabular-nums">{c.capacity}</td>
+                    <td className="py-3 text-ink-soft tabular-nums">
+                      {c.enrollments?.[0]?.count ?? 0}
+                    </td>
+                    <td className="py-3 text-ink-soft tabular-nums">
+                      ${(c.price_cents / 100).toFixed(0)}
+                    </td>
+                    <td className="py-3"><StatusBadge status={c.status} /></td>
+                    <td className="py-3">
+                      {ready ? (
+                        <ReadinessToggle
+                          readiness={ready}
+                          open={open}
+                          controls={panelId}
+                          onToggle={() => setOpenReadinessId(open ? null : c.id)}
+                        />
+                      ) : (
+                        <span className="text-ink-faint">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 text-right whitespace-nowrap">
+                      <Link
+                        href={`/admin/cohorts/${c.id}/kickoff`}
+                        className="inline-block p-1.5 text-ink-faint hover:text-phosphor-ink"
+                        aria-label={`Edit kickoff page for ${c.name}`}
+                        title="Kickoff page"
+                      >
+                        <Flag className="h-4 w-4" />
+                      </Link>
+                      <Link
+                        href={`/admin/cohorts/${c.id}/landing`}
+                        className="inline-block p-1.5 text-ink-faint hover:text-phosphor-ink"
+                        aria-label={`Edit landing page for ${c.name}`}
+                        title="Landing page"
+                      >
+                        <Megaphone className="h-4 w-4" />
+                      </Link>
+                      <button
+                        onClick={() => setEditing(c)}
+                        className="p-1.5 text-ink-faint hover:text-ink"
+                        aria-label="Edit"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(c.id!)}
+                        className="p-1.5 text-ink-faint hover:text-red-700 dark:hover:text-red-300"
+                        aria-label="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                  {open && (
+                    <tr className="border-b border-line last:border-0">
+                      <td colSpan={9} className="pb-4 pt-1">
+                        <ReadinessChecklist id={panelId} readiness={ready} onEditCohort={() => setEditing(c)} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+            {initialCohorts.length === 0 && (
+              <tr>
+                <td colSpan={9} className="py-6 text-center text-sm text-ink-faint">
+                  No cohorts. Create your first.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
       {error && <p className="mt-4 text-xs text-red-700 dark:text-red-300">{error}</p>}
 
       <ConfirmDialog

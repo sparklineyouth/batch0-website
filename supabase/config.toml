@@ -20,6 +20,10 @@
 # verify queries, backs up first and records what it runs. The CLI way:
 #   supabase db push --dry-run   # confirm the list is ONLY what you expect
 #   supabase db push
+# Supabase's GitHub integration runs the same push (with --include-all)
+# against production on every push to main, so a file on main gets applied
+# whether or not anyone runs it (docs/migrations-2026-10.md, "Versions"; no
+# two files may share a version).
 #
 # Check state first with `supabase migration list` — every row should carry a
 # value in BOTH Local and Remote. A row with a Local value and a blank Remote
@@ -28,5 +32,7 @@
 # If a migration is already live but unrecorded (this happened to 0040-0048),
 # repair the history rather than pushing — a push would re-execute it:
 #   supabase migration repair --status applied 0040 0041 ...
+# Only once its file is on main: a recorded version main has no file for
+# stops the GitHub integration on every push until it lands.
 
 project_id = "batch0"

@@ -10,6 +10,9 @@ import {
   SLOWMODE_CHOICES,
   TOPIC_MAX,
   normalizeChannelName,
+  pickRefusal,
+  withheldHint,
+  type Party,
   type Posting,
   outsideReportAdvice,
   type ReportOutcome,
@@ -20,19 +23,22 @@ import {
   addToGroup,
   createGroup,
   fetchBlockedPeople,
+  fetchDeletedMessages,
   flagForTeam,
   renameGroup,
   reportConversation,
   reportMessage,
   searchPeople,
   unblockPerson,
+  type DirectoryGroup,
 } from "@/app/chat/actions";
 import { addChannelMembers, mutePerson, unmutePerson, updateChannel } from "@/app/chat/manage-actions";
 import { Avatar, RoleTag } from "./avatar";
 import { Modal } from "./modal";
 import { tracked } from "./api";
-import { OFFLINE, resultError, senderName } from "./util";
+import { OFFLINE, appendStubs, resultError, senderName, stampLabel } from "./util";
 import type { ChannelInfo, ChatPerson, ChatViewerInfo, SidebarData, UiMessage } from "./types";
+import type { DeletedMessageStub } from "@/lib/chat";
 
 // 16px on phones: iOS Safari zooms the page into any smaller field it focuses.
 const field =
@@ -55,30 +61,48 @@ function ErrorLine({ text }: { text: string | null }) {
   return text ? <p className="mt-2 text-xs text-red-600 dark:text-red-400" role="alert">{text}</p> : null;
 }
 
-/** The directory search shared by "new message" and "add people". */
-function usePeopleSearch(open: boolean) {
+/**
+ * The directory search shared by "new message" and "add people". `group`
+ * makes it a search for a group (searchPeople): whoever may join it with the
+ * people already in it, not only whom the viewer could DM. `withheld`: the
+ * safeguarding rule alone left someone matching out.
+ */
+function usePeopleSearch(open: boolean, group: DirectoryGroup | null) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ChatPerson[]>([]);
+  const [withheld, setWithheld] = useState(false);
   const [loading, setLoading] = useState(false);
   const seq = useRef(0);
+  const groupKey = group ? `${group.channelId ?? ""}|${[...(group.withIds ?? [])].sort().join(",")}` : null;
+  const groupRef = useRef(group);
+  groupRef.current = group;
   useEffect(() => {
     if (!open) return;
     const n = ++seq.current;
     setLoading(true);
     const t = setTimeout(async () => {
       try {
-        const found = await tracked(searchPeople(query));
-        if (n === seq.current) setResults(found);
+        const found = await tracked(searchPeople(query, groupRef.current));
+        if (n === seq.current) {
+          setResults(found.people);
+          setWithheld(found.withheld);
+        }
       } catch {
-        if (n === seq.current) setResults([]);
+        if (n === seq.current) {
+          setResults([]);
+          setWithheld(false);
+        }
       } finally {
         if (n === seq.current) setLoading(false);
       }
     }, 200);
     return () => clearTimeout(t);
-  }, [query, open]);
-  return { query, setQuery, results, loading };
+  }, [query, open, groupKey]);
+  return { query, setQuery, results, withheld, loading };
 }
+
+/** A person as the safeguarding rule sees them, on this side (lib/chat.ts asParty). */
+const party = (p: ChatPerson): Party => ({ id: p.id, student: p.isStudent, staff: p.isStaff });
 
 function PeoplePicker({
   open,
@@ -86,14 +110,26 @@ function PeoplePicker({
   setPicked,
   max,
   exclude = [],
+  group = null,
+  hint = null,
 }: {
   open: boolean;
   picked: ChatPerson[];
   setPicked: (p: ChatPerson[]) => void;
   max: number;
   exclude?: readonly string[];
+  /** Picking for a group: an existing one (its id), or a new one (null). The picks so far ride along. */
+  group?: { channelId: string | null } | null;
+  /**
+   * What would let more people in (withheldHint), said only when the search
+   * says the safeguarding rule left someone matching out — never under a
+   * search that found nobody for any other reason.
+   */
+  hint?: string | null;
 }) {
-  const { query, setQuery, results, loading } = usePeopleSearch(open);
+  const search = group ? { channelId: group.channelId, withIds: picked.map((p) => p.id) } : null;
+  const { query, setQuery, results, withheld, loading } = usePeopleSearch(open, search);
+  const showHint = !!hint && withheld && !loading;
   const shown = results.filter((p) => !exclude.includes(p.id));
   const toggle = (p: ChatPerson) => {
     if (picked.some((x) => x.id === p.id)) setPicked(picked.filter((x) => x.id !== p.id));
@@ -128,7 +164,9 @@ function PeoplePicker({
         {loading && shown.length === 0 ? (
           <li className="flex justify-center py-6"><Loader2 className="h-4 w-4 animate-spin text-ink-faint" /></li>
         ) : shown.length === 0 ? (
-          <li className="py-6 text-center text-xs text-ink-faint">{query ? "Nobody by that name you can message." : "Nobody to show yet."}</li>
+          <li className="py-6 text-center text-xs text-ink-faint">
+            {query ? "Nobody by that name you can message." : "Nobody to show yet."}
+          </li>
         ) : (
           shown.map((p) => {
             const on = picked.some((x) => x.id === p.id);
@@ -150,20 +188,31 @@ function PeoplePicker({
           })
         )}
       </ul>
+      {showHint ? (
+        <p className="mt-1 text-center text-xs text-ink-soft" role="status">{hint}</p>
+      ) : null}
     </div>
   );
 }
 
-/** New DM (one person) or new group (several). */
+/**
+ * New DM (one person) or new group (several). Nobody picked yet, the
+ * directory is a DM's; from the first pick on, it's the group's — so once
+ * someone from the batch0 team is picked, a student also finds the mentor
+ * the group may hold. The server checks the whole group again on create.
+ */
 export function NewConversationDialog({
   open,
   viewer,
+  self,
   onClose,
   onOpenDraft,
   onOpenChannel,
 }: {
   open: boolean;
   viewer: ChatViewerInfo;
+  /** The viewer as a person (the sidebar names them): whether they're a student. */
+  self: ChatPerson | null;
   onClose: () => void;
   onOpenDraft: (userId: string) => void;
   onOpenChannel: (channelId: string) => void;
@@ -179,8 +228,15 @@ export function NewConversationDialog({
       setError(null);
     }
   }, [open]);
+  // The rule the server will hold this group (or DM) to, said before the
+  // click rather than after, in the words the server would use: a mentor
+  // picked while a staff member was, and then the staff member taken out,
+  // leaves one it refuses.
+  const me = viewer.staff || !self ? null : party(self);
+  const refusal = pickRefusal(me, picked.map(party));
+  const allowed = refusal === null;
   const go = async () => {
-    if (picked.length === 0) return;
+    if (picked.length === 0 || !allowed) return;
     if (picked.length === 1) {
       onOpenDraft(picked[0].id);
       return;
@@ -199,7 +255,17 @@ export function NewConversationDialog({
           ? `Pick one person for a DM, or up to ${GROUP_MAX_MEMBERS - 1} for a group.`
           : "For now you can message the batch0 team. Everyone else opens once you've been accepted."}
       </p>
-      <PeoplePicker open={open} picked={picked} setPicked={setPicked} max={viewer.vetted || viewer.staff ? GROUP_MAX_MEMBERS - 1 : 1} />
+      <PeoplePicker
+        open={open}
+        picked={picked}
+        setPicked={setPicked}
+        max={viewer.vetted || viewer.staff ? GROUP_MAX_MEMBERS - 1 : 1}
+        group={picked.length > 0 && (viewer.vetted || viewer.staff) ? { channelId: null } : null}
+        hint={me && viewer.vetted ? withheldHint(me) : null}
+      />
+      {refusal ? (
+        <p className="mt-2 text-xs text-ink-soft" role="status">{refusal}</p>
+      ) : null}
       {picked.length > 1 ? (
         <input
           value={name}
@@ -212,7 +278,7 @@ export function NewConversationDialog({
       <ErrorLine text={error} />
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-        <Button onClick={go} disabled={picked.length === 0 || busy}>
+        <Button onClick={go} disabled={picked.length === 0 || !allowed || busy}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {picked.length > 1 ? "Start group" : "Message"}
         </Button>
@@ -404,25 +470,7 @@ export function ReportDialog({
     if (outcome?.routedTo === "outside") setOutside(outsideReportAdvice(outcome.safeguardingEmail));
     else onDone();
   };
-  if (outside) {
-    return (
-      <Modal open title="Your report is saved" onClose={onClose}>
-        <div className="space-y-3 text-sm leading-relaxed text-ink" role="status">
-          {outside.map((line) => (
-            <p key={line}>{line}</p>
-          ))}
-          <p className="text-xs text-ink-soft">
-            <Link href="/community-guidelines" target="_blank" className="link-ink">
-              Community guidelines
-            </Link>
-          </p>
-        </div>
-        <div className="mt-4 flex justify-end">
-          <Button onClick={onClose}>Close</Button>
-        </div>
-      </Modal>
-    );
-  }
+  if (outside) return <ReportSaved advice={outside} onClose={onClose} />;
   return (
     <Modal open title={message ? "Report message" : "Report conversation"} onClose={onClose} busy={busy}>
       {message ? (
@@ -452,6 +500,201 @@ export function ReportDialog({
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
         <Button variant="danger" onClick={submit} disabled={busy || !reason.trim()}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Send report
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/** After a report nobody on the team can be shown: it's saved, and where to go now. */
+function ReportSaved({ advice, onClose }: { advice: string[]; onClose: () => void }) {
+  return (
+    <Modal open title="Your report is saved" onClose={onClose}>
+      <div className="space-y-3 text-sm leading-relaxed text-ink" role="status">
+        {advice.map((line) => (
+          <p key={line}>{line}</p>
+        ))}
+        <p className="text-xs text-ink-soft">
+          <Link href="/community-guidelines" target="_blank" className="link-ink">
+            Community guidelines
+          </Link>
+        </p>
+      </div>
+      <div className="mt-4 flex justify-end">
+        <Button onClick={onClose}>Close</Button>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Report something posted in a text channel and then deleted. History and
+ * search leave deleted messages out, and only a DM or group can be reported
+ * whole, so this lists the channel's recently deleted messages as stubs —
+ * who sent it and when, never what it said (fetchDeletedMessages) — a page
+ * at a time, so a pile of later deletes only pushes the one that matters
+ * further down, and files an ordinary report on the one picked. The report
+ * page shows what it said to the moderators the report leaves out (never to
+ * its sender). A reporter who isn't one doesn't see it again; a moderator who
+ * files one reviews it like any report, and is told so up front.
+ */
+export function ReportDeletedDialog({
+  channel,
+  people,
+  preselect,
+  moderator,
+  onClose,
+  onDone,
+}: {
+  channel: ChannelInfo;
+  people: Record<string, ChatPerson>;
+  /** Opened from a reply's "Original message was deleted": that message. */
+  preselect: { id: string; senderId: string } | null;
+  /** The viewer runs chat (chat.manage): the report page will show them what it said. */
+  moderator: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [stubs, setStubs] = useState<DeletedMessageStub[] | null>(null);
+  const [more, setMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [names, setNames] = useState<Record<string, ChatPerson>>({});
+  const [picked, setPicked] = useState<string | null>(preselect?.id ?? null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [outside, setOutside] = useState<string[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    tracked(fetchDeletedMessages(channel.id))
+      .then((res) => {
+        if (!live) return;
+        setStubs(res.messages);
+        setMore(res.hasMore);
+        setNames(res.people);
+      })
+      .catch(() => {
+        if (!live) return;
+        setStubs([]);
+        setError("Couldn't load the deleted messages. Close this and try again.");
+      });
+    return () => {
+      live = false;
+    };
+  }, [channel.id]);
+  const loadOlder = async () => {
+    const last = stubs?.at(-1);
+    if (!last || loadingMore) return;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const res = await tracked(fetchDeletedMessages(channel.id, { deletedAt: last.deletedAt, id: last.id }));
+      setStubs((now) => appendStubs(now ?? [], res.messages));
+      setMore(res.hasMore);
+      setNames((now) => ({ ...now, ...res.people }));
+    } catch {
+      setError("Couldn't load older ones. Try again.");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+  // The quoted original stays pickable when the list hasn't reached it.
+  const rows = useMemo(() => {
+    const list = stubs ?? [];
+    if (!preselect || list.some((m) => m.id === preselect.id)) return list;
+    return [{ id: preselect.id, senderId: preselect.senderId, createdAt: "", deletedAt: "" }, ...list];
+  }, [stubs, preselect]);
+  const who = (id: string) => (names[id] ?? people[id])?.name ?? "Deleted account";
+  const submit = async () => {
+    if (busy || !picked) return;
+    setBusy(true);
+    setError(null);
+    const res = await attempt(() => reportMessage({ messageId: picked, reason }));
+    setBusy(false);
+    if (!res.ok) return setError(resultError(res, "Couldn't send the report."));
+    const outcome: ReportOutcome | undefined = res.data;
+    if (outcome?.routedTo === "outside") setOutside(outsideReportAdvice(outcome.safeguardingEmail));
+    else onDone();
+  };
+  if (outside) return <ReportSaved advice={outside} onClose={onClose} />;
+  return (
+    <Modal open title="Report a deleted message" onClose={onClose} busy={busy}>
+      <p className="mb-3 text-xs leading-relaxed text-ink-soft">
+        {moderator ? (
+          <>
+            Something posted in #{channel.label} and then deleted? Pick it and say what was wrong. As a moderator
+            you&apos;ll see what it said on the report page, as with any report you file, and the rest of the team sees
+            that you filed it. The person you report isn&apos;t told who reported them.{" "}
+          </>
+        ) : (
+          <>
+            Something posted in #{channel.label} and then deleted? Pick it and say what was wrong. The batch0 team can
+            still see what it said; you won&apos;t see it here again, and the person you report isn&apos;t told who
+            reported them.{" "}
+          </>
+        )}
+        <Link href="/community-guidelines" target="_blank" className="link-ink">
+          Community guidelines
+        </Link>
+      </p>
+      {stubs === null ? (
+        <div className="flex justify-center py-6"><Loader2 className="h-4 w-4 animate-spin text-ink-faint" aria-label="Loading" /></div>
+      ) : rows.length === 0 ? (
+        error ? null : (
+          <p className="py-4 text-center text-xs text-ink-faint" role="status">
+            Nothing here has been deleted in the last two weeks.
+          </p>
+        )
+      ) : (
+        <ul className="max-h-60 overflow-y-auto" aria-label="Deleted messages">
+          {rows.map((m) => {
+            const on = picked === m.id;
+            return (
+              <li key={m.id}>
+                <button
+                  type="button"
+                  onClick={() => setPicked(on ? null : m.id)}
+                  aria-pressed={on}
+                  className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left ${on ? "bg-phosphor/15" : "hover:bg-wash"}`}
+                >
+                  <Avatar name={who(m.senderId)} size={28} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-ink">{who(m.senderId)}</span>
+                    <span className="block truncate text-xs italic text-ink-faint">
+                      {m.createdAt ? `Message deleted · ${stampLabel(m.createdAt)}` : "The deleted message that was replied to"}
+                    </span>
+                  </span>
+                  <span className={`h-4 w-4 shrink-0 rounded-full border ${on ? "border-phosphor bg-phosphor" : "border-line"}`} aria-hidden />
+                </button>
+              </li>
+            );
+          })}
+          {more ? (
+            <li className="flex justify-center pt-1">
+              <Button variant="ghost" onClick={loadOlder} disabled={loadingMore}>
+                {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Show older
+              </Button>
+            </li>
+          ) : null}
+        </ul>
+      )}
+      {rows.length > 0 ? (
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value.slice(0, REPORT_REASON_MAX))}
+          rows={3}
+          placeholder="What was wrong with it? A sentence or two is plenty."
+          className={`${field} mt-3`}
+          aria-label="Reason"
+        />
+      ) : null}
+      <ErrorLine text={error} />
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button variant="danger" onClick={submit} disabled={busy || !picked || !reason.trim()}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           Send report
         </Button>
@@ -554,7 +797,18 @@ export function RenameGroupDialog({ channel, onClose, onSaved }: { channel: Chan
 }
 
 /** Add people: to a group (any member), or to a text channel beyond its audience (staff). */
-export function AddPeopleDialog({ channel, onClose, onSaved }: { channel: ChannelInfo; onClose: () => void; onSaved: (n: number) => void }) {
+export function AddPeopleDialog({
+  channel,
+  self,
+  onClose,
+  onSaved,
+}: {
+  channel: ChannelInfo;
+  /** The viewer as a person, null for staff: who the safeguarding rule would keep out of the group. */
+  self: ChatPerson | null;
+  onClose: () => void;
+  onSaved: (n: number) => void;
+}) {
   const [picked, setPicked] = useState<ChatPerson[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -570,7 +824,15 @@ export function AddPeopleDialog({ channel, onClose, onSaved }: { channel: Channe
       {max === 0 ? (
         <p className="text-sm text-ink-soft">This group is full.</p>
       ) : (
-        <PeoplePicker open picked={picked} setPicked={setPicked} max={max} exclude={channel.memberIds} />
+        <PeoplePicker
+          open
+          picked={picked}
+          setPicked={setPicked}
+          max={max}
+          exclude={channel.memberIds}
+          group={isGroup ? { channelId: channel.id } : null}
+          hint={isGroup && self ? withheldHint(party(self)) : null}
+        />
       )}
       <ErrorLine text={error} />
       <div className="mt-4 flex justify-end gap-2">

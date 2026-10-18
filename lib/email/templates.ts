@@ -342,6 +342,36 @@ ${env.siteUrl}`,
   }),
 
   /**
+   * "Can we text you?" — the email that bootstraps texting.
+   *
+   * Every text needs a number that has opted in, and almost nobody has one,
+   * so email is the only channel that can ask. Sent by an admin from
+   * /admin/sms/collect to accepted and enrolled students, and only once a
+   * sending number is live (sendSmsOptInRequests refuses before then).
+   *
+   * Deliberately not a pitch. The thing being asked for is permission, and an
+   * opt-in obtained by enthusiasm is the one a carrier's vetting team reads as
+   * manufactured. The disclosures — program texts only, frequency, rates,
+   * STOP, not a condition — appear here as well as on the form, so nobody
+   * arrives at the checkbox already committed, and the promise matches the
+   * privacy policy's: no marketing texts.
+   */
+  smsOptIn: (args: { name?: string | null }) => ({
+    subject: "Can we text you about the program?",
+    html: layout({
+      preheader: "Session reminders and schedule changes by text. Optional.",
+      body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#fff">Can we text you?</h1>
+        <p>Hi${args.name ? ` ${escape(args.name)}` : ""} — right now email is the only way we can reach you. That works for a weekly recap and it doesn&rsquo;t work for &ldquo;today&rsquo;s session moved an hour.&rdquo;</p>
+        <p>If you&rsquo;d like those by text too, add your mobile and tick the box at the link below. Program updates only: a session starting, a time change, a deadline. We don&rsquo;t send marketing texts, and we never share or sell your number.</p>
+        <p style="color:#bbb">It&rsquo;s optional and doesn&rsquo;t affect your place in the cohort. Message frequency varies and message and data rates may apply. Reply STOP to any text and they stop.</p>
+      `,
+      cta: { url: `${env.siteUrl}/dashboard/phone`, label: "Turn on texts" },
+      footNote: `You can change your number or turn texts off any time at <a href="${env.siteUrl}/dashboard/phone" style="color:#ffbb00;text-decoration:none">${env.siteUrl}/dashboard/phone</a>.`,
+    }),
+  }),
+
+  /**
    * "Here's your Demo Day ticket" — an admin sent this person a paid link for
    * Demo Day only, at a price they chose (lib/demo-day-tickets.ts). The button
    * is the whole email: it opens the public pay page, which needs no account.

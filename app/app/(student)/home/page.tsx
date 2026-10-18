@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, Circle, Megaphone } from "lucide-react";
 import { requireUser, getProfile } from "@/lib/auth";
-import { getStudentAccess } from "@/lib/access";
+import { enrolledCohortIds, getStudentAccess } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { LocalTime } from "@/components/ui/local-time";
 import { ChargePayButton } from "@/components/charge-pay-button";
-import { loadStudentAssignments } from "@/lib/assignments-server";
-import { formatEastern, studentGroup } from "@/lib/assignments";
+import { loadStudentAssignments, type StudentItem } from "@/lib/assignments-server";
+import { formatEastern } from "@/lib/assignments";
 import { StatusChip } from "@/components/assignments/status-chip";
 import { cohortWeek } from "@/lib/cohort-week";
 import { getActiveChallenge, prizeHeadline, visibleSubmissionStatus } from "@/lib/challenges";
@@ -22,9 +22,10 @@ import {
   ActionLink,
 } from "@/components/app/frame";
 import type { Role } from "@/lib/types";
-import { getCohortEvents } from "@/lib/app-cache";
-import { studentEventStatus } from "@/lib/event-form";
-import { isHostedOnBatch0 } from "@/lib/webinars";
+import { getCohortEvents, type AppEvent } from "@/lib/app-cache";
+import { listInvitesForInvitee } from "@/lib/calls";
+import type { CallInvite } from "@/lib/live";
+import { homeNeeds, moreDueLabel, type NextUpItem } from "@/lib/needs-you";
 
 export const metadata = { title: "Home · batch0" };
 export const dynamic = "force-dynamic";
@@ -36,6 +37,12 @@ export const dynamic = "force-dynamic";
  * blocking me, what's due, and what's next on the calendar.
  * The founder pass and the certificate are once-a-cohort reads; they stay on
  * the /dashboard home.
+ *
+ * What's due and what's next are the /dashboard home's picks, from the same
+ * function (homeNeeds in lib/needs-you.ts): owed work ranked so today's
+ * deadline beats weeks-old late work, three of it and an "N more" row, and
+ * the next 1:1 beside the next events. This screen used to take the first
+ * three owed items off an oldest-first list and had no 1:1 at all.
  */
 export default async function StudentAppHome() {
   // requireUser() is a LOCAL JWT verify (lib/auth.ts), not a database read, so
@@ -61,6 +68,16 @@ export default async function StudentAppHome() {
   const accessPromise = profilePromise.then((p) =>
     getStudentAccess((p?.role as Role) ?? "student"),
   );
+  // Assignments open at kickoff: before it (or before enrolling) there is
+  // nothing to rank, and the page they'd link to is locked. Chained off the
+  // request-cached access like the desktop home, so it still rides wave 1.
+  // Explicit filters (enrolled cohort, published, released, audience), so the
+  // service-role client reads exactly what the student's own would.
+  const assignmentsPromise = accessPromise.then((a) =>
+    a.enrolled && !a.preCohort
+      ? loadStudentAssignments(admin, userId, { now })
+      : { ready: true, items: [] as StudentItem[] },
+  );
 
   // ---- Wave 1: everything keyed on the user alone ----
   const [
@@ -72,6 +89,8 @@ export default async function StudentAppHome() {
     { count: unread },
     { data: allProgress },
     challenge,
+    calls,
+    eventCohorts,
   ] = await Promise.all([
     profilePromise,
     accessPromise,
@@ -96,9 +115,7 @@ export default async function StudentAppHome() {
       .eq("user_id", userId)
       .eq("status", "pending")
       .order("created_at", { ascending: true }),
-    // Explicit filters (enrolled cohort, published, released, audience), so the
-    // service-role client reads exactly what the student's own would.
-    loadStudentAssignments(admin, userId, { now }),
+    assignmentsPromise,
     admin
       .from("notifications")
       .select("id", { count: "exact", head: true })
@@ -118,6 +135,14 @@ export default async function StudentAppHome() {
       .not("completed_at", "is", null),
     // The open challenge, if there is one.
     getActiveChallenge(),
+    // The student's 1:1s (filtered on their id). Booked for applicants and
+    // pre-cohort students too, so it isn't gated on enrollment. A failed read
+    // costs the row, never the screen.
+    listInvitesForInvitee(userId).catch(() => [] as CallInvite[]),
+    // Every cohort they're enrolled in, for the calendar: the `events read`
+    // policy's line, and the same cache key /app/events uses. Off the access
+    // rows the layout already read, so no round trip.
+    enrolledCohortIds(),
   ]);
 
   const cohort = normalizeEmbed<{
@@ -143,8 +168,8 @@ export default async function StudentAppHome() {
   ] = await Promise.all([
     // The same cached calendar /app/events reads (visibility as the
     // `events read` policy draws it).
-    cohortId && access.enrolled
-      ? getCohortEvents({ cohortId }, nowIso)
+    access.enrolled
+      ? getCohortEvents({ cohortIds: eventCohorts }, nowIso)
       : Promise.resolve(null),
     cohortId && access.enrolled
       ? admin
@@ -172,23 +197,20 @@ export default async function StudentAppHome() {
       : Promise.resolve({ data: null }),
   ]);
 
-  // Next two on the calendar, a running one first; hosted ones get Join.
-  const events = (cohortEvents?.upcoming ?? [])
-    .map((e) => ({
-      ...e,
-      status: studentEventStatus(
-        {
-          startsAt: e.starts_at,
-          endsAt: e.ends_at,
-          liveStartedAt: e.live_started_at,
-          liveEndedAt: e.live_ended_at,
-        },
-        new Date(nowIso),
-      ),
-    }))
-    .filter((e) => e.status === "live" || e.status === "open" || e.status === "upcoming")
-    .sort((a, b) => Number(b.status === "live") - Number(a.status === "live"))
-    .slice(0, 2);
+  // What's due and what's next, picked exactly as the desktop home picks
+  // them. Two calendar events here, one there: a phone has no other list of
+  // them a tap away (Events lives under More).
+  const needs = homeNeeds({
+    access,
+    assignments: assignments.items,
+    events: cohortEvents?.upcoming ?? [],
+    calls,
+    now,
+    eventLimit: 2,
+    eventsHref: "/app/events",
+  });
+  const dueItems = needs.due.items;
+  const nextUp = [...needs.open, ...needs.later];
 
   // "3 of 5 done" for the current week, intersected in memory against the full
   // progress set fetched in wave 1 — no third round trip.
@@ -200,10 +222,6 @@ export default async function StudentAppHome() {
   );
   const weekDone = weekLessonIds.filter((id) => doneLessonIds.has(id)).length;
   const weekModuleTitle = (weekLessons ?? [])[0]?.title as string | undefined;
-  // Due this week or overdue, soonest first — at most three on the home screen.
-  const dueItems = assignments.items
-    .filter((i) => studentGroup(i.status, i.assignment.due_at, now) === "due")
-    .slice(0, 3);
 
   const firstName = profile?.full_name?.split(" ")[0] || "there";
   const startLabel = fmtDateOnly(access.cohortStartsOn);
@@ -261,24 +279,40 @@ export default async function StudentAppHome() {
         )}
 
         {!access.enrolled ? (
-          <Section title="Your application">
-            <ApplicationState status={access.applicationStatus} />
-          </Section>
+          <>
+            <Section title="Your application">
+              <ApplicationState status={access.applicationStatus} />
+            </Section>
+            {nextUp.length > 0 && (
+              <Section title="Next up">
+                <NextUpList items={nextUp} />
+              </Section>
+            )}
+          </>
         ) : access.preCohort ? (
-          <Section title="Before day one">
-            <Alert
-              tone="info"
-              title={`You're enrolled${cohort?.name ? ` in ${cohort.name}` : ""}.`}
-              action={
-                <ActionLink href="/dashboard/kickoff" size="sm">
-                  Kickoff details
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </ActionLink>
-              }
-            >
-              The course and assignments open{startLabel ? ` ${startLabel}` : " at kickoff"}.
-            </Alert>
-          </Section>
+          <>
+            <Section title="Before day one">
+              <Alert
+                tone="info"
+                title={`You're enrolled${cohort?.name ? ` in ${cohort.name}` : ""}.`}
+                action={
+                  <ActionLink href="/dashboard/kickoff" size="sm">
+                    Kickoff details
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </ActionLink>
+                }
+              >
+                The course and assignments open{startLabel ? ` ${startLabel}` : " at kickoff"}.
+              </Alert>
+            </Section>
+            {/* Hosted rooms only (an orientation webinar), and the 1:1s the team
+                books before kickoff: both open to a pre-cohort student. */}
+            {nextUp.length > 0 && (
+              <Section title="Next up">
+                <NextUpList items={nextUp} />
+              </Section>
+            )}
+          </>
         ) : (
           <>
             <Section title="This week" action={{ href: "/app/assignments", label: "Assignments" }}>
@@ -296,6 +330,14 @@ export default async function StudentAppHome() {
                       right={<StatusChip status={i.status} />}
                     />
                   ))}
+                  {needs.due.more > 0 && (
+                    <Row
+                      label={moreDueLabel(needs.due.more)}
+                      value="All assignments"
+                      href="/app/assignments"
+                      right={<ArrowRight className="h-4 w-4 shrink-0 text-ink-faint" />}
+                    />
+                  )}
                   {weekLessonIds.length > 0 && (
                     <Row
                       label={weekModuleTitle ?? `Week ${week} lessons`}
@@ -359,34 +401,10 @@ export default async function StudentAppHome() {
             </Section>
 
             <Section title="Next up" action={{ href: "/app/events", label: "All" }}>
-              {(events ?? []).length === 0 ? (
+              {nextUp.length === 0 ? (
                 <Empty>Nothing on the calendar yet.</Empty>
               ) : (
-                <div className="rounded-2xl border border-line px-4 sm:px-5">
-                  {(events ?? []).map((e) => {
-                    const join =
-                      isHostedOnBatch0(e.live_mode) && (e.status === "live" || e.status === "open");
-                    return (
-                      <Row
-                        key={e.id}
-                        label={e.title}
-                        value={e.location || e.type.replace(/_/g, " ")}
-                        href={join ? `/dashboard/events/${e.id}/live` : "/app/events"}
-                        right={
-                          join ? (
-                            <span className="shrink-0 rounded-md bg-phosphor px-2.5 py-1 text-[12px] font-semibold text-on-phosphor">
-                              Join
-                            </span>
-                          ) : (
-                            <span className="shrink-0 text-right font-mono text-[11px] leading-tight tabular-nums text-ink-faint">
-                              <LocalTime value={e.starts_at} mode="datetime-short" />
-                            </span>
-                          )
-                        }
-                      />
-                    );
-                  })}
-                </div>
+                <NextUpList items={nextUp} />
               )}
             </Section>
           </>
@@ -420,6 +438,61 @@ export default async function StudentAppHome() {
         </div>
       </AppBody>
     </>
+  );
+}
+
+/**
+ * The 1:1 and the events, one row each, open ones first. A call's room and
+ * its list live under /dashboard/calls (More links it the same way); a hosted
+ * event's room under /dashboard/events, an external one opens its link.
+ */
+function NextUpList({ items }: { items: NextUpItem<CallInvite, AppEvent>[] }) {
+  return (
+    <div className="rounded-2xl border border-line px-4 sm:px-5">
+      {items.map((item) => {
+        if (item.kind === "call") {
+          const { invite, joinable } = item.call;
+          return (
+            <Row
+              key={item.key}
+              label={`1:1 with ${invite.hostName}`}
+              value={`${invite.durationMinutes} min call`}
+              href={joinable ? `/dashboard/calls/${invite.id}/live` : "/dashboard/calls"}
+              prefetch={false}
+              right={joinable ? <JoinPill /> : <When at={invite.startsAt} />}
+            />
+          );
+        }
+        const { event } = item;
+        return (
+          <Row
+            key={item.key}
+            label={event.title}
+            value={event.live ? "Live now" : event.row.location || event.row.type.replace(/_/g, " ")}
+            href={event.join?.href ?? event.href}
+            external={event.join?.external}
+            prefetch={false}
+            right={event.join ? <JoinPill /> : <When at={event.startsAt} />}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function JoinPill() {
+  return (
+    <span className="shrink-0 rounded-md bg-phosphor px-2.5 py-1 text-[12px] font-semibold text-on-phosphor">
+      Join
+    </span>
+  );
+}
+
+function When({ at }: { at: string }) {
+  return (
+    <span className="shrink-0 text-right font-mono text-[11px] leading-tight tabular-nums text-ink-faint">
+      <LocalTime value={at} mode="datetime-short" />
+    </span>
   );
 }
 

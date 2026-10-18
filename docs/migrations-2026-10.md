@@ -1,4 +1,4 @@
-# Migrations 0093–0102 (October 2026)
+# Migrations 0093–0107 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -55,8 +55,33 @@ check-ins, in-app files, discussions and the old recorder at once:
    every scheduled email automation fans out to nobody: the insert fails with
    42P10 (the notifications bug 0090 §9 fixed, on the outbox) and the run is
    recorded as an error on the automation.
+4. **Right after its deploy: 0103.** It only adds a function and two
+   triggers, and changes no data. Until it runs, "Move to a different
+   cohort" on a person's profile refuses with "needs database migration
+   0103" (the old move could leave a student with no enrollment, so the new
+   code doesn't fall back to it), and "at least one full admin" is enforced
+   by the app alone, not by the database.
+5. **Any time after 0101: 0104.** It adds `chat_messages.client_id` and a
+   unique `(sender_id, client_id)`, so a Chat message is sent once however
+   many times it's retried. The code works without it: until it runs, a
+   send whose answer is lost can still be posted twice by Retry, and the
+   failed bubble stays beside the message that went through until it's
+   discarded. It also indexes deleted messages for *Report a deleted
+   message*, which works without the index, just less directly.
+   **If 0101 ever runs again after 0104, run 0104 again**: 0101
+   re-grants the message columns it knows by name, which takes away
+   `client_id`'s (0104's verify query notices).
+6. **Any time after 0093: 0105.** It only adds the drafts table and its
+   two functions; nothing reads or writes them until it runs. Until then
+   assignment forms work as before, without autosave (the page reads the
+   missing table as "not set up yet", and Submit never touches it).
+7. **Any time: 0106.** Texting's tables (`docs/sms.md`). It only creates new
+   tables and touches nothing that exists. Until it runs, `/dashboard/phone`
+   collects a number with no texting checkbox and the Texting admin pages say
+   texting isn't set up; after it runs, texting is still inert until someone
+   saves a sending number and credentials at `/admin/sms/settings`.
 
-4. **Any time: 0107.** It only adds the `student_followups` table (no client
+8. **Any time: 0107.** It only adds the `student_followups` table (no client
    policies, no data changes). Until it runs, Student progress says
    "Follow-ups aren't set up yet", the Overview's attention list leaves
    follow-ups out, and `settings.manage` holders see "run migration 0107" on
@@ -139,6 +164,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 
 | # | File | What it does |
 |---|------|--------------|
+| 0078 | `0078_event_display_viewer_count.sql` | Not part of this release: September's webinar "shown attendees" count (`events.display_viewer_count`), renamed out of 0071 (*Versions* below). Production has the column and its check but not the column comment, so its verify query fails there until the file runs; Supabase's GitHub integration runs it when it reaches `main`. |
 | 0093 | `0093_assignments.sql` | Assignment tracker tables (`course_assignments`, `course_assignment_targets`, `course_assignment_submissions`), read-only to clients. Check-ins go read-only, the check-in reminder is disabled, and the running Fall cohort gets weeks 5–9 plus Demo Day (check-ins already posted for those weeks carry over as submissions). Check-in wording in lessons, two stored emails and the Fall Demo Day event becomes "weekly update"; old notification links are repointed. |
 | 0094 | `0094_google_drive.sql` | `team_drive_links` (a team's Drive folder and pinned files) and `pitch_submissions.deck_url`. Pitch links must be https: existing video links are repaired, or moved into the team's notes. The old in-app file stores freeze read-only, and links to the Files page point at the Drive tab. |
 | 0095 | `0095_recordings.sql` | `recording_sessions` (one continuous file per take), `recording_mint_part()`, and the private `recordings` bucket (16 MB parts, WebM/MP4). |
@@ -149,6 +175,10 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0100 | `0100_admin_cleanup.sql` | Removes the retired `ai_usage.view` permission from roles and deletes leftover founder-pass self-check rows (negative serials). |
 | 0101 | `0101_chat.sql` | batch0 Chat: channels, DMs and group DMs (`chat_*` tables including `chat_mutes`, read-only policies, `chat_can_read()`, realtime on `chat_messages`, private presence and typing topics on `realtime.messages`, a trigram index for search, the private `chat-files` bucket), the starting channels plus one per cohort and team (kept, archived, when their team or cohort is deleted), old DMs and team threads carried in, `discord.manage` removed (not converted), admins kept out of other people's chat bells, and the Discord integration's tables, columns and settings dropped. See `docs/chat.md`. |
 | 0102 | `0102_email_outbox_dedupe_index.sql` | `email_outbox.dedupe_key` gets a plain unique index in place of 0052's partial one, so the scheduled-automation fan-out's `on conflict (dedupe_key)` works. Changes no data and sends nothing by itself. |
+| 0103 | `0103_admin_integrity.sql` | `admin_move_student_cohort()` (service role only): moving a student to another cohort is one transaction — their enrollment (kept even without an application), the application it belongs to and their live scholarship rows move together, or nothing does; picking the cohort a student paid for while they're enrolled nowhere puts that enrollment back. Triggers `keep_a_full_admin` (on `profiles`) and `keep_a_full_admin_role` (on `app_roles`) refuse any change that would leave nobody holding a `*` role, serialised so two admins can't demote each other at once. Changes no data. |
+| 0104 | `0104_chat_client_ids.sql` | `chat_messages.client_id` (the composer's id for a message, kept by every Retry), unique per sender, readable by signed-in readers so Realtime's echo carries it: a resend of a message that went through gets the original back instead of posting it twice. Plus a partial index on deleted messages, `(channel_id, deleted_at desc, id desc)`, for *Report a deleted message*. Changes no data. See `docs/chat.md`. |
+| 0105 | `0105_assignment_drafts.sql` | `course_assignment_drafts`: a student's private, autosaved unsubmitted assignment work, readable by its owner only (no staff policy), with a version that only goes up (a submit empties the row instead of deleting it). `save_course_assignment_draft()` re-checks access on every save and refuses one from a tab holding an older version; `clear_course_assignment_draft()` empties it after a submit. Both service role only. Adds only; changes no existing data. |
+| 0106 | `0106_sms_messaging.sql` | Texting: `messaging_consent` (consent per number, no promotional consent on a student's number), the append-only `messaging_consent_log`, `sms_outbox`, `sms_campaigns`, `sms_events`, and the `sms_settings` singleton seeded with no credentials. Service-role only (RLS on, no policies, no grants). Creates only new tables, changes no data, and sends nothing: texting stays off until a number and credentials are saved. See `docs/sms.md`. |
 | 0107 | `0107_student_followups.sql` | `student_followups`: who on the team owns a check on a student, the next check date and a factual note (one open per student), written from the drawer on `/admin/progress` and due ones listed in the Overview's attention list. RLS on with no policies, every API privilege revoked. Changes no data and sends nothing. |
 
 ## Verify
@@ -156,6 +186,15 @@ check-ins, in-app files, discussions and the old recorder at once:
 Each query returns one row, `ok = true`, once its migration has run.
 
 ```sql
+-- 0078
+select exists (select 1 from pg_attribute a
+               where a.attrelid = to_regclass('public.events')
+                 and a.attname = 'display_viewer_count' and not a.attisdropped
+                 and col_description(a.attrelid, a.attnum) is not null)
+   and exists (select 1 from pg_constraint
+               where conrelid = to_regclass('public.events')
+                 and conname = 'events_display_viewer_count_check') as ok;
+
 -- 0093
 select to_regclass('public.course_assignments') is not null
    and to_regclass('public.course_assignment_targets') is not null
@@ -228,6 +267,53 @@ select exists (select 1 from pg_index ix
                  and ix.indisunique and ix.indpred is null and ix.indnkeyatts = 1
                  and a.attname = 'dedupe_key') as ok;
 
+-- 0103
+select to_regprocedure('public.admin_move_student_cohort(uuid, uuid, uuid)') is not null
+   and exists (select 1 from pg_trigger
+               where tgrelid = to_regclass('public.profiles') and tgname = 'keep_a_full_admin')
+   and exists (select 1 from pg_trigger
+               where tgrelid = to_regclass('public.app_roles') and tgname = 'keep_a_full_admin_role') as ok;
+
+-- 0104
+select exists (select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'chat_messages'
+                 and column_name = 'client_id')
+   and exists (select 1 from pg_constraint
+               where conrelid = to_regclass('public.chat_messages')
+                 and conname = 'chat_messages_sender_id_client_id_key' and contype = 'u')
+   -- Readers may select it (Realtime's echo carries it); re-running 0101 takes that away.
+   and exists (select 1 from information_schema.column_privileges
+               where table_schema = 'public' and table_name = 'chat_messages'
+                 and column_name = 'client_id' and grantee = 'authenticated'
+                 and privilege_type = 'SELECT')
+   and to_regclass('public.chat_messages_channel_deleted_idx') is not null as ok;
+
+-- 0105
+select to_regclass('public.course_assignment_drafts') is not null
+   and to_regprocedure('public.save_course_assignment_draft(uuid, uuid, text, text, integer)') is not null
+   and to_regprocedure('public.clear_course_assignment_draft(uuid, uuid, integer)') is not null
+   -- By oid: NULL (not an error) when a function doesn't exist yet.
+   and not has_function_privilege('authenticated',
+         to_regprocedure('public.save_course_assignment_draft(uuid, uuid, text, text, integer)'), 'execute')
+   and not has_function_privilege('authenticated',
+         to_regprocedure('public.clear_course_assignment_draft(uuid, uuid, integer)'), 'execute') as ok;
+
+-- 0106
+select to_regclass('public.messaging_consent') is not null
+   and to_regclass('public.messaging_consent_log') is not null
+   and to_regclass('public.sms_outbox') is not null
+   and to_regclass('public.sms_events') is not null
+   and exists (select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'sms_campaigns'
+                 and column_name = 'client_key')
+   and exists (select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'messaging_consent'
+                 and column_name = 'opted_out_by')
+   and exists (select 1 from pg_trigger
+               where tgname = 'messaging_consent_log_no_update'
+                 and tgrelid = to_regclass('public.messaging_consent_log'))
+   and exists (select 1 from public.sms_settings where id) as ok;
+
 -- 0107
 select to_regclass('public.student_followups') is not null
    and exists (select 1 from pg_indexes
@@ -240,3 +326,86 @@ select to_regclass('public.student_followups') is not null
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,
 `docs/recording.md`, `docs/batch0-live.md`, `docs/calls.md`,
 `docs/webinars.md`, `docs/chat.md`, `docs/admin.md`.
+
+## Versions
+
+A file's version is the four digits before its first `_`. The Supabase CLI
+(`supabase db push`, `supabase migration repair`) and Supabase's GitHub
+integration key a file by its version and record it in
+`supabase_migrations.schema_migrations`, whose primary key is the version.
+Three rules follow from that.
+
+- **No two files share a version.** From 2026-09-20 two files were 0071
+  (`0071_scholarships.sql` and the webinar viewer count). The second one's
+  history INSERT fails and rolls the file back: `supabase db push` refused
+  (it wanted `--include-all`, which then fails that way), and the Supabase
+  check failed on every push to `main`. Scholarships kept 0071: production's
+  history row for 0071 is that file, and 0072 has to run after it. The viewer
+  count, which only needs `public.events`, is now
+  `0078_event_display_viewer_count.sql`, renamed with its SQL unchanged.
+  Production has its column and check (added by hand in September) but not
+  its column comment, so 0078 still runs there rather than only being
+  recorded: the integration runs it when the rename reaches `main` (the first
+  two statements find their work done, the comment is added) and records it.
+  Don't also `supabase migration repair --status applied 0078`: that records
+  the comment as applied without adding it, and a repair that commits while
+  the integration is running 0078 fails the integration's history INSERT
+  (23505), which turns the check red again. Afterwards, `supabase migration
+  list --linked` shows 0078 under both Local and Remote, and the 0078 verify
+  query above returns `ok`.
+- **A version is recorded in production only once its file is on `main`.**
+  On every push to `main` the integration first compares production's
+  history with `main`'s files, and a version production has recorded but
+  `main` has no file for stops it there, before it runs anything: "Remote
+  migration versions not found in local migrations directory" (on
+  2026-09-26 that was 0085 and 0086, recorded from a branch). Until the file
+  lands, every push to `main` fails the check and applies nothing, not even
+  other new files. So never `supabase migration repair --status applied` a
+  branch's file before it merges. To get a file live before its code deploys
+  (an expand step), merge it in a pull request of its own, which the
+  integration applies; or run it by hand without recording it (`supabase db
+  query --linked -f …`), and the integration runs it again when it reaches
+  `main` (every file is idempotent) and records it then. `npm run db:migrate`
+  does the same on its own: it runs a pending file that isn't on
+  `origin/main` yet but leaves it unrecorded, and refuses `--mark-applied`
+  for one.
+- **A new file takes a number neither `main` nor an open pull request
+  uses.** Two branches that each take the next free number both pass their
+  checks and both merge, and on the second merge the integration fails that
+  file's history INSERT: rolled back, so its schema never reaches production
+  while Vercel deploys its code. CI's *Migration versions* step
+  (`npm run check:migration-versions`) fails a pull request whose new file
+  has a version that `main`, or another open pull request, already holds,
+  read from GitHub when the step runs, so whichever of the pair runs its
+  checks second fails. It can't see a file pushed straight to `main`, or a
+  pull request merged while red; re-run the *check* job before merging a
+  migration if other migration pull requests merged since its checks ran.
+  Requiring branches to be up to date before merging (branch protection)
+  would close the rest; it isn't on.
+
+How it's enforced: `npm test` fails when two files share a version or when
+name order and number order disagree (`lib/migration-plan.test.ts`);
+`npm run db:migrate` refuses to plan with a shared version; and
+`npm run test:migrations-replay-db` (in CI) replays every file onto an empty
+database the way the CLI does (its statement splitter, its order, its
+history rows), and plays production's history through the integration.
+
+**Supabase's GitHub integration applies migrations to production.** On every
+push to `main` it runs the CLI against the production project (the *Supabase
+Preview* check), files numbered below the newest recorded one included. The
+shared 0071 stopped it at `0071_scholarships.sql` every time (rolled back, so
+nothing changed). With every version unique, it applies any file production
+hasn't recorded as soon as that file reaches `main`, typically before Vercel
+has finished deploying the code. An additive file is fine there (the code
+treats a missing table or column as "not set up yet"). A file that removes
+what the live code reads (a contract step like 0088, or 0101) must reach
+`main` only once that code is live, in a pull request of its own. Since the
+integration applies a file itself, the step after merging one is to wait for
+the merge commit's *Supabase Preview* check and then run the file's verify
+query. Don't record it by hand meanwhile (`migration repair`, or
+`npm run db:migrate -- --apply`): a record that commits while the
+integration is running that file fails the integration's history INSERT
+(23505) and turns the check red, though nothing is lost. To keep applying
+everything by hand instead, turn the integration's production deploys off in
+Supabase → Project Settings → Integrations → GitHub.
+`docs/webinars.md`, `docs/chat.md`, `docs/admin.md`, `docs/sms.md`.

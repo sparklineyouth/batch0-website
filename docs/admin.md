@@ -50,6 +50,40 @@ A new source (unanswered chat questions, say) is one more provider: a key in
 `ATTENTION_PROVIDERS`, and a row builder. `/dev/attention` previews the list
 with fixtures (404 on production).
 
+## Cohort readiness (`/admin/cohorts`)
+
+Each upcoming or active cohort's row has a Readiness chip ("Ready", "N to
+check", "N to fix") that opens a checklist computed on the server from the
+cohort's own rows (`lib/cohort-readiness.ts`, loaded by
+`lib/cohort-readiness-load.ts` through `lib/cohort-readiness-server.ts`).
+"Day one" is the start date in New York, whatever the status: admissions,
+the kickoff and the first deadlines run on the calendar even when a cohort is
+flipped Active early.
+
+| Check | Fails on | Warns on |
+|---|---|---|
+| Dates | no start/end date, end before start | start passed but still Upcoming; end passed but still Active; marked Active before its start (that opens the student app and the kickoff page reads as past) |
+| Enrollment and price | capacity under 1 | $0 price, over capacity, half-set late entry, applications closing after 00:00 on day one (admissions switch to late entry then, so that time is never reached) |
+| Course content | no modules or no lessons | a course week with no module, a module past the last week or with no lessons, an empty lesson |
+| Course files | a lesson video, lesson material or cohort resource file storage won't sign (the lesson page silently drops those), a material with no file | an uploaded video that's missing but has a video link students get instead; storage unreachable or slower than 3s |
+| Assignment dates | a published deadline already past before day one, or outside the cohort's dates | none published; due before its lesson's week opens |
+| Kickoff (before day one) | a join link the kickoff page would hide | page not filled in, no time, no place/link, no session on day one |
+| Live sessions | none scheduled inside the cohort's dates | a remaining course week with no session (staff-only rehearsals don't count) |
+| Session links | an upcoming external session with no link | — |
+
+Sessions are the cohort's own events plus "Everyone signed in" events with no
+cohort, which every student sees; another cohort's public events stay on that
+cohort's timetable. A resource with an external link is opened by its link, so
+its upload isn't checked.
+
+Each problem links to the editor that fixes it (the cohort form in place,
+the kickoff page, `/admin/course?module=<id>`, `/admin/resources/<id>`,
+`/admin/assignments?cohort=<id>`, `/admin/events?edit=<id>`), and only when
+the viewer holds that editor's permission. A table that fails to load, or
+takes longer than 4s, shows "Couldn't load" rather than a false empty.
+`/dev/cohort-readiness` renders the table over fixtures. Unrelated to
+`docs/cohort-readiness.md`, the offline Winter curriculum script.
+
 ## Adding a page
 
 1. Map its path in `ADMIN_ROUTE_PERMISSIONS` (`lib/permissions.ts`). Unmapped
@@ -68,6 +102,36 @@ under `/admin/email` needs `email.view` unless it has its own row. Teams does
 the same: `/admin/teams` opens on `teams.manage` or `moderation.manage` and
 shows each holder its part (the team list, the logo review queue on top); a
 team's own pages stay on `teams.manage`.
+
+## People
+
+- **Roles.** The email form at `/admin/roles`, the picker on a person's row
+  and profile, and the bulk change all go through `changeRoles`
+  (`lib/role-change-server.ts`) and one rule (`lib/role-change.ts`): nobody
+  changes their own role (full admins included), nobody assigns a role that
+  holds more than theirs, nobody changes someone whose current role holds
+  admin permissions they don't (so only a full admin re-roles a full admin;
+  the participant and panel keys such as `student.dashboard` don't count, so
+  a delegate without them can still promote a Student), and the site always
+  keeps one full admin. Rows the viewer can't change show a badge, not
+  a picker; a bulk change skips them and counts them as skipped. Migration
+  0103's `keep_a_full_admin` triggers hold the last rule in the database too,
+  for any writer and for two admins demoting each other at once.
+- **Moving a student** (profile → Manage → Move to a different cohort) is one
+  database transaction (`admin_move_student_cohort`, 0103): the enrollment
+  shown as current, the application it came from and their live scholarship
+  rows move together, or nothing does (a full cohort, an active checkout).
+  Someone added with "Add a person" has no application and keeps their
+  access. Someone who paid but is enrolled nowhere (what the old move's
+  failed insert left behind) gets that enrollment back by being "moved" to
+  the cohort they paid for. Earlier cohorts, other applications and payments
+  stay put. Until 0103 runs the button says it needs the migration.
+- **What a profile shows.** It opens on `people.view`. Payments (amounts,
+  statuses, Stripe ids) need `payments.view`, the same as `/admin/payments`;
+  fees & fines need `charges.manage` or `payments.view`. Neither is fetched
+  for a viewer who can't see it. Each Manage control renders only for the
+  permission its action asserts (`lib/people-profile-access.ts`; a test reads
+  the actions to keep the two in step).
 
 ## Folded pages
 

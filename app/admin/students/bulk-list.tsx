@@ -19,6 +19,8 @@ type Row = {
   email: string;
   full_name: string | null;
   role: Role;
+  /** The viewer may not change this person's role (see lib/role-change.ts). */
+  role_locked: boolean;
   created_at: string;
   latest_app_status: string | null;
   cohort_name: string | null;
@@ -27,11 +29,14 @@ type Row = {
 export function StudentsBulkList({
   rows,
   roleOptions,
+  roleBadges,
   canChangeRoles,
 }: {
   rows: Row[];
   /** Assignable roles, from public.app_roles. */
   roleOptions: RoleOption[];
+  /** Every role, for badge labels and colours. */
+  roleBadges: RoleOption[];
   /** False when the viewer can read the directory but not re-role anyone. */
   canChangeRoles: boolean;
 }) {
@@ -72,6 +77,13 @@ export function StudentsBulkList({
           userIds: Array.from(selected),
           role,
         });
+        if (res.error) {
+          // Nothing changed (the role is one the viewer can't hand out);
+          // keep the selection so they can pick another.
+          setConfirmRole(null);
+          setErr(res.error);
+          return;
+        }
         const parts = [`${res.succeeded} updated`];
         if (res.failed > 0) parts.push(`${res.failed} failed`);
         if (res.skipped > 0) parts.push(`${res.skipped} skipped`);
@@ -139,14 +151,14 @@ export function StudentsBulkList({
               {p.email || <span className="text-ink-faint">—</span>}
             </div>
             <div>
-              {canChangeRoles ? (
+              {canChangeRoles && !p.role_locked ? (
                 <RoleSelect
                   userId={p.id}
                   role={p.role}
                   options={roleOptions}
                 />
               ) : (
-                <RoleBadge role={p.role} options={roleOptions} />
+                <RoleBadge role={p.role} options={roleBadges} />
               )}
             </div>
             <div>
@@ -229,7 +241,9 @@ export function StudentsBulkList({
         onConfirm={() => confirmRole && runBulk(confirmRole)}
         description={
           <p className="text-sm text-ink-soft">
-            Their access changes right away. Your own account is skipped.
+            Their access changes right away. Your own account, anyone whose
+            role holds access you don&apos;t have, and anyone already in this
+            role are skipped.
           </p>
         }
       />
