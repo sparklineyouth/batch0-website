@@ -13,6 +13,7 @@ import {
   capabilitiesFrom,
   emailLandingFor,
   resolveHome,
+  smsLandingFor,
   type Capabilities,
 } from "@/lib/permissions";
 import { isAppHost, isMarketingPath, MAIN_ORIGIN } from "@/lib/app-host";
@@ -96,6 +97,10 @@ const PUBLIC_STATIC_PREFIXES = [
   "/terms",
   "/refund-policy",
   "/community-guidelines",
+  // The texting disclosure page. Every HELP reply prints its URL, so it is
+  // opened from a phone by someone who is very often not signed in, and it
+  // reads nothing per-request (scripts/verify-static.mjs keeps it static).
+  "/texts",
   "/sponsors",
   // The service worker's offline fallback. It is precached at install time and
   // served from the device with no network, so it reads nothing about the
@@ -571,6 +576,10 @@ export async function updateSession(request: NextRequest) {
       // The sidebar's one Email row: forward to the first tab they hold.
       if (path === "/admin/email") {
         return redirectTo(emailLandingFor(caps) ?? "/admin");
+      }
+      // And the one Texting row, the same way.
+      if (path === "/admin/sms") {
+        return redirectTo(smsLandingFor(caps) ?? "/admin");
       }
       if (path.startsWith("/mentor") && !can(caps, "mentor.panel")) {
         return redirectTo(home);

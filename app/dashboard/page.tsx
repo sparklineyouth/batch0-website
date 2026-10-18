@@ -10,6 +10,7 @@ import { FounderPassCard } from "./founder-pass-card";
 import { getPassForUser } from "@/lib/founder-pass";
 import { ChargePayButton } from "@/components/charge-pay-button";
 import { StatusChip } from "@/components/assignments/status-chip";
+import { SmsConsentPrompt } from "@/components/sms-consent-prompt";
 import { getStudentAccess, type StudentAccess } from "@/lib/access";
 import { fmtDateOnly } from "@/lib/pre-cohort";
 import { cohortWeek } from "@/lib/cohort-week";
@@ -236,6 +237,14 @@ export default async function DashboardHome() {
           )}
         </section>
       )}
+
+      {/*
+        Asks for text permission once texting is live and we don't have it.
+        Self-contained and renders nothing otherwise — including the whole time
+        before a provider number is set up — so it costs a student who has
+        nothing to answer one cached settings read.
+      */}
+      <SmsConsentPrompt />
 
       {founderPass && (
         <div className="mt-10">

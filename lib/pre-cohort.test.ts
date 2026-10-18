@@ -13,6 +13,13 @@ test("a webinar room is reachable pre-cohort; the events list is not", () => {
   assert.equal(isPreCohortAllowedPath("/dashboard/events//live"), false);
 });
 
+test("the phone and texting page is reachable pre-cohort", () => {
+  // Every link to it goes to an accepted student, before kickoff: the
+  // phone-number email, the texting opt-in email and the dashboard prompt.
+  assert.equal(isPreCohortAllowedPath("/dashboard/phone"), true);
+  assert.equal(isPreCohortAllowedPath("/dashboard/phones"), false);
+});
+
 test("the existing allow list is unchanged", () => {
   assert.equal(isPreCohortAllowedPath("/dashboard"), true);
   assert.equal(isPreCohortAllowedPath(`/dashboard/calls/${ID}/live`), true);

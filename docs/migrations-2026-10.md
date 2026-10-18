@@ -1,4 +1,4 @@
-# Migrations 0093–0105 (October 2026)
+# Migrations 0093–0106 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -75,6 +75,11 @@ check-ins, in-app files, discussions and the old recorder at once:
    two functions; nothing reads or writes them until it runs. Until then
    assignment forms work as before, without autosave (the page reads the
    missing table as "not set up yet", and Submit never touches it).
+7. **Any time: 0106.** Texting's tables (`docs/sms.md`). It only creates new
+   tables and touches nothing that exists. Until it runs, `/dashboard/phone`
+   collects a number with no texting checkbox and the Texting admin pages say
+   texting isn't set up; after it runs, texting is still inert until someone
+   saves a sending number and credentials at `/admin/sms/settings`.
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -167,6 +172,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0103 | `0103_admin_integrity.sql` | `admin_move_student_cohort()` (service role only): moving a student to another cohort is one transaction — their enrollment (kept even without an application), the application it belongs to and their live scholarship rows move together, or nothing does; picking the cohort a student paid for while they're enrolled nowhere puts that enrollment back. Triggers `keep_a_full_admin` (on `profiles`) and `keep_a_full_admin_role` (on `app_roles`) refuse any change that would leave nobody holding a `*` role, serialised so two admins can't demote each other at once. Changes no data. |
 | 0104 | `0104_chat_client_ids.sql` | `chat_messages.client_id` (the composer's id for a message, kept by every Retry), unique per sender, readable by signed-in readers so Realtime's echo carries it: a resend of a message that went through gets the original back instead of posting it twice. Plus a partial index on deleted messages, `(channel_id, deleted_at desc, id desc)`, for *Report a deleted message*. Changes no data. See `docs/chat.md`. |
 | 0105 | `0105_assignment_drafts.sql` | `course_assignment_drafts`: a student's private, autosaved unsubmitted assignment work, readable by its owner only (no staff policy), with a version that only goes up (a submit empties the row instead of deleting it). `save_course_assignment_draft()` re-checks access on every save and refuses one from a tab holding an older version; `clear_course_assignment_draft()` empties it after a submit. Both service role only. Adds only; changes no existing data. |
+| 0106 | `0106_sms_messaging.sql` | Texting: `messaging_consent` (consent per number, no promotional consent on a student's number), the append-only `messaging_consent_log`, `sms_outbox`, `sms_campaigns`, `sms_events`, and the `sms_settings` singleton seeded with no credentials. Service-role only (RLS on, no policies, no grants). Creates only new tables, changes no data, and sends nothing: texting stays off until a number and credentials are saved. See `docs/sms.md`. |
 
 ## Verify
 
@@ -284,6 +290,22 @@ select to_regclass('public.course_assignment_drafts') is not null
          to_regprocedure('public.save_course_assignment_draft(uuid, uuid, text, text, integer)'), 'execute')
    and not has_function_privilege('authenticated',
          to_regprocedure('public.clear_course_assignment_draft(uuid, uuid, integer)'), 'execute') as ok;
+
+-- 0106
+select to_regclass('public.messaging_consent') is not null
+   and to_regclass('public.messaging_consent_log') is not null
+   and to_regclass('public.sms_outbox') is not null
+   and to_regclass('public.sms_events') is not null
+   and exists (select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'sms_campaigns'
+                 and column_name = 'client_key')
+   and exists (select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'messaging_consent'
+                 and column_name = 'opted_out_by')
+   and exists (select 1 from pg_trigger
+               where tgname = 'messaging_consent_log_no_update'
+                 and tgrelid = to_regclass('public.messaging_consent_log'))
+   and exists (select 1 from public.sms_settings where id) as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,
@@ -371,3 +393,4 @@ integration is running that file fails the integration's history INSERT
 (23505) and turns the check red, though nothing is lost. To keep applying
 everything by hand instead, turn the integration's production deploys off in
 Supabase → Project Settings → Integrations → GitHub.
+`docs/webinars.md`, `docs/chat.md`, `docs/admin.md`, `docs/sms.md`.

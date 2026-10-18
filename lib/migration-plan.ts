@@ -130,6 +130,20 @@ where permissions @> array['ai_usage.view']::text[];`,
          to_regprocedure('public.save_course_assignment_draft(uuid, uuid, text, text, integer)'), 'execute')
    and not has_function_privilege('authenticated',
          to_regprocedure('public.clear_course_assignment_draft(uuid, uuid, integer)'), 'execute') as ok;`,
+  "0106": `select to_regclass('public.messaging_consent') is not null
+   and to_regclass('public.messaging_consent_log') is not null
+   and to_regclass('public.sms_outbox') is not null
+   and to_regclass('public.sms_events') is not null
+   and exists (select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'sms_campaigns'
+                 and column_name = 'client_key')
+   and exists (select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'messaging_consent'
+                 and column_name = 'opted_out_by')
+   and exists (select 1 from pg_trigger
+               where tgname = 'messaging_consent_log_no_update'
+                 and tgrelid = to_regclass('public.messaging_consent_log'))
+   and exists (select 1 from public.sms_settings where id) as ok;`,
 };
 
 /**

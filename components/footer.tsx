@@ -111,6 +111,15 @@ export default async function Footer({ config, applyHref = "/apply" }: { config?
           <Link href="/support" className="hover:text-ink">
             Support
           </Link>
+          {/*
+            Linked from every page on purpose: a carrier reviewing our sending
+            number browses the site looking for the texting terms and the way
+            to opt out, and a page reachable only from inside a text is a page
+            they conclude does not exist.
+          */}
+          <Link href="/texts" className="hover:text-ink">
+            Text messages
+          </Link>
         </div>
       </div>
     </footer>
