@@ -1,12 +1,12 @@
 /**
- * Which of the October 2026 migrations (0093–0101, 0107) this database is
- * missing.
+ * Which of the October 2026 migrations (0093–0101, 0107, 0110) this database
+ * is missing.
  *
  * Production gets the code before the migrations are run by hand, so the admin
  * overview shows one line while any probe says one is missing. Two kinds:
  *
  *   - schema: read one new table or column with `limit 0`; "does not exist"
- *     means its migration hasn't run (0093–0096, 0101, 0107).
+ *     means its migration hasn't run (0093–0096, 0101, 0107, 0110).
  *   - leftover: look for one row the migration removes; finding one means it
  *     hasn't run (0099, 0100 and 0101 strip retired permission keys from roles).
  *
@@ -76,6 +76,8 @@ export const MIGRATION_PROBES: readonly MigrationProbe[] = [
   },
   // Student follow-ups on /admin/progress and the Overview's attention list.
   { migration: "0107", table: "student_followups", columns: "id, owner_id, next_check_on, status" },
+  // Chat threads and #help's questions (the Overview's Unanswered questions).
+  { migration: "0110", table: "chat_threads", columns: "root_id, question, help_ticket_id" },
 ];
 
 /** What one probe saw: the query's error, and whether a leftover row came back. */

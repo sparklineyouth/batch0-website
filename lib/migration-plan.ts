@@ -156,6 +156,22 @@ where permissions @> array['ai_usage.view']::text[];`,
    and not exists (select 1 from pg_policies
                    where schemaname = 'public' and tablename = 'intro_requests'
                      and cmd <> 'SELECT') as ok;`,
+  "0110": `select to_regclass('public.chat_threads') is not null
+   and to_regclass('public.chat_thread_follows') is not null
+   and to_regclass('public.chat_thread_events') is not null
+   and exists (select 1 from pg_constraint
+               where conrelid = to_regclass('public.chat_messages')
+                 and conname = 'chat_messages_thread_root_fkey' and contype = 'f')
+   and exists (select 1 from pg_trigger
+               where tgrelid = to_regclass('public.chat_messages') and tgname = 'chat_messages_touch_thread')
+   -- Readers may select it (Realtime routes a reply by it), and the unread
+   -- count skips replies: re-running 0101 takes both away.
+   and exists (select 1 from information_schema.column_privileges
+               where table_schema = 'public' and table_name = 'chat_messages'
+                 and column_name = 'thread_root_id' and grantee = 'authenticated'
+                 and privilege_type = 'SELECT')
+   and coalesce(position('thread_root_id' in
+         pg_get_functiondef(to_regprocedure('public.chat_unread(uuid, uuid[])'))) > 0, false) as ok;`,
 };
 
 /**
