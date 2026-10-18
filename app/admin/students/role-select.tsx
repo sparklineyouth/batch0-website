@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { changeUserRole } from "./actions";
 import { roleColorClasses } from "@/lib/permissions";
 import { ADMIN_PAGES } from "@/lib/nav-config";
-import { diffRoleAccess, type ImpactRole } from "@/lib/role-impact";
+import { FIXTURE_NOT_SENT, diffRoleAccess, type ImpactRole } from "@/lib/role-impact";
 import { AccessImpact } from "@/components/admin/role-impact";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import type { Role } from "@/lib/types";
@@ -26,6 +26,7 @@ export function RoleSelect({
   options,
   roles,
   name,
+  fixture = false,
 }: {
   userId: string;
   role: Role;
@@ -35,12 +36,19 @@ export function RoleSelect({
   roles: ImpactRole[];
   /** Who this is, for the confirmation's title. */
   name?: string | null;
+  /** /dev/roles: confirming never calls the server (FIXTURE_NOT_SENT). */
+  fixture?: boolean;
 }) {
   const router = useRouter();
   const [current, setCurrent] = useState<Role>(role);
-  const [choice, setChoice] = useState<Role | null>(null);
+  // The change being confirmed, with the role it starts from captured when
+  // the dialog opened. Not read from `current`: confirming moves the select
+  // to the new role straight away, and a preview built from `current` then
+  // said "They hold Intern now… No change" for as long as the request took.
+  const [choice, setChoice] = useState<{ from: Role; to: Role } | null>(null);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
+  const [note, setNote] = useState<string | undefined>();
 
   // A profile can point at a role that was just deleted, or one this page's
   // options were filtered down from. Keep it selectable so the picker shows
@@ -52,21 +60,26 @@ export function RoleSelect({
   const color = options.find((o) => o.slug === current)?.color ?? "slate";
   const unavailable = roles.filter((r) => !list.some((o) => o.slug === r.slug));
 
-  const from = roles.find((r) => r.slug === current);
-  const to = choice ? roles.find((r) => r.slug === choice) : undefined;
+  const from = choice ? roles.find((r) => r.slug === choice.from) : undefined;
+  const to = choice ? roles.find((r) => r.slug === choice.to) : undefined;
 
   function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = e.target.value as Role;
     if (next === current) return;
     setError(undefined);
+    setNote(undefined);
     // The select stays on the current role until the change is confirmed.
-    setChoice(next);
+    setChoice({ from: current, to: next });
   }
 
   function confirm() {
     if (!choice) return;
-    const next = choice;
-    const previous = current;
+    if (fixture) {
+      setChoice(null);
+      setNote(FIXTURE_NOT_SENT);
+      return;
+    }
+    const { from: previous, to: next } = choice;
     setCurrent(next);
     start(async () => {
       try {
@@ -111,10 +124,11 @@ export function RoleSelect({
         ))}
       </select>
       {error && <span className="text-[10px] text-red-700 dark:text-red-300">{error}</span>}
+      {note && <span className="text-[10px] text-ink-faint">{note}</span>}
 
       <ConfirmDialog
         open={choice !== null}
-        title={`Change ${name || "this person"} to ${to?.label ?? choice}?`}
+        title={`Change ${name || "this person"} to ${to?.label ?? choice?.to}?`}
         confirmLabel="Change role"
         pending={pending}
         onCancel={() => !pending && setChoice(null)}
@@ -122,7 +136,7 @@ export function RoleSelect({
         description={
           <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
             <p className="text-xs text-ink-faint">
-              They hold {from?.label ?? current} now. As {to?.label ?? choice}, they would:
+              They hold {from?.label ?? choice?.from} now. As {to?.label ?? choice?.to}, they would:
             </p>
             <AccessImpact
               showPermissions

@@ -14,7 +14,7 @@ import {
   slugifyRole,
 } from "@/lib/permissions";
 import { ADMIN_PAGES } from "@/lib/nav-config";
-import { diffRoleAccess, landingFor, roleSaveRefusal } from "@/lib/role-impact";
+import { FIXTURE_NOT_SENT, diffRoleAccess, landingFor, roleSaveRefusal } from "@/lib/role-impact";
 import { AccessImpact } from "@/components/admin/role-impact";
 import { createRole, updateRole, type RoleInput } from "./actions";
 
@@ -44,6 +44,7 @@ export function RoleForm({
   grantable,
   members = 0,
   actorRole = null,
+  fixture = false,
 }: {
   mode: "create" | "edit";
   initial: RoleFormValues;
@@ -52,11 +53,14 @@ export function RoleForm({
   members?: number;
   /** The signed-in admin's own role, for "you can't take roles.manage off your own role". */
   actorRole?: string | null;
+  /** /dev/roles: Save never calls the server (FIXTURE_NOT_SENT). */
+  fixture?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
   const [saved, setSaved] = useState(false);
+  const [note, setNote] = useState<string | undefined>();
 
   const [label, setLabel] = useState(initial.label);
   const [slug, setSlug] = useState(initial.slug);
@@ -98,6 +102,11 @@ export function RoleForm({
       }),
     [mode, initial.permissions, initial.homePath, ticked, homePath],
   );
+  // A new role with nothing ticked yet gets a prompt, not warnings about a
+  // role nobody has started on: [] against [] "opens no page", and EMPTY_ROLE
+  // would say "Can't save yet" before the admin had done anything. Save stays
+  // disabled either way; the prompt says what to do.
+  const blank = mode === "create" && ticked.length === 0;
   const refusal = roleSaveRefusal({
     permissions: ticked,
     existing: mode === "edit" ? { slug: initial.slug, permissions: initial.permissions } : null,
@@ -141,6 +150,10 @@ export function RoleForm({
     e.preventDefault();
     setError(undefined);
     setSaved(false);
+    if (fixture) {
+      setNote(FIXTURE_NOT_SENT);
+      return;
+    }
     const payload: RoleInput = {
       slug: mode === "edit" ? initial.slug : effectiveSlug,
       label,
@@ -363,14 +376,16 @@ export function RoleForm({
               : `For the ${members} ${members === 1 ? "person who holds" : "people who hold"} it, from their next page load.`}
         </p>
         <div className="mt-3">
-          <AccessImpact
-            diff={diff}
-            showPermissions={mode === "edit"}
-            showNeeds
-            emptyText={
-              mode === "edit" ? "Nothing about access has changed yet." : "Nothing yet: tick what this role can do."
-            }
-          />
+          {blank ? (
+            <p className="text-xs text-ink-faint">Nothing yet: tick what this role can do.</p>
+          ) : (
+            <AccessImpact
+              diff={diff}
+              showPermissions={mode === "edit"}
+              showNeeds
+              emptyText="Nothing about access has changed yet."
+            />
+          )}
         </div>
         {mode === "create" && ticked.length > 0 && (
           <p className="mt-2 text-xs text-ink-faint">
@@ -378,7 +393,7 @@ export function RoleForm({
           </p>
         )}
         {/* A broken pair is already listed above, each with its fix. */}
-        {refusal && diff.unmet.length === 0 && (
+        {refusal && !blank && diff.unmet.length === 0 && (
           <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">Can&apos;t save yet: {refusal}</p>
         )}
       </section>
@@ -404,6 +419,7 @@ export function RoleForm({
             Saved. Anyone holding this role sees the change on their next page load.
           </span>
         )}
+        {note && <span className="text-sm text-ink-faint">{note}</span>}
       </div>
     </form>
   );

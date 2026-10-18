@@ -324,6 +324,17 @@ export function landingFor(permissions: readonly string[], home: string | null):
   return resolveHome(capsOf(permissions), home);
 }
 
+/**
+ * What Save, Delete, Change role and Apply say on the /dev/roles fixture
+ * page instead of calling the server. The components there (RoleForm,
+ * DeleteRole, RoleSelect, StudentsBulkList) take a `fixture` flag that stops
+ * them before any server action: that page renders on localhost and on
+ * branch previews, either of which can be talking to the production
+ * database, and its made-up roles carry real slugs, so a signed-in admin
+ * pressing Save there would have rewritten the real Mentor role.
+ */
+export const FIXTURE_NOT_SENT = "Not sent: this is the /dev/roles preview, which never calls the server.";
+
 // ---------------------------------------------------------------------------
 // Saving a role
 // ---------------------------------------------------------------------------

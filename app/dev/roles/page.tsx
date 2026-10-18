@@ -16,9 +16,15 @@ import { diffRoleAccess, previewRoleAssignment, type ImpactRole } from "@/lib/ro
  * and a database; this renders the same components over made-up roles and
  * people: the role editor live (tick boxes to see "What saving changes"), the
  * email form's preview card, the delete dialog's move, the bulk change's
- * dialog, and the row picker (pick a role to see its confirmation). Saving,
- * assigning or applying calls the real server actions, which refuse without
- * an admin session.
+ * dialog, and the row picker (pick a role to see its confirmation).
+ *
+ * Every component that writes is rendered with `fixture`, which stops it
+ * before its server action (FIXTURE_NOT_SENT in lib/role-impact.ts). This
+ * page used to call the real ones: its roles carry real slugs, localhost can
+ * be talking to the production database, and an admin signed in there who
+ * ticked "Manage the blog" as the page suggests and pressed Save would have
+ * rewritten the real Mentor role. lib/role-impact.test.ts keeps every write
+ * here flagged.
  *
  * Gated on VERCEL_ENV (not NODE_ENV, which is "production" on every Vercel
  * deployment): it renders on localhost and on branch previews, and 404s on
@@ -76,8 +82,8 @@ export default function RoleImpactPreviewPage() {
   return (
     <main className="mx-auto max-w-4xl space-y-12 px-4 py-10">
       <p className="rounded-lg border border-amber-400/40 bg-amber-400/[0.06] px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
-        Preview with made-up roles and people. Saving, assigning and applying call the real server
-        actions, which need an admin session.
+        Preview with made-up roles and people. Nothing here calls the server: Save, Delete, Change
+        role and Apply say so and stop.
       </p>
 
       <section>
@@ -90,6 +96,7 @@ export default function RoleImpactPreviewPage() {
           grantable={null}
           members={14}
           actorRole="admin"
+          fixture
           initial={{
             slug: "mentor",
             label: "Mentor",
@@ -152,6 +159,7 @@ export default function RoleImpactPreviewPage() {
             permissions={role("finance").permissions}
             homePath="/admin"
             members={3}
+            fixture
             targets={ROLES.filter((r) => r.slug !== "finance" && r.slug !== "admin").map((r) => ({
               slug: r.slug,
               label: r.label,
@@ -169,6 +177,7 @@ export default function RoleImpactPreviewPage() {
         </p>
         <Card className="!p-0 overflow-hidden">
           <StudentsBulkList
+            fixture
             canChangeRoles
             actor={ops}
             impactRoles={ROLES}

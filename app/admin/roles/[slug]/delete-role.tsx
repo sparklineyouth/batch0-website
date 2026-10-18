@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label, Select } from "@/components/ui/input";
 import { AccessImpact } from "@/components/admin/role-impact";
 import { ADMIN_PAGES } from "@/lib/nav-config";
-import { diffRoleAccess } from "@/lib/role-impact";
+import { FIXTURE_NOT_SENT, diffRoleAccess } from "@/lib/role-impact";
 import { deleteRole } from "../actions";
 
 /**
@@ -23,6 +23,7 @@ export function DeleteRole({
   homePath,
   members,
   targets,
+  fixture = false,
 }: {
   slug: string;
   label: string;
@@ -31,6 +32,8 @@ export function DeleteRole({
   homePath: string | null;
   members: number;
   targets: { slug: string; label: string; permissions: readonly string[]; home_path: string | null }[];
+  /** /dev/roles: Delete never calls the server (FIXTURE_NOT_SENT). */
+  fixture?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -39,10 +42,15 @@ export function DeleteRole({
     targets.find((t) => t.slug === "student")?.slug ?? targets[0]?.slug ?? "",
   );
   const [error, setError] = useState<string | undefined>();
+  const [note, setNote] = useState<string | undefined>();
   const destination = targets.find((t) => t.slug === reassignTo);
 
   function run() {
     setError(undefined);
+    if (fixture) {
+      setNote(FIXTURE_NOT_SENT);
+      return;
+    }
     start(async () => {
       const res = await deleteRole(slug, reassignTo);
       if (!res.ok) {
@@ -130,6 +138,7 @@ export function DeleteRole({
           {error && (
             <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
           )}
+          {note && <p className="text-sm text-ink-faint">{note}</p>}
         </div>
       )}
     </div>

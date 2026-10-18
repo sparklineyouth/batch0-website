@@ -13,7 +13,7 @@ import { bulkChangeUserRole } from "./actions";
 import { getActionError } from "@/lib/action-error";
 import { roleColorClasses } from "@/lib/permissions";
 import { ADMIN_PAGES } from "@/lib/nav-config";
-import { previewRoleAssignment, type ImpactRole } from "@/lib/role-impact";
+import { FIXTURE_NOT_SENT, previewRoleAssignment, type ImpactRole } from "@/lib/role-impact";
 import type { RoleChangeActor } from "@/lib/role-change";
 import { AccessImpact } from "@/components/admin/role-impact";
 import type { Role } from "@/lib/types";
@@ -39,6 +39,7 @@ export function StudentsBulkList({
   canChangeRoles,
   actor,
   impactRoles,
+  fixture = false,
 }: {
   rows: Row[];
   /** Assignable roles, from public.app_roles. */
@@ -51,6 +52,8 @@ export function StudentsBulkList({
   actor: RoleChangeActor | null;
   /** Every role with what it holds, for the previews (empty without people.roles). */
   impactRoles: ImpactRole[];
+  /** /dev/roles: Apply and the row pickers never call the server (FIXTURE_NOT_SENT). */
+  fixture?: boolean;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -101,6 +104,11 @@ export function StudentsBulkList({
   function runBulk(role: Role) {
     setErr(undefined);
     setLastResult(undefined);
+    if (fixture) {
+      setConfirmRole(null);
+      setLastResult(FIXTURE_NOT_SENT);
+      return;
+    }
     start(async () => {
       try {
         const res = await bulkChangeUserRole({
@@ -188,6 +196,7 @@ export function StudentsBulkList({
                   options={roleOptions}
                   roles={impactRoles}
                   name={p.full_name || p.email}
+                  fixture={fixture}
                 />
               ) : (
                 <RoleBadge role={p.role} options={roleBadges} lockedBecause={p.role_lock_reason} />

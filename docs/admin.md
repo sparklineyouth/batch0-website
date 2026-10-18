@@ -130,10 +130,14 @@ team's own pages stay on `teams.manage`.
   email form looks the account up once the address is complete
   (`previewRoleGrant`, read-only, the same `decideRoleChange` the write uses)
   and shows what that person would gain or lose, or why the guard would say
-  no. The row picker and the bulk change ask first with the same preview,
+  no. The address is matched literally (`exactEmailLookup`), so `_`, `%` and
+  `*` are never wildcards and a pattern finds nobody. The row picker and the bulk change ask first with the same preview,
   the bulk dialog grouped by current role with each skip's reason; deleting a
   role shows what moving its holders does. The server decides again on every
-  write. `/dev/roles` renders all of it over fixtures.
+  write. `/dev/roles` renders all of it over fixtures, with every component
+  that writes in `fixture` mode: Save, Delete, Change role and Apply stop
+  before the server action, since that page's roles carry real slugs and
+  localhost can be talking to the production database.
 - **Moving a student** (profile → Manage → Move to a different cohort) is one
   database transaction (`admin_move_student_cohort`, 0103): the enrollment
   shown as current, the application it came from and their live scholarship

@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { getRole, type AppRole } from "@/lib/roles";
 import { changeRoles, decideRoleChange } from "@/lib/role-change-server";
 import { roleSaveRefusal } from "@/lib/role-impact";
+import { exactEmailLookup } from "@/lib/team-invites";
 import {
   ROLE_SLUG_PATTERN,
   ROLE_COLOR_KEYS,
@@ -293,24 +294,38 @@ export async function deleteRole(
 /**
  * The account an email belongs to, for the email form and its preview.
  * Refuses with the form's own words when there is none.
+ *
+ * Matched literally (exactEmailLookup, the idiom findAccountByEmail in
+ * lib/support.ts uses too). This used to pass the typed address straight to
+ * ilike, where `_` and `%` are wildcards and PostgREST reads `*` as `%`: an
+ * admin typing john_doe@school.org for someone who hadn't signed up yet got
+ * john.doe@school.org's account, and Assign gave the role to that other
+ * person. With the preview answering as you type, a pattern like
+ * a%@school.org would also have listed accounts one by one.
  */
 async function accountByEmail(email: string) {
   const clean = email.trim().toLowerCase();
   if (!clean || !clean.includes("@")) refuse("Enter a valid email.");
 
   const admin = createAdminClient();
-  const { data: profile, error: findErr } = await admin
-    .from("profiles")
-    .select("id, email, full_name, role")
-    .ilike("email", clean)
-    .maybeSingle();
+  const lookup = exactEmailLookup(clean);
+  const base = admin.from("profiles").select("id, email, full_name, role");
+  const { data: matches, error: findErr } = await (lookup.op === "eq"
+    ? base.eq("email", lookup.value)
+    : base.ilike("email", lookup.value)
+  ).limit(2);
   if (findErr) throw new Error(findErr.message);
-  if (!profile) {
+  if (!matches || matches.length === 0) {
     refuse(`No account for ${clean}. Ask them to sign up first, then assign the role.`);
+  }
+  // Two accounts differing only by case is possible in principle; refuse to
+  // guess between them rather than re-role the wrong person.
+  if (matches.length > 1) {
+    refuse(`More than one account uses ${clean}. Change the role from their profile on People instead.`);
   }
   return {
     clean,
-    profile: profile as { id: string; email: string; full_name: string | null; role: string },
+    profile: matches[0] as { id: string; email: string; full_name: string | null; role: string },
   };
 }
 
@@ -381,7 +396,9 @@ export async function grantRoleByEmail(
  * role definitions (lib/role-impact.ts).
  *
  * Gated like the write, on people.roles. It says nothing grantRoleByEmail's
- * own answers don't: that account's name and role ("already holds…").
+ * own answers don't: that account's name and role ("already holds…"), and
+ * only for the one address typed in full (accountByEmail matches literally,
+ * so a pattern finds nobody).
  */
 export async function previewRoleGrant(
   email: string,
