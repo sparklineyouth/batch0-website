@@ -91,6 +91,12 @@ where permissions @> array['ai_usage.view']::text[];`,
                where ix.indrelid = to_regclass('public.email_outbox')
                  and ix.indisunique and ix.indpred is null and ix.indnkeyatts = 1
                  and a.attname = 'dedupe_key') as ok;`,
+  "0109": `select has_column_privilege('authenticated', 'public.intro_requests', 'status', 'SELECT')
+   and not has_table_privilege('authenticated', 'public.intro_requests', 'SELECT')
+   and not has_column_privilege('authenticated', 'public.intro_requests', 'admin_notes', 'SELECT')
+   and not exists (select 1 from pg_policies
+                   where schemaname = 'public' and tablename = 'intro_requests'
+                     and cmd <> 'SELECT') as ok;`,
 };
 
 /**

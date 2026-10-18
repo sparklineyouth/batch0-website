@@ -1,4 +1,4 @@
-# Migrations 0093–0102 (October 2026)
+# Migrations 0093–0109 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -55,6 +55,13 @@ check-ins, in-app files, discussions and the old recorder at once:
    every scheduled email automation fans out to nobody: the insert fails with
    42P10 (the notifications bug 0090 §9 fixed, on the outbox) and the run is
    recorded as an error on the automation.
+4. **Any time: 0109.** It only drops `intro_requests`' client write
+   policies and narrows what the API roles may read; the app reads and writes
+   that table with the service role only, so no code depends on which runs
+   first. Until it runs, the five-waiting-requests cap on investor intros is
+   enforced by the app alone: an investor calling the API directly with
+   their own session could get past it, and could read the team's notes on
+   their request. (Production has no investor accounts today.)
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -143,6 +150,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0100 | `0100_admin_cleanup.sql` | Removes the retired `ai_usage.view` permission from roles and deletes leftover founder-pass self-check rows (negative serials). |
 | 0101 | `0101_chat.sql` | batch0 Chat: channels, DMs and group DMs (`chat_*` tables including `chat_mutes`, read-only policies, `chat_can_read()`, realtime on `chat_messages`, private presence and typing topics on `realtime.messages`, a trigram index for search, the private `chat-files` bucket), the starting channels plus one per cohort and team (kept, archived, when their team or cohort is deleted), old DMs and team threads carried in, `discord.manage` removed (not converted), admins kept out of other people's chat bells, and the Discord integration's tables, columns and settings dropped. See `docs/chat.md`. |
 | 0102 | `0102_email_outbox_dedupe_index.sql` | `email_outbox.dedupe_key` gets a plain unique index in place of 0052's partial one, so the scheduled-automation fan-out's `on conflict (dedupe_key)` works. Changes no data and sends nothing by itself. |
+| 0109 | `0109_intro_requests_server_writes.sql` | Investor intro requests lose their client write policies and table write privileges (an investor's own JWT could file requests past the five-waiting cap, or set their row back to `requested` or on to `wired`); writes go through server actions. Reads are unchanged except `admin_notes`, which only the service role reads now. Changes no rows. |
 
 ## Verify
 
@@ -220,6 +228,14 @@ select exists (select 1 from pg_index ix
                where ix.indrelid = to_regclass('public.email_outbox')
                  and ix.indisunique and ix.indpred is null and ix.indnkeyatts = 1
                  and a.attname = 'dedupe_key') as ok;
+
+-- 0109
+select has_column_privilege('authenticated', 'public.intro_requests', 'status', 'SELECT')
+   and not has_table_privilege('authenticated', 'public.intro_requests', 'SELECT')
+   and not has_column_privilege('authenticated', 'public.intro_requests', 'admin_notes', 'SELECT')
+   and not exists (select 1 from pg_policies
+                   where schemaname = 'public' and tablename = 'intro_requests'
+                     and cmd <> 'SELECT') as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,
