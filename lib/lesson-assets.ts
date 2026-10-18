@@ -142,3 +142,39 @@ export function formatPlayhead(seconds: number): string {
   const ss = String(s).padStart(2, "0");
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
+
+/**
+ * What the player does when its video errors, by MediaError code:
+ *
+ *   1 MEDIA_ERR_ABORTED            the load was stopped (a new source, the
+ *                                  reader): nothing to do.
+ *   2 MEDIA_ERR_NETWORK            the stream broke after it started — the
+ *                                  signature ran out mid-video, or the
+ *                                  connection dropped: ask the route for a
+ *                                  fresh signature and carry on ("refresh").
+ *   3 MEDIA_ERR_DECODE             the file itself won't decode: left to the
+ *                                  browser's own player, as before.
+ *   4 MEDIA_ERR_SRC_NOT_SUPPORTED  nothing here it can play: a format this
+ *                                  browser doesn't (a .mov or .mkv upload in
+ *                                  Chrome or Firefox), or a load that failed
+ *                                  outright. The route signs at request time,
+ *                                  so a fresh signature changes neither; it
+ *                                  used to be asked three times anyway, and
+ *                                  the message waited out all three. Now it
+ *                                  shows at once ("unplayable") — unless this
+ *                                  file has already loaded on this page
+ *                                  (`loadedBefore`): then its format plays
+ *                                  here, and a 4 is a reload of the source
+ *                                  failing, which a fresh signature can fix.
+ *
+ * Anything else (an engine's own code) is treated like a network failure:
+ * the recovery cap in the player stops it looping.
+ */
+export function videoErrorAction(
+  code: number | null | undefined,
+  loadedBefore = false,
+): "ignore" | "refresh" | "unplayable" {
+  if (code === 1 || code === 3) return "ignore";
+  if (code === 4 && !loadedBefore) return "unplayable";
+  return "refresh";
+}

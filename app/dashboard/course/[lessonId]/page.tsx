@@ -15,7 +15,7 @@ import {
   lessonVideoHref,
   materialProblem,
 } from "@/lib/lesson-assets";
-import { MaterialLink } from "./material-link";
+import { MaterialLink } from "@/components/dashboard/material-link";
 
 export const dynamic = "force-dynamic";
 

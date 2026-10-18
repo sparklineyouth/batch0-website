@@ -261,6 +261,12 @@ export type BoardStudent = { userId: string; name: string | null; email: string 
 
 export type CohortBoard = {
   ready: boolean;
+  /**
+   * With `ready: false`: true when a read failed for any reason but 0093 not
+   * being applied (say "couldn't load"), false when it isn't applied (say
+   * "not set up yet"). Never true with `ready: true`.
+   */
+  failed: boolean;
   assignments: AssignmentRow[];
   /** Released, published — the matrix columns, by due date. */
   columns: AssignmentRow[];
@@ -270,11 +276,22 @@ export type CohortBoard = {
   rows: MatrixRow[];
 };
 
+/**
+ * A cohort's completion matrix: its assignments, enrolled students, targets
+ * and submissions. Every read's error counts. One that was ignored used to
+ * read as an answer — a failed enrollments read as "no member is enrolled",
+ * a failed submissions read as everyone missing everything — and a failed
+ * assignments read as "not set up yet". Now any failure but a missing table
+ * is `failed: true`, so the matrix, the CSV and a team's Readiness card can
+ * say "couldn't load" instead.
+ */
 export async function loadCohortBoard(admin: Db, cohortId: string, now: Date = new Date()): Promise<CohortBoard> {
-  const empty: CohortBoard = {
-    ready: false, assignments: [], columns: [], students: [], targets: new Map(), submissions: [], rows: [],
-  };
-  const [{ data: rows, error }, { data: enrolled }] = await Promise.all([
+  const empty = (error: unknown): CohortBoard => ({
+    ...fail(error),
+    failed: !isMissingSchemaError(error),
+    assignments: [], columns: [], students: [], targets: new Map(), submissions: [], rows: [],
+  });
+  const [{ data: rows, error }, { data: enrolled, error: enrolledError }] = await Promise.all([
     admin
       .from("course_assignments")
       .select(ASSIGNMENT_COLUMNS)
@@ -286,10 +303,8 @@ export async function loadCohortBoard(admin: Db, cohortId: string, now: Date = n
       .select("user_id, enrolled_at, profile:profiles!enrollments_user_id_fkey(full_name, email)")
       .eq("cohort_id", cohortId),
   ]);
-  if (error) {
-    fail(error);
-    return empty;
-  }
+  if (error) return empty(error);
+  if (enrolledError) return empty(enrolledError);
   const assignments = (rows ?? []) as AssignmentRow[];
   const students: BoardStudent[] = (enrolled ?? [])
     .map((e: any) => {
@@ -298,12 +313,14 @@ export async function loadCohortBoard(admin: Db, cohortId: string, now: Date = n
     })
     .sort((a, b) => (a.name ?? a.email ?? "").localeCompare(b.name ?? b.email ?? ""));
   const ids = assignments.map((a) => a.id);
-  const [{ data: t }, { data: subs }] = ids.length
+  const [{ data: t, error: targetsError }, { data: subs, error: subsError }] = ids.length
     ? await Promise.all([
         admin.from("course_assignment_targets").select("assignment_id, user_id").in("assignment_id", ids),
         admin.from("course_assignment_submissions").select(SUBMISSION_COLUMNS).in("assignment_id", ids),
       ])
-    : [{ data: [] }, { data: [] }];
+    : [{ data: [], error: null }, { data: [], error: null }];
+  if (targetsError) return empty(targetsError);
+  if (subsError) return empty(subsError);
   const targets = new Map<string, Set<string>>();
   for (const r of t ?? []) {
     const set = targets.get(r.assignment_id as string) ?? new Set<string>();
@@ -316,6 +333,7 @@ export async function loadCohortBoard(admin: Db, cohortId: string, now: Date = n
   );
   return {
     ready: true,
+    failed: false,
     assignments,
     columns,
     students,

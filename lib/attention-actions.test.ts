@@ -25,6 +25,9 @@ const VERSION = "2026-10-10T12:00:00.000Z";
 const state: {
   perms: string[];
   owners: { id: string; name: string }[];
+  /** What the drawer's list returns, when it differs from who can own one. */
+  listed: { id: string; name: string }[] | null;
+  ownerChecks: string[];
   thread: any;
   reply: (table: string, ops: Ops) => Reply;
   calls: { table: string; ops: Ops }[];
@@ -33,6 +36,8 @@ const state: {
 } = {
   perms: [],
   owners: [],
+  listed: null,
+  ownerChecks: [],
   thread: null,
   reply: () => ({}),
   calls: [],
@@ -85,7 +90,8 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
          export const assertAllPermissions=async(ps)=>{for(const p of ps)if(!has(p))throw new Error('Forbidden');return actor();};`,
       "@/lib/student-followups-server":
         g +
-        `export const listFollowUpOwners=async()=>t.state.owners;
+        `export const listFollowUpOwners=async()=>t.state.listed??t.state.owners;
+         export const getFollowUpOwner=async(id)=>{t.state.ownerChecks.push(id);return t.state.owners.find((o)=>o.id===id)??null;};
          export const getFollowUpThread=async()=>t.state.thread;`,
     };
     if (doubles[specifier]) return { url: fake(doubles[specifier]), shortCircuit: true };
@@ -113,6 +119,8 @@ function reset(perms: string[] = ["people.view", "people.manage"]) {
     { id: ME, name: "Me" },
     { id: BOB, name: "Bob" },
   ];
+  state.listed = null;
+  state.ownerChecks = [];
   state.thread = { ready: true, failed: false, active: null, history: [] };
   state.calls = [];
   state.audits = [];
@@ -160,6 +168,15 @@ test("an owner must be someone who can update and close it", async () => {
   const r = await save({ ownerId: ALICE });
   assert.deepEqual(r, { ok: false, error: "That person can't own follow-ups." });
   assert.deepEqual(writes(), []);
+});
+
+test("the owner is checked by id, not against the drawer's list — which once stopped at 300 people", async () => {
+  reset();
+  // Bob can own follow-ups but sorted past the list's old cut-off.
+  state.listed = [{ id: ME, name: "Me" }];
+  const r = await save({ ownerId: BOB });
+  assert.deepEqual(r, { ok: true, data: { id: FOLLOWUP } });
+  assert.deepEqual(state.ownerChecks, [BOB]);
 });
 
 test("starting one writes it, audits who and when but not the note, and refreshes the Overview", async () => {
@@ -232,8 +249,9 @@ test("the drawer says 'couldn't load' for a failed read, and 'not set up' only w
 // The review drawer an attention row opens
 // ---------------------------------------------------------------------------
 
-function reviewDb(opts: { enrolled: boolean; submitted: boolean }) {
+function reviewDb(opts: { enrolled: boolean; submitted: boolean; broken?: string }) {
   state.reply = (table) => {
+    if (table === opts.broken) return { error: { code: "57014", message: "canceling statement due to statement timeout" } };
     if (table === "course_assignments") {
       return { data: { id: ASSIGNMENT, cohort_id: "c1", title: "Weekly update", week: 2, opens_at: null, due_at: "2026-10-10T03:59:00.000Z" } };
     }
@@ -263,6 +281,15 @@ test("handed-in work from a student who has since left the cohort still opens fo
   reviewDb({ enrolled: true, submitted: true });
   const enrolled = await quiet(() => loadReviewCell({ assignmentId: ASSIGNMENT, userId: STUDENT }));
   assert.equal(enrolled.ok && enrolled.data!.enrolled, true);
+});
+
+test("a read that fails says 'couldn't load', never that the student isn't in the cohort", async () => {
+  reset(["assignments.manage"]);
+  for (const broken of ["enrollments", "profiles", "course_assignment_submissions"]) {
+    reviewDb({ enrolled: true, submitted: true, broken });
+    const r = await quiet(() => loadReviewCell({ assignmentId: ASSIGNMENT, userId: STUDENT }));
+    assert.deepEqual(r, { ok: false, error: "Couldn't load this student's work just now. Close the drawer and try again." }, broken);
+  }
 });
 
 test("the review drawer still needs assignments.manage", async () => {

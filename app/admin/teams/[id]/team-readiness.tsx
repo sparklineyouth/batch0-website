@@ -13,7 +13,9 @@ type Member = { userId: string; name: string };
  *
  * `board` is null when the team has no cohort or the assignment tables
  * aren't there yet (0093, lib/assignments-server.ts) — the card says so
- * instead of showing a zero.
+ * instead of showing a zero. `boardFailed` is a read that failed for any
+ * other reason: the card says it couldn't load, rather than "not set up yet"
+ * or a member count it doesn't have, and the rest of the page is unaffected.
  *
  * `assignments` is whether the viewer may see per-student assignment counts
  * at all (assignments.manage or people.view — the page itself only needs
@@ -25,6 +27,7 @@ export function TeamReadiness({
   assignments,
   matrixLink,
   board,
+  boardFailed = false,
   members,
   pitch,
 }: {
@@ -32,6 +35,7 @@ export function TeamReadiness({
   assignments: boolean;
   matrixLink: boolean;
   board: { rows: MatrixRow[] } | null;
+  boardFailed?: boolean;
   members: Member[];
   pitch: { deck_url?: string | null; video_url: string | null; submitted_at: string | null } | null;
 }) {
@@ -51,6 +55,10 @@ export function TeamReadiness({
 
       {!assignments ? null : !cohortId ? (
         <p className="mt-2 text-sm text-ink-soft">This team isn&apos;t in a cohort, so it has no assignments.</p>
+      ) : boardFailed ? (
+        <p role="status" className="mt-2 text-sm text-red-600 dark:text-red-400">
+          Couldn&apos;t load assignment progress just now. Reload to try again.
+        </p>
       ) : !completion ? (
         <p className="mt-2 text-sm text-ink-soft">Assignments aren&apos;t set up yet.</p>
       ) : completion.counted === 0 ? (
