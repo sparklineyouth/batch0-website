@@ -1456,6 +1456,16 @@ export function ChatApp({
       ? null
       : panel;
 
+  // The feed's "A reply didn't send" is for threads that aren't open: the
+  // open one shows its failed reply, with Retry, right there in the pane.
+  const openRoot = shownPanel === "thread" ? (thread?.rootId ?? null) : null;
+  const feedUnsent = useMemo(() => {
+    if (!openRoot || !unsentThreads.has(openRoot)) return unsentThreads;
+    const rest = new Set(unsentThreads);
+    rest.delete(openRoot);
+    return rest;
+  }, [openRoot, unsentThreads]);
+
   return (
     <div className="flex h-full min-h-0 w-full">
       <div
@@ -1532,7 +1542,7 @@ export function ChatApp({
           // openThread is stable: an inline arrow here would rebuild ChannelView's
           // message actions on every render, and redraw every message with them.
           onOpenThread={openThread}
-          unsentThreads={unsentThreads}
+          unsentThreads={feedUnsent}
           onClearAsk={() => {
             setPayload((cur) => (cur ? { ...cur, ask: null } : cur));
             if (channelIdRef.current) writeChatUrl(`/chat?c=${channelIdRef.current}`);

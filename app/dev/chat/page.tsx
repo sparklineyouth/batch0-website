@@ -11,6 +11,9 @@ import { PreviewFetch } from "./preview-fetch";
  * production (VERCEL_ENV, not NODE_ENV).
  *
  *   ?view=channel|dm|readonly|draft|empty|help|thread|ask   which pane to open
+ *   &blocked=1   the viewer has blocked Maya, who asked #help's open question:
+ *                her messages collapse in the feed, the thread's root and the
+ *                Unanswered list
  *
  * `help` is #help with questions and threads (0110); `thread` opens one of
  * them in the side pane; `ask` is #help opened from a lesson's "Ask about
@@ -220,9 +223,10 @@ function helpMessages() {
   ];
 }
 
-export default async function ChatPreview(props: { searchParams?: Promise<{ view?: string }> }) {
+export default async function ChatPreview(props: { searchParams?: Promise<{ view?: string; blocked?: string }> }) {
   if (process.env.VERCEL_ENV === "production") notFound();
-  const view = (await props.searchParams)?.view ?? "channel";
+  const params = await props.searchParams;
+  const view = params?.view ?? "channel";
   return (
     <div className="fixed inset-0 z-10 flex bg-paper text-ink">
       <PreviewFetch channelId={C(4)} rootId={Q1} people={people} me={ME} maya={MAYA} sam={SAM} rish={RISH} dev={DEV} />
@@ -231,7 +235,7 @@ export default async function ChatPreview(props: { searchParams?: Promise<{ view
           viewer={{ id: ME, name: "Ava Patel", staff: false, vetted: true }}
           home="/dashboard"
           homeLabel="Dashboard"
-          initialSidebar={sidebar}
+          initialSidebar={params?.blocked ? { ...sidebar, blocked: [MAYA] } : sidebar}
           initialPayload={payloadFor(view)}
           initialError={null}
         />
