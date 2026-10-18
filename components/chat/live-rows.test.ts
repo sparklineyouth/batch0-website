@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyUpdate, bumpSidebarRow, pendingTwin, quotePreview, sameMessage, toUiMessage, withoutMessage } from "./live-rows.ts";
+import { applyUpdate, bumpSidebarRow, isThreadReply, pendingTwin, quotePreview, sameMessage, toUiMessage, withoutMessage } from "./live-rows.ts";
+import { mergeMessages, reconcilePage } from "../../lib/chat-view.ts";
+import { bumpThread } from "../../lib/chat-threads-rules.ts";
 import { appendStubs, newClientId } from "./util.ts";
 import type { LiveRow } from "./use-chat-live";
 import type { SidebarData, SidebarItem, UiMessage } from "./types";
@@ -279,4 +281,60 @@ test("appendStubs: the next page of deleted messages goes under the ones shown, 
   assert.deepEqual(appendStubs([a, b], [c]), [a, b, c]);
   assert.deepEqual(appendStubs([a, b], [b, c]), [a, b, c], "never twice");
   assert.deepEqual(appendStubs([], [a]), [a]);
+});
+
+// ---------------------------------------------------------------------------
+// Threads (0110): a reply goes to its thread, never the feed or the sidebar
+// ---------------------------------------------------------------------------
+
+test("a thread reply arrives live as its thread's: routed by thread_root_id, and the sidebar doesn't move", () => {
+  const reply = row("r1", { channel_id: "c1", thread_root_id: "root", body: "in the thread", created_at: "2026-10-15T11:00:00.000Z" });
+  assert.equal(isThreadReply(reply), true);
+  assert.equal(isThreadReply(row("m1", {})), false, "a feed message (no column before 0110, or null)");
+  assert.equal(isThreadReply(row("m1", { thread_root_id: null })), false);
+  assert.equal(toUiMessage(reply, []).threadRootId, "root");
+  const item: SidebarItem = {
+    id: "c1", kind: "channel", label: "help", topic: null, audience: "everyone", posting: "everyone", systemKey: "help",
+    teamId: null, cohortId: null, otherId: null, memberIds: [], lastMessageAt: T, preview: null, unread: 0, mentions: 0,
+    notify: null, position: 0,
+  };
+  const s: SidebarData = { channels: [item], conversations: [], people: {}, blocked: [] };
+  const mention = { ...reply, sender_id: "u2", mentions: ["me"] };
+  const next = bumpSidebarRow(s, mention, { viewerId: "me", reading: false, personName: () => "x" });
+  assert.equal(next.sidebar, s, "no recency, no unread, no mention badge on the channel");
+  assert.equal(next.missing, false, "and no sidebar refetch either");
+});
+
+test("a thread pane's replies, a page at a time and live: none skipped, none twice, a deleted one never back", () => {
+  // Four replies, two sharing a timestamp across the page edge.
+  const at = (s: number) => `2026-10-15T11:00:${String(s).padStart(2, "0")}.000Z`;
+  const r = (id: string, sec: number) => msg(id, { createdAt: at(sec), threadRootId: "root" });
+  const newest = [r("b", 2), r("c", 2), r("d", 3)];
+  const older = [r("a", 1), r("b", 2)]; // the keyset's page before (b,2) would not repeat b; a loose one might
+  let list = mergeMessages([], newest);
+  list = mergeMessages(list, older);
+  assert.deepEqual(list.map((m) => m.id), ["a", "b", "c", "d"], "merged by id: b once");
+  // The same reply live and in the send's answer: once.
+  const live = r("e", 4);
+  list = mergeMessages(list, [live]);
+  list = mergeMessages(list, [{ ...live }]);
+  assert.deepEqual(list.map((m) => m.id), ["a", "b", "c", "d", "e"]);
+  // c is deleted live; a resync page fetched before that still has it.
+  const deleted = new Set(["c"]);
+  list = withoutMessage(list, "c");
+  const stalePage = [r("b", 2), r("c", 2), r("d", 3), r("e", 4)];
+  const next = reconcilePage(list, stalePage, { asOf: at(5), complete: false, deleted });
+  assert.deepEqual(next.map((m) => m.id), ["a", "b", "d", "e"], "the stale page can't bring c back; a, older than the page, stays");
+  // And the root's "N replies" counts each live reply once, however often it's seen.
+  let summary = bumpThread({ replyCount: 4, lastReplyAt: at(3), question: null, answerId: null }, live);
+  summary = bumpThread(summary, live);
+  assert.equal(summary.replyCount, 5);
+});
+
+test("sameMessage: a root whose thread changed (a reply, an answer) is a change", () => {
+  const a = msg("root", { thread: { replyCount: 1, lastReplyAt: T, question: "open", answerId: null } });
+  assert.equal(sameMessage(a, { ...a, thread: { ...a.thread! } }), true);
+  assert.equal(sameMessage(a, { ...a, thread: { ...a.thread!, replyCount: 2 } }), false);
+  assert.equal(sameMessage(a, { ...a, thread: { ...a.thread!, question: "answered", answerId: "r" } }), false);
+  assert.equal(sameMessage(msg("x"), msg("x", { threadRootId: "root" })), false);
 });

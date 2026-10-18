@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Paperclip, Send, SmilePlus, X, FileText } from "lucide-react";
+import { BookOpen, Loader2, Paperclip, Send, SmilePlus, X, FileText } from "lucide-react";
 import { MESSAGE_MAX } from "@/lib/chat-access";
+import type { AboutChip } from "@/lib/chat-threads-rules";
 import { composeMessage, mentionQueryAt, plainText, rebaseMentions, type PickedMention } from "@/lib/chat-format";
 import {
   ATTACHMENT_ACCEPT,
@@ -51,6 +52,9 @@ export function Composer({
   draftKey,
   selfId,
   onPeople,
+  inputId = "chat-composer",
+  about = null,
+  onClearAbout,
 }: {
   channelId: string | null;
   placeholder: string;
@@ -76,6 +80,14 @@ export function Composer({
    * search found them): the message names them, sending and sent.
    */
   onPeople?: (more: Record<string, ChatPerson>) => void;
+  /** The textarea's id: the channel's composer, or a thread's (both can be on screen). */
+  inputId?: string;
+  /**
+   * "Ask about this": the lesson or assignment the next message links to,
+   * shown as a chip that can be taken off. The caller sends it.
+   */
+  about?: AboutChip | null;
+  onClearAbout?: () => void;
 }) {
   const [text, setText] = useState("");
   const [picked, setPicked] = useState<PickedMention[]>([]);
@@ -386,6 +398,20 @@ export function Composer({
       <div
         className={`rounded-md border bg-paper ${dragging ? "border-phosphor ring-2 ring-phosphor/40" : "border-line focus-within:border-ink/40"} ${disabled ? "opacity-70" : ""}`}
       >
+        {about ? (
+          <div className="flex items-center gap-2 border-b border-line px-3 py-1.5 text-xs text-ink-soft">
+            <BookOpen className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="min-w-0 flex-1 truncate">
+              Asking about the {about.kind === "lesson" ? "lesson" : "assignment"} <strong className="text-ink">{about.title}</strong>
+              <span className="ml-2 text-ink-faint">Only people who can open it see which one.</span>
+            </span>
+            {onClearAbout ? (
+              <button type="button" onClick={onClearAbout} aria-label="Don't link it" className="rounded p-0.5 hover:bg-wash">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         {replyTo ? (
           <div className="flex items-center gap-2 border-b border-line px-3 py-1.5 text-xs text-ink-soft">
             <span className="min-w-0 flex-1 truncate">
@@ -444,11 +470,11 @@ export function Composer({
               if (list.length) void addFiles(list);
             }}
           />
-          <label htmlFor="chat-composer" className="sr-only">
+          <label htmlFor={inputId} className="sr-only">
             {placeholder}
           </label>
           <textarea
-            id="chat-composer"
+            id={inputId}
             ref={ref}
             value={text}
             disabled={disabled}
@@ -570,7 +596,8 @@ export function Composer({
             {(MESSAGE_MAX - length).toLocaleString()}
           </span>
         ) : !disabled ? (
-          <span className="hidden shrink-0 lg:inline">
+          // Truncated, not overflowing, when a side pane narrows the column.
+          <span className="hidden min-w-0 truncate lg:inline">
             **bold** *italic* `code` ||spoiler|| · Shift+Enter for a new line
           </span>
         ) : null}

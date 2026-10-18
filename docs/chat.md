@@ -7,8 +7,9 @@ and no categories.
 
 | Surface | What |
 | --- | --- |
-| `/chat` | The app: channels and conversations on the left, the open one in the middle, members / pins / search on the right. One pane at a time on a phone. In every role's nav, with an unread badge. |
-| `/chat?c=<id>` | Open a channel, DM or group (where chat bells link). Add `&m=<message>` to open around one message and flash it. |
+| `/chat` | The app: channels and conversations on the left, the open one in the middle, members / pins / search / a thread / #help's Unanswered list on the right. One pane at a time on a phone. In every role's nav, with an unread badge. |
+| `/chat?c=<id>` | Open a channel, DM or group (where chat bells link). Add `&m=<message>` to open around one message and flash it (a thread reply opens its thread at it). Add `&thread=<message>` to open that message's thread in the side pane (where thread bells link). |
+| `/chat?ask=lesson:<id>` | "Ask about this" from a lesson or assignment page (`assignment:<id>`): #help, with the item linked in the composer when the viewer can open it. |
 | `/chat?to=<user>` | Open a DM with someone. It's a draft until the first message. |
 | `/chat?team=<team>` | A team's channel (the Team page's "Team chat" chip). |
 | `/admin/chat` | Channels (create, edit, archive, delete, extra members) and the report queue. Needs `chat.manage`. |
@@ -204,8 +205,9 @@ signed-in users get read policies only.
   can still read the channel and neither has blocked the other.
 - **Ask the team for help:** any message in a text channel can be flagged
   with a one-line note (`flagForTeam`). Every other `chat.manage` holder gets
-  a `chat_flagged` bell linking to the message: Discord's *Flag as Blocker*. In
-  a DM or group, Report is the way to bring the team in.
+  a `chat_flagged` bell linking to the message: Discord's *Flag as Blocker*.
+  With 0110 it also files the thread's one help request in Support (see
+  *Threads*). In a DM or group, Report is the way to bring the team in.
 - **Edits and deletes:** you can edit or delete your own messages, and staff
   can remove anyone's (that's logged) in a text channel, or as a moderator in
   a reported DM or group they're not in. Never in a conversation they're one
@@ -232,6 +234,93 @@ signed-in users get read policies only.
   record of who looked. (No audit row names a reporter: a moderator the
   report is about may read the audit log.)
 
+## Threads and #help's questions
+
+Migration 0110. A message in a **text channel** can start a thread: one
+level (a reply can't start its own), in the side pane where members, pins
+and search open — a column beside the channel from lg up, a drawer over it
+on a tablet, and the whole screen on a phone with Back, the channel mounted
+underneath so it's exactly where it was. Under the message the feed shows
+"4 replies · 3h" (and a question's state); the replies themselves never
+enter the feed. DMs and groups have no threads.
+
+- **Shape, enforced in SQL.** A reply is a `chat_messages` row with
+  `thread_root_id`: authorship, edits and revisions, deletes, files,
+  reactions, reports and the read policy are the message model's. A
+  reply's root is a live person's message, not a reply, in the reply's own
+  channel: a `(thread_root_id, channel_id)` foreign key onto `(id,
+  channel_id)` and a guard trigger refuse anything else, whoever writes.
+  The server checks the same first, in words (`threadRootVerdict`), and a
+  quote stays where it's written: a thread quotes its own messages, the feed
+  its own (`quoteVerdict`). A reply can't @everyone, and can't be pinned.
+- **Access.** A thread grants nothing. Its replies, its count, a search hit
+  in it, its files and its bells are all read through its channel's rule:
+  `GET /chat/api/thread` checks the channel (`openChannelFor`), then that
+  the root is a feed message in it. Following a thread you can no longer
+  read rings nothing (bells re-check readers).
+- **Not channel messages.** Replies move no channel summary, unread or
+  mention count, or read cursor (0110 replaces `chat_unread()` and
+  `chat_messages_touch_channel()` with "and not a thread reply"). A mention
+  in a reply is a bell to the thread, not a badge on the channel.
+- **Reading.** The newest page of replies, then older ones on the feed's
+  `(created_at, id)` keyset (`listThreadReplies`), so replies sharing a
+  timestamp are neither skipped nor repeated. Live, the open channel's one
+  Realtime subscription hands a reply to the pane by its `thread_root_id`
+  (granted to readers for exactly this) over a small bus, and bumps the
+  root's count once per reply (`bumpThread`). The pane reconciles with the
+  newest page every 30 seconds and on a reconnect, and the page's deleted
+  set keeps a stale page from bringing a deleted reply back. A send carries
+  its client id (0104): a Retry is the same reply.
+- **Follows and bells.** The root's author and everyone who replies follow
+  by default (a trigger); unfollowing sticks — replying again doesn't undo
+  it. A reply bells its followers (`chat_thread`) and the people it
+  @mentions (`chat_mention`), never a channel's *All messages* list and
+  never everyone, so a busy thread rings a handful of people, not a cohort
+  (`notifyThreadReply`, `threadBellRecipients`). Per person: still a
+  reader, no block of the sender, the channel not muted (*Nothing*), and
+  one bell per burst (none while an unread one for the thread is up, none
+  while they had the pane open in the last two minutes — the pane says
+  "still here" once a minute and takes the thread's bells down). One bell
+  per message by the same dedupe key as a channel bell, and none for a
+  reply that isn't fresh (`bellFresh`): history carried in rings nobody.
+- **Questions.** In #help every top-level post from someone outside the
+  team is an open question the moment it's in (a trigger, so every insert
+  path agrees; quotes aren't questions). The asker or chat staff
+  (`canDecideQuestion`) can accept a reply as the answer, mark it answered
+  without one, reopen it, say it isn't a question, or make a post one
+  (`setQuestion`, `questionTransition`), each against the state the screen
+  showed, so a second person's change is never silently overwritten. The
+  accepted answer must be a live reply in that thread (checked again by
+  trigger). Deleting it reopens the question in the delete's own
+  statement; deleting the question retires it. Every transition, by whom,
+  is in the append-only `chat_thread_events`, written by trigger.
+- **Unanswered.** #help's header has an Unanswered button with the count:
+  its open questions, waiting longest first, in the side pane
+  (`/chat/api/unanswered`, `lib/chat-questions.ts`). The admin Overview's
+  *Unanswered questions* (`chat.manage`) reads the same count, lists the
+  oldest as rows that open their thread, and leaves out a question whose
+  help request is still with the team: that's a Support row already.
+- **Ask the team.** Pressing it on a message (or in the thread's header)
+  files ONE help request per thread in Support (`lib/chat-help.ts`): a
+  program ticket with the asker as requester, their note and a link to the
+  thread, never a word of the thread itself (Support is readable by people
+  who may not read that channel). Its owner and open/handled state are the
+  ticket's, worked in Support like any request; the thread shows them, and
+  links the asker to their request and the team to the ticket. Asking again
+  while it's open adds a team-only note to the same ticket; a resolved one
+  is reopened; a closed one is final and a new one takes the thread. Two
+  people asking at once end on one ticket. It's never confidential:
+  safeguarding stays with Report, which the dialog points to.
+- **Ask about this.** A lesson or assignment page links to
+  `/chat?ask=lesson:<id>`. The question it sends stores the item's id on its
+  thread (never a title, never anything the student wrote for it), and each
+  viewer's chip is resolved through their OWN database client
+  (`lib/chat-about.ts`): someone who reads #help but not that item sees no
+  chip at all. The sender must be able to open it too.
+- **Before 0110** (`threadsReady()`, asked once a minute): no thread
+  buttons, question states or Unanswered list; the feed, sends, search and
+  *Ask the team* (bell only, no ticket) work as before.
+
 ## Bells
 
 `lib/chat-notify.ts`. In-app only, never email, and never the words: 0101's
@@ -257,10 +346,11 @@ notifications policy no longer lets admins read anyone else's chat bells.
   between paragraphs (`lib/chat-post-split.ts`, code blocks kept intact), with
   @everyone and the bell on the first only.
 
-Types: `chat_dm`, `chat_mention`, `chat_message`, `chat_reported` (to
-staff no report on that channel names), and `chat_flagged` (*Ask the team*,
-to chat staff; the flagger's note is its body). All five are rows in the
-notification settings (`lib/notification-importance.ts`).
+Types: `chat_dm`, `chat_mention`, `chat_message`, `chat_thread` (a reply in
+a thread you follow, 0110), `chat_reported` (to staff no report on that
+channel names), and `chat_flagged` (*Ask the team*, to chat staff; the
+flagger's note is its body). All six are rows in the notification settings
+(`lib/notification-importance.ts`).
 
 Unread counts (`chat_unread()`) skip people you've blocked, and a text
 channel you've never opened counts only its last 14 days. System lines
@@ -274,7 +364,8 @@ clamps to, all three at once, so the feed shows up as new and can be read.
 Only `chat_messages` is in the publication. The client subscribes for the
 **open** channel only (`channel_id=eq.<id>`), and Realtime re-applies the read
 policy to every row. Inserts and updates both arrive: reactions are folded
-onto the message row by a trigger, and deletes are blanking updates. Every
+onto the message row by a trigger, and deletes are blanking updates. A thread
+reply (`thread_root_id` set) goes to the thread pane, not the feed. Every
 other channel's unread count comes from the sidebar poll and the bell ping.
 
 Presence (online dots, `chat-presence`) and typing (`chat-typing:<channel>`)
@@ -387,6 +478,11 @@ opens More.
 | `lib/chat-format.ts` / `lib/chat-view.ts` | Markup, mentions, previews; message layout and merge helpers, pure |
 | `lib/chat.ts` | Service-role reads |
 | `lib/chat-send.ts` | Inserting a message once per client id, and finding the one a retry already sent (0104) |
+| `supabase/migrations/0110_chat_threads.sql` | Threads, #help's questions, follows and the question audit trail |
+| `lib/chat-threads-rules.ts` | Threads' rules, pure: where a reply hangs, questions, counting, who a reply bells, the help request's plan |
+| `lib/chat-thread-rows.ts` / `lib/chat-threads.ts` / `lib/chat-questions.ts` | Is 0110 there, and the thread rows for a page; a thread for one viewer, follows, question writes; the read-only Unanswered lists |
+| `lib/chat-help.ts` / `lib/chat-about.ts` | A thread's one Support help request; a question's course item, per viewer |
+| `components/chat/thread-panel.tsx` / `thread-bus.ts` | The thread pane; how it hears the open channel's Realtime |
 | `lib/chat-payload.ts` | One channel's on-screen state, shared by the page and the actions |
 | `lib/chat-notify.ts` / `lib/chat-post.ts` / `lib/chat-files.ts` | Bells; posting from elsewhere (announcements, the staff feed); attachments |
 | `lib/staff-feed.ts` | The #staff feed's lines: a name and an admin link, nothing else |
@@ -417,6 +513,18 @@ Tests:
   run as a signed-in user, then triggers, carry-over, the Discord teardown
   and idempotency; and 0104 on top: one message per sender and client id,
   the column readable for the echo, and a deleted message reported.
+- Threads (0110): `lib/chat-threads-migration-db.test.ts` (PGlite: same
+  channel and one level whoever writes, counts and follows, #help's
+  automatic questions, an answer from its own thread and its delete
+  reopening the question, the audit trail, who reads replies and the thread
+  tables, a channel full of threads deleted, the verify query),
+  `lib/chat-threads-rules.test.ts`, `lib/chat-actions.test.ts` (a reply's
+  Retry, where a reply may hang, *Ask the team*, settling a question,
+  following, *Ask about this*), `lib/chat-server.test.ts` (the feed without
+  replies, reply paging, thread bells), `lib/chat-help.test.ts` (one help
+  request per thread; a course item shown only to who can open it),
+  `components/chat/live-rows.test.ts` (live replies routed and counted once),
+  and `lib/attention*.test.ts` (the Overview's Unanswered questions).
 - `lib/staff-feed.test.ts`, `lib/stripe-staff-feed.test.ts`,
   `lib/announcement-chat.test.ts`, `lib/account-deletion.test.ts`,
   `lib/app-host.test.ts`: what the feed says and that every payment path
@@ -440,6 +548,13 @@ Then **0104**, any time after 0101. Until it runs, chat works as before, and
 a Retry of a send whose answer was lost can still post it twice. If 0101 is
 ever run again, run 0104 after it: 0101's re-grant of the message columns
 takes `client_id`'s away.
+
+Then **0110** (threads), any time after 0104, before or after its code.
+Until it runs, Chat has no threads, question states or Unanswered list, and
+*Ask the team* only rings the bell. If 0101 is ever run again, run 0110
+after it: 0101 re-creates `chat_unread()` and
+`chat_messages_touch_channel()` without the thread clause, and takes
+`thread_root_id`'s column grant away.
 
 When the deploy goes live, **lock the Discord server**. The code no longer
 manages it: nobody is kicked or loses a role there when they leave the

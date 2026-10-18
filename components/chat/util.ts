@@ -103,3 +103,17 @@ export function stampLabel(iso: string): string {
   if (yesterday) return `Yesterday at ${time}`;
   return `${d.toLocaleDateString()} ${time}`;
 }
+
+/** "just now", "5m", "3h", "2d", "Oct 3": how long ago, for a thread's last reply. */
+export function sinceLabel(iso: string, now: number = Date.now()): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const min = Math.floor((now - t) / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d`;
+  return new Date(t).toLocaleDateString([], { month: "short", day: "numeric" });
+}

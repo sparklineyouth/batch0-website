@@ -11,7 +11,16 @@ export type UiMessage = ChatMessage & {
    * (`clientId`, 0104), so a resend of one that went through gets the
    * original back instead of posting it twice.
    */
-  retry?: { body: string; replyToId: string | null; attachments: { path: string; name: string }[]; clientId: string };
+  retry?: {
+    body: string;
+    replyToId: string | null;
+    attachments: { path: string; name: string }[];
+    clientId: string;
+    /** A thread reply's root (0110), so a Retry lands in the same thread. */
+    threadRootId?: string | null;
+    /** "Ask about this": the lesson or assignment it links to. */
+    about?: string | null;
+  };
 };
 
 export type ChatViewerInfo = {
@@ -21,6 +30,7 @@ export type ChatViewerInfo = {
   vetted: boolean;
 };
 
-export type Panel = "members" | "pins" | "search" | null;
+/** What the right-hand side shows: a list, one thread (0110), or #help's open questions. */
+export type Panel = "members" | "pins" | "search" | "thread" | "unanswered" | null;
 
 export type { ChatMessage, ChatPerson, SidebarData, SidebarItem, ChannelInfo, ChannelPayload };
