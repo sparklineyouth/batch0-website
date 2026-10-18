@@ -12,6 +12,40 @@ export const MAX_INVITES_PER_PASTE = TEAM_MAX_MEMBERS - 1;
 /** The same test inviteStudentByEmail has always applied to one address. */
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * The one answer an invite by email gives for every address that isn't a
+ * student's: no account at all, a staff or investor account, or an address
+ * matching more than one profile. One wording on purpose — "You can only
+ * invite students." told any student which addresses belong to the batch0
+ * team.
+ */
+export const NO_STUDENT_ACCOUNT =
+  "No batch0 student account found for that email. Ask them to sign up first, then send the invite.";
+
+/** Addresses one person may look up by email in INVITE_LOOKUP_WINDOW_SECONDS. */
+export const INVITE_LOOKUP_LIMIT = 20;
+export const INVITE_LOOKUP_WINDOW_SECONDS = 10 * 60;
+
+/**
+ * How to find exactly this address in profiles.email, and nobody else's.
+ *
+ * EMAIL accepts `%`, `_` and `*`, and to PostgREST's ilike those are
+ * wildcards (`*` is its spelling of `%`). Passing an address straight to
+ * ilike — what the invite lookup used to do — let `%@batch0.org` or `a_c@x.com`
+ * match other people's accounts, and the per-address answers then said which
+ * pattern hit a staff account, so any student could mine addresses that the
+ * teammate search never shows. ILIKE with `%`, `_` and `\` escaped is a
+ * case-insensitive equality; `*` has no escape in PostgREST, so an address
+ * with one is matched exactly instead (addresses are already lowercased, and
+ * every stored profiles.email is lowercase). The same idiom as
+ * findAccountByEmail in lib/support.ts.
+ */
+export function exactEmailLookup(email: string): { op: "eq" | "ilike"; value: string } {
+  const clean = email.trim().toLowerCase();
+  if (clean.includes("*")) return { op: "eq", value: clean };
+  return { op: "ilike", value: clean.replace(/[\\%_]/g, (c) => `\\${c}`) };
+}
+
 export type ParsedInvites = {
   /** Lowercased, de-duplicated, in the order they were pasted. */
   emails: string[];
