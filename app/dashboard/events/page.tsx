@@ -10,14 +10,17 @@ import { EventCard, type StudentEvent } from "@/components/live/event-card";
 import { studentEventStatus } from "@/lib/event-form";
 import { recordedEventIds } from "@/lib/event-recordings";
 import {
+  emptyHistoryMessage,
   historyHref,
   historyRange,
   needsRecordingLookup,
   parseHistoryPage,
   parseHistoryShow,
+  pastHistoryRows,
   recordingLink,
   recordingOrFilter,
   takePage,
+  visibleHistory,
   type HistoryShow,
 } from "@/lib/event-history";
 
@@ -113,10 +116,11 @@ export default async function StudentEventsPage(props: {
   const liveNow = withStatus.filter((x) => x.s === "live");
   const stillUpcoming = withStatus.filter((x) => x.s === "upcoming" || x.s === "open");
   // The last day's ended sessions lead page one; later pages are older history.
-  const pastRows = [
-    ...(page === 1 ? withStatus.filter((x) => x.s === "ended" || x.s === "past").reverse() : []),
-    ...older.rows.map((e: any) => ({ e, s: "past" as const })),
-  ];
+  const pastRows = pastHistoryRows(
+    page,
+    withStatus.filter((x) => x.s === "ended" || x.s === "past").reverse(),
+    older.rows.map((e: any) => ({ e, s: "past" as const })),
+  );
   // A hosted webinar's own recording plays on its room page once the
   // follow-up (or an admin) shared it. The ids are rows this reader can see.
   const recorded = await recordedEventIds(
@@ -125,10 +129,7 @@ export default async function StudentEventsPage(props: {
   );
   // A shared hosted event with no take yet matched the query but has nothing
   // to play, so the recordings view drops it here.
-  const endedPast =
-    show === "recordings"
-      ? pastRows.filter(({ e }) => recordingLink(e, recorded))
-      : pastRows;
+  const endedPast = visibleHistory(pastRows, show, recorded, ({ e }) => e);
   const recordingHref = (e: any) => {
     const link = recordingLink(e, recorded);
     return link && !link.external ? link.href : null;
@@ -189,11 +190,8 @@ export default async function StudentEventsPage(props: {
           {endedPast.length === 0 ? (
             <Card>
               <p className="text-sm text-ink-faint">
-                {show === "recordings"
-                  ? page > 1
-                    ? "No recordings on this page."
-                    : "No recordings yet."
-                  : "Nothing older."}
+                {/* Not "No recordings yet." above an Older page that has some. */}
+                {emptyHistoryMessage({ show, page, hasMore: older.hasMore })}
               </p>
             </Card>
           ) : (

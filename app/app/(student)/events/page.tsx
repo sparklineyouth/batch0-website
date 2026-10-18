@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Video, MapPin } from "lucide-react";
 import { requireViewer } from "@/lib/auth";
-import { getStudentAccess } from "@/lib/access";
+import { enrolledCohortIds, getStudentAccess } from "@/lib/access";
 import { AppLockedAlert } from "@/components/app/locked-alert";
 import { getCohortEvents, getCohortRecordings } from "@/lib/app-cache";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -86,7 +86,12 @@ export default async function StudentAppEvents(props: {
   // times a cohort, so it is shared across everyone in that cohort for a minute
   // — and the prefetcher has usually warmed it before this screen is opened.
   // Later pages of recordings skip the calendar: they are only that list.
-  const scope = { cohortId: access.cohortId };
+  //
+  // Scoped to every cohort the student is enrolled in, as the `events read`
+  // policy is, and not to access.cohortId: that is one cohort, possibly one
+  // they are only accepted into, so a returning student (or one accepted into
+  // the next cohort) saw another cohort's recordings and lost their own.
+  const scope = { cohortIds: await enrolledCohortIds() };
   const [{ upcoming }, recordingPage] = await Promise.all([
     page === 1 ? getCohortEvents(scope, nowIso) : Promise.resolve({ upcoming: [] }),
     getCohortRecordings(scope, nowIso, page),

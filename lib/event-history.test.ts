@@ -1,16 +1,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   EVENT_HISTORY_MAX_PAGE,
   EVENT_HISTORY_PAGE_SIZE,
+  emptyHistoryMessage,
+  eventCohortIds,
+  eventVisibilityScopes,
   historyHref,
   historyRange,
   needsRecordingLookup,
   parseHistoryPage,
   parseHistoryShow,
+  pastHistoryRows,
   recordingLink,
   recordingOrFilter,
   takePage,
+  visibleHistory,
 } from "./event-history.ts";
 
 // Run with `npm test`. Both events lists used to cut history before choosing
@@ -124,4 +130,157 @@ test("href: defaults stay out of the URL", () => {
     "/dashboard/events?show=recordings&page=3",
   );
   assert.equal(historyHref("/app/events", { page: 2, show: "all" }), "/app/events?page=2");
+});
+
+// ---- Whose events the installed app reads ----
+//
+// /app/events reads with the service role, so its filter IS the `events read`
+// policy there. It used to scope by access.cohortId: one cohort, the soonest
+// ahead of the student, which can be one they are only accepted into.
+
+const A = "aaaaaaaa-0000-4000-8000-000000000001"; // started, enrolled
+const B = "bbbbbbbb-0000-4000-8000-000000000002"; // upcoming, accepted only
+const C = "cccccccc-0000-4000-8000-000000000003"; // a returning student's first cohort
+const D = "dddddddd-0000-4000-8000-000000000004"; // someone else's
+
+/**
+ * Just enough of PostgREST's `or=` logic tree to run the strings this module
+ * builds: a top-level `or` of `and(...)` groups over `col.eq.v`,
+ * `col.in.(a,b)` and `col.not.is.null`.
+ */
+function splitTop(s: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of s) {
+    if (ch === "(") depth++;
+    if (ch === ")") depth--;
+    if (ch === "," && depth === 0) {
+      out.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+function holds(cond: string, row: Record<string, unknown>): boolean {
+  if (cond.startsWith("and(") && cond.endsWith(")")) {
+    return splitTop(cond.slice(4, -1)).every((c) => holds(c, row));
+  }
+  const m = /^([a-z_]+)\.(not\.)?(eq|in|is)\.(.+)$/.exec(cond);
+  assert.ok(m, `unparsed condition ${cond}`);
+  const [, col, not, op, val] = m;
+  const v = row[col];
+  const hit =
+    op === "eq"
+      ? v != null && String(v) === val
+      : op === "in"
+        ? v != null && val.slice(1, -1).split(",").includes(String(v))
+        : val === "null" && v == null;
+  return not ? !hit : hit;
+}
+const matchesOr = (filter: string, row: Record<string, unknown>) =>
+  splitTop(filter).some((c) => holds(c, row));
+
+test("cohort ids: every enrollment, sorted and deduped, non-uuids dropped", () => {
+  assert.deepEqual(eventCohortIds([C, A, null, A.toUpperCase(), undefined, "", "x),or(1"]), [A, C]);
+  assert.deepEqual(eventCohortIds([]), []);
+  assert.deepEqual(eventVisibilityScopes([]), ["visibility.eq.public"]);
+  assert.deepEqual(eventVisibilityScopes([C, A]), [
+    "visibility.eq.public",
+    `visibility.eq.enrolled,cohort_id.in.(${A},${C})`,
+  ]);
+  // Order in, same scope out: it is the cache key.
+  assert.deepEqual(eventVisibilityScopes([A, C]), eventVisibilityScopes([C, A, C]));
+});
+
+test("app recordings match what RLS lets the student watch: every enrolled cohort, never an accepted-only one", () => {
+  const events = [
+    { id: "pub", visibility: "public", cohort_id: null, recording_url: "https://v.test/pub" },
+    { id: "a", visibility: "enrolled", cohort_id: A, recording_url: "https://v.test/a" },
+    { id: "a-hosted", visibility: "enrolled", cohort_id: A, recording_url: null, live_mode: "hosted", assets_shared_at: "2026-09-01T00:00:00Z" },
+    { id: "a-none", visibility: "enrolled", cohort_id: A, recording_url: null, live_mode: "external" },
+    { id: "b", visibility: "enrolled", cohort_id: B, recording_url: "https://v.test/b" },
+    { id: "c", visibility: "enrolled", cohort_id: C, recording_url: "https://v.test/c" },
+    { id: "d", visibility: "enrolled", cohort_id: D, recording_url: "https://v.test/d" },
+  ].map((e) => ({ live_mode: null, assets_shared_at: null, ...e }));
+  const enrolledIn = [A, C];
+  // The `events read` policy (0098), for a signed-in non-staff student.
+  const rlsAllows = (e: (typeof events)[number]) =>
+    e.visibility === "public" ||
+    (e.visibility === "enrolled" && enrolledIn.includes(e.cohort_id as string));
+  const watchable = (e: (typeof events)[number]) =>
+    !!e.recording_url || needsRecordingLookup(e);
+
+  const now = recordingOrFilter(eventVisibilityScopes(enrolledIn));
+  assert.deepEqual(
+    events.filter((e) => matchesOr(now, e)).map((e) => e.id),
+    events.filter((e) => rlsAllows(e) && watchable(e)).map((e) => e.id),
+  );
+  assert.deepEqual(events.filter((e) => matchesOr(now, e)).map((e) => e.id), ["pub", "a", "a-hosted", "c"]);
+
+  // What the old access.cohortId scope (B: the soonest cohort ahead) read:
+  // B's recordings, which RLS denies, and none of A's or C's.
+  const before = recordingOrFilter(["visibility.eq.public", `visibility.eq.enrolled,cohort_id.eq.${B}`]);
+  assert.deepEqual(events.filter((e) => matchesOr(before, e)).map((e) => e.id), ["pub", "b"]);
+
+  // Staff, or a student with no enrollment rows: public only.
+  const none = recordingOrFilter(eventVisibilityScopes([]));
+  assert.deepEqual(events.filter((e) => matchesOr(none, e)).map((e) => e.id), ["pub"]);
+});
+
+test("both app screens scope events by enrollments, not access.cohortId", () => {
+  for (const page of ["events", "home"]) {
+    const src = readFileSync(new URL(`../app/app/(student)/${page}/page.tsx`, import.meta.url), "utf8");
+    assert.ok(/enrolledCohortIds\(\)/.test(src), `${page} reads the enrolled cohorts`);
+    assert.ok(
+      !/getCohort(Events|Recordings)\(\{\s*cohortId\s*[},]/.test(src),
+      `${page} scopes events by one cohort`,
+    );
+    assert.ok(!/cohortId: access\.cohortId/.test(src), `${page} scopes events by access.cohortId`);
+  }
+});
+
+// ---- /dashboard/events' past list, composed ----
+
+test("past rows: the last day's ended sessions lead page one only", () => {
+  const lastDay = [ev("y2", 20), ev("y1", 19)];
+  const older = [ev("o1", 10), ev("o2", 9)];
+  assert.deepEqual(pastHistoryRows(1, lastDay, older).map((e) => e.id), ["y2", "y1", "o1", "o2"]);
+  assert.deepEqual(pastHistoryRows(2, lastDay, older).map((e) => e.id), ["o1", "o2"]);
+  assert.deepEqual(pastHistoryRows(1, [], []), []);
+});
+
+test("recordings view: a shared hosted session without a take drops; pasted links and real takes stay", () => {
+  const rows = [
+    { e: ev("link", 5, { recording_url: "https://v.test/l" }) },
+    { e: ev("take", 4, { assets_shared_at: "2026-09-04T00:00:00Z" }) },
+    { e: ev("no-take", 3, { assets_shared_at: "2026-09-03T00:00:00Z" }) },
+    { e: ev("plain", 2) },
+  ];
+  const recorded = new Set(["take"]);
+  assert.deepEqual(
+    visibleHistory(rows, "recordings", recorded, (r) => r.e).map((r) => r.e.id),
+    ["link", "take"],
+  );
+  assert.deepEqual(visibleHistory(rows, "all", recorded, (r) => r.e).length, 4);
+});
+
+test("empty page: never \"No recordings yet.\" above an Older page that has some", () => {
+  // Page one came back as eleven shared-but-untaken hosted sessions: the
+  // filter drops all ten shown, and the lookahead row says more exist.
+  const page1 = Array.from({ length: 11 }, (_, i) =>
+    ev(`s${i}`, 28 - i, { assets_shared_at: "2026-09-01T00:00:00Z" }),
+  );
+  const { rows, hasMore } = takePage(page1);
+  const shown = visibleHistory(rows, "recordings", new Set(), (e) => e);
+  assert.equal(shown.length, 0);
+  assert.equal(hasMore, true);
+  assert.equal(emptyHistoryMessage({ show: "recordings", page: 1, hasMore }), "No recordings on this page.");
+
+  assert.equal(emptyHistoryMessage({ show: "recordings", page: 1, hasMore: false }), "No recordings yet.");
+  assert.equal(emptyHistoryMessage({ show: "recordings", page: 3, hasMore: false }), "No recordings on this page.");
+  assert.equal(emptyHistoryMessage({ show: "all", page: 2, hasMore: false }), "Nothing older.");
 });

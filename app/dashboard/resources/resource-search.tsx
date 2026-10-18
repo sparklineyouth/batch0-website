@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Search, X, Loader2 } from "lucide-react";
 import { Input, Select } from "@/components/ui/input";
-import { RESOURCE_QUERY_MAX, resourcesHref } from "@/lib/resource-search";
+import { RESOURCE_QUERY_MAX, parseResourceQuery, resourcesHref } from "@/lib/resource-search";
 
 /**
  * The resources page's search row: a search-as-you-type box and a shelf
@@ -45,6 +45,11 @@ export function ResourceSearch({
   // The query the URL holds as far as this box knows. Typing navigates only
   // when it would change that, which is also what stops landing on the page
   // from re-navigating.
+  //
+  // Always in the page's own form (parseResourceQuery: trimmed, inner spaces
+  // collapsed). Kept as a bare trim, "pitch  deck" here met "pitch deck" from
+  // the page, read as the URL moving under the box, and overwrote whatever
+  // had been typed while that navigation was in flight.
   const shown = useRef(initialQuery);
 
   // The URL can change without the box (Back, or the "Clear" link): follow it.
@@ -63,7 +68,7 @@ export function ResourceSearch({
   };
 
   useEffect(() => {
-    const q = value.trim();
+    const q = parseResourceQuery(value);
     if (q === shown.current) return;
     const t = setTimeout(() => {
       shown.current = q;
@@ -81,7 +86,7 @@ export function ResourceSearch({
       role="search"
       onSubmit={(e) => {
         e.preventDefault();
-        go(value.trim(), picked);
+        go(parseResourceQuery(value), picked);
       }}
       className="flex flex-col gap-2 sm:flex-row"
     >
@@ -124,7 +129,7 @@ export function ResourceSearch({
           value={picked}
           onChange={(e) => {
             setPicked(e.target.value);
-            go(value.trim(), e.target.value);
+            go(parseResourceQuery(value), e.target.value);
           }}
           aria-label="Show one shelf"
           className="capitalize sm:w-56"

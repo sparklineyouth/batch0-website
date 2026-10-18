@@ -73,6 +73,43 @@ export function historyHref(base: string, opts: { page: number; show: HistorySho
   return qs ? `${base}?${qs}` : base;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The cohorts whose enrolled-only events a student may see: every cohort they
+ * hold an enrollment row in, which is exactly the `events read` policy's
+ * enrolled clause (migration 0098). Sorted and deduped, so the same student
+ * always gets the same cache key; anything that is not a uuid is dropped,
+ * because these go into a PostgREST filter string.
+ *
+ * Deliberately NOT StudentAccess.cohortId. That is one cohort, "where the
+ * student is": the soonest one ahead of them, which can be a cohort they are
+ * only accepted into (no enrollment, so RLS shows them none of its enrolled
+ * events), and which drops a returning student's earlier cohort entirely.
+ * Scoping the installed app's events by it showed the wrong cohort's
+ * recordings and hid the right ones, while /dashboard/events (RLS) did not.
+ */
+export function eventCohortIds(ids: Iterable<string | null | undefined>): string[] {
+  const out = new Set<string>();
+  for (const id of ids) {
+    if (id && UUID_RE.test(id)) out.add(id.toLowerCase());
+  }
+  return Array.from(out).sort();
+}
+
+/**
+ * The `events read` policy's visibility as PostgREST `and` lists: every
+ * public event, and the enrolled events of these cohorts. For service-role
+ * reads (lib/app-cache.ts), which bypass that policy, so these filters are
+ * what enforce it there.
+ */
+export function eventVisibilityScopes(cohortIds: Iterable<string | null | undefined>): string[] {
+  const ids = eventCohortIds(cohortIds);
+  return ids.length > 0
+    ? ["visibility.eq.public", `visibility.eq.enrolled,cohort_id.in.(${ids.join(",")})`]
+    : ["visibility.eq.public"];
+}
+
 /** The hosted modes: the room is batch0's, and so is its recording. lib/webinars.ts. */
 const HOSTED_MODES = ["hosted", "premiere"] as const;
 
@@ -133,4 +170,48 @@ export function recordingLink(
     return { href: `/dashboard/events/${encodeURIComponent(e.id)}/live`, external: false };
   }
   return null;
+}
+
+/**
+ * One page of /dashboard/events' past list, before the recordings filter.
+ * Page one leads with the last day's ended sessions (the upcoming query read
+ * those; pass them newest first), then that page of older history. Later
+ * pages are older history alone, so nothing shows on two pages.
+ */
+export function pastHistoryRows<T>(
+  page: number,
+  lastDayEnded: readonly T[],
+  olderRows: readonly T[],
+): T[] {
+  return [...(page === 1 ? lastDayEnded : []), ...olderRows];
+}
+
+/**
+ * What a past list shows: every row, or for "recordings" only the rows with
+ * something to play. A shared hosted event with no take matched the query
+ * (recordingOrFilter) but has nothing to play, so this is where it drops.
+ */
+export function visibleHistory<T>(
+  rows: readonly T[],
+  show: HistoryShow,
+  recorded: ReadonlySet<string>,
+  eventOf: (row: T) => RecordingFacts,
+): T[] {
+  return show === "recordings"
+    ? rows.filter((r) => recordingLink(eventOf(r), recorded) !== null)
+    : [...rows];
+}
+
+/**
+ * The line an empty page of history shows. "No recordings yet." only when
+ * there are none at all: a page whose rows were all dropped by visibleHistory
+ * can still sit above an Older page that has real ones.
+ */
+export function emptyHistoryMessage(opts: {
+  show: HistoryShow;
+  page: number;
+  hasMore: boolean;
+}): string {
+  if (opts.show === "all") return "Nothing older.";
+  return opts.page > 1 || opts.hasMore ? "No recordings on this page." : "No recordings yet.";
 }

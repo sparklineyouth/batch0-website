@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, Circle, Megaphone } from "lucide-react";
 import { requireUser, getProfile } from "@/lib/auth";
-import { getStudentAccess } from "@/lib/access";
+import { enrolledCohortIds, getStudentAccess } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { LocalTime } from "@/components/ui/local-time";
 import { ChargePayButton } from "@/components/charge-pay-button";
@@ -90,6 +90,7 @@ export default async function StudentAppHome() {
     { data: allProgress },
     challenge,
     calls,
+    eventCohorts,
   ] = await Promise.all([
     profilePromise,
     accessPromise,
@@ -138,6 +139,10 @@ export default async function StudentAppHome() {
     // pre-cohort students too, so it isn't gated on enrollment. A failed read
     // costs the row, never the screen.
     listInvitesForInvitee(userId).catch(() => [] as CallInvite[]),
+    // Every cohort they're enrolled in, for the calendar: the `events read`
+    // policy's line, and the same cache key /app/events uses. Off the access
+    // rows the layout already read, so no round trip.
+    enrolledCohortIds(),
   ]);
 
   const cohort = normalizeEmbed<{
@@ -163,8 +168,8 @@ export default async function StudentAppHome() {
   ] = await Promise.all([
     // The same cached calendar /app/events reads (visibility as the
     // `events read` policy draws it).
-    cohortId && access.enrolled
-      ? getCohortEvents({ cohortId }, nowIso)
+    access.enrolled
+      ? getCohortEvents({ cohortIds: eventCohorts }, nowIso)
       : Promise.resolve(null),
     cohortId && access.enrolled
       ? admin

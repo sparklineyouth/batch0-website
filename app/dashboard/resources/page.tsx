@@ -21,9 +21,12 @@ import { FLOW_STAGES } from "@/lib/flows";
 import { sortCategories } from "@/lib/resource-categories";
 import {
   PRE_COHORT_SHELF,
+  beforeDayOneLayout,
   matchesResourceQuery,
+  onShelf,
   parseResourceQuery,
   parseResourceShelf,
+  resourceShelves,
   resourcesHref,
 } from "@/lib/resource-search";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
@@ -54,8 +57,8 @@ export default async function DashboardResourcesPage(props: {
   // Enrolled-only, in two views:
   //  - full: enrolled with a started cohort (admins report enrolled from
   //    getStudentAccess, so they preview this) — everything, with the
-  //    pre-cohort items folded into one closed "Before day one" block at
-  //    the foot of the page.
+  //    pre-cohort items in one "Before day one" block: leading the page while
+  //    a worksheet is unfinished, folded at its foot once they are all done.
   //  - pre-cohort section only: enrolled but the cohort hasn't started.
   //  - locked: everyone else. Acceptance alone opens nothing — the seat
   //    has to be paid for first (RLS in migration 0046 matches).
@@ -113,10 +116,7 @@ export default async function DashboardResourcesPage(props: {
   const shelfOf = (r: any): string => (r as any).category || "general";
   const allCategories = sortCategories(allRegular.map(shelfOf));
   const shelves = fullAccess
-    ? [
-        ...(hasPreCohort ? [{ value: PRE_COHORT_SHELF, label: "Pre-cohort" }] : []),
-        ...allCategories.map((c) => ({ value: c, label: c })),
-      ]
+    ? resourceShelves({ preCohort: hasPreCohort, categories: allCategories })
     : [];
   const q = parseResourceQuery(searchParams.q);
   const shelf = parseResourceShelf(
@@ -133,14 +133,13 @@ export default async function DashboardResourcesPage(props: {
         matchesResourceQuery([r.title, r.description, r.category], q),
       )
     : [];
-  const regularRows =
-    shelf === PRE_COHORT_SHELF
-      ? []
-      : allRegular.filter(
-          (r: any) =>
-            (!shelf || shelfOf(r) === shelf) &&
-            matchesResourceQuery([r.title, r.description, shelfOf(r)], q),
-        );
+  // On the pre-cohort shelf this keeps only a category literally named
+  // "pre-cohort", if an admin made one (resourceShelves folds it in there).
+  const regularRows = allRegular.filter(
+    (r: any) =>
+      onShelf(shelfOf(r), shelf) &&
+      matchesResourceQuery([r.title, r.description, shelfOf(r)], q),
+  );
   const matchCount = flows.length + preCohortRows.length + regularRows.length;
 
   // Mint short signed URLs for the storage-backed entries we actually
@@ -185,14 +184,51 @@ export default async function DashboardResourcesPage(props: {
       showEmpty={!fullAccess && !filtering}
     />
   );
-  // After kickoff it is finished business: one closed line at the foot of
-  // the page instead of the first screen, with the worksheet tally so nothing
-  // unfinished is hidden without a trace. A search that matches inside it
-  // opens it, so a result is never behind a click.
+  // After kickoff it folds to one closed line at the foot of the page, but
+  // only once every worksheet is done (beforeDayOneLayout): until then it
+  // leads, open, because that unfinished work is what kickoff's checklist and
+  // a late enrollee's "Before One" link send students here for.
   const flowsDone = allFlows.filter((f: any) => progressByFlow.get(f.id)?.completed_at).length;
+  const before = beforeDayOneLayout({
+    flowsTotal: allFlows.length,
+    flowsDone,
+    filtering,
+  });
   const showPreCohort = fullAccess
     ? (filtering ? flows.length + preCohortRows.length > 0 : hasPreCohort)
     : true;
+  const beforeDayOne = fullAccess && showPreCohort && (
+    <details
+      open={before.open}
+      // A named group: the worksheet cards inside are `group`s of their
+      // own, and a bare one here would light every card on hover.
+      className="group/before rounded-xl border border-line bg-paper open:bg-transparent"
+    >
+      <summary className="press flex cursor-pointer list-none items-center gap-3 px-5 py-4 hover:bg-wash [&::-webkit-details-marker]:hidden">
+        <Sparkles className="h-4 w-4 shrink-0 text-phosphor-ink" aria-hidden />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-ink">Before day one</span>
+          <span className="mt-0.5 block text-xs text-ink-faint">
+            {[
+              allFlows.length > 0
+                ? `${flowsDone} of ${allFlows.length} worksheet${allFlows.length === 1 ? "" : "s"} done`
+                : null,
+              allPreCohort.length > 0
+                ? `${allPreCohort.length} pre-cohort resource${allPreCohort.length === 1 ? "" : "s"}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+        </span>
+        <ChevronDown
+          className="h-4 w-4 shrink-0 text-ink-faint transition-transform group-open/before:rotate-180"
+          aria-hidden
+        />
+      </summary>
+      <div className="px-5 pb-6">{preCohortMaterial}</div>
+    </details>
+  );
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -224,6 +260,14 @@ export default async function DashboardResourcesPage(props: {
       {!fullAccess && showPreCohort && <div className="mt-10">{preCohortMaterial}</div>}
 
       <div className="mt-10 space-y-8">
+        {before.leads && beforeDayOne}
+
+        {/* The way into Build receipts, the cohort-long proof-of-work feed.
+            Its own row, outside the pre-cohort block and every filter: it was
+            the last line of Before One, so folding that block or searching
+            past it took the only link to the feed with it. */}
+        <BuildReceiptsLink />
+
         {fullAccess &&
           categories.map((cat) => (
             <div key={cat}>
@@ -242,38 +286,7 @@ export default async function DashboardResourcesPage(props: {
           </Card>
         )}
 
-        {fullAccess && showPreCohort && (
-          <details
-            open={filtering}
-            // A named group: the worksheet cards inside are `group`s of their
-            // own, and a bare one here would light every card on hover.
-            className="group/before rounded-xl border border-line bg-paper open:bg-transparent"
-          >
-            <summary className="press flex cursor-pointer list-none items-center gap-3 px-5 py-4 hover:bg-wash [&::-webkit-details-marker]:hidden">
-              <Sparkles className="h-4 w-4 shrink-0 text-phosphor-ink" aria-hidden />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-ink">Before day one</span>
-                <span className="mt-0.5 block text-xs text-ink-faint">
-                  {[
-                    allFlows.length > 0
-                      ? `${flowsDone} of ${allFlows.length} worksheet${allFlows.length === 1 ? "" : "s"} done`
-                      : null,
-                    allPreCohort.length > 0
-                      ? `${allPreCohort.length} pre-cohort resource${allPreCohort.length === 1 ? "" : "s"}`
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-              </span>
-              <ChevronDown
-                className="h-4 w-4 shrink-0 text-ink-faint transition-transform group-open/before:rotate-180"
-                aria-hidden
-              />
-            </summary>
-            <div className="px-5 pb-6">{preCohortMaterial}</div>
-          </details>
-        )}
+        {!before.leads && beforeDayOne}
       </div>
     </div>
   );
@@ -370,23 +383,6 @@ function PreCohortMaterial({
                 </div>
               );
             })}
-
-            {/* Build receipts — the proof-of-work feed across all stages. */}
-            <Link
-              href="/dashboard/resources/receipts"
-              className="press group flex items-center gap-3 rounded-xl border border-line bg-paper px-4 py-3.5 hover:border-ink/30 hover:bg-wash"
-            >
-              <Receipt className="h-5 w-5 shrink-0 text-phosphor-ink" />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-ink">
-                  Build receipts
-                </span>
-                <span className="mt-0.5 block text-xs text-ink-soft">
-                  Proof of work from your cohort.
-                </span>
-              </span>
-              <ArrowRight className="h-4 w-4 shrink-0 text-ink-faint group-hover:text-ink-soft" />
-            </Link>
           </div>
         </section>
       )}
@@ -408,6 +404,27 @@ function PreCohortMaterial({
         </div>
       )}
     </div>
+  );
+}
+
+/** Build receipts — the proof-of-work feed, for every enrolled student. */
+function BuildReceiptsLink() {
+  return (
+    <Link
+      href="/dashboard/resources/receipts"
+      className="press group flex items-center gap-3 rounded-xl border border-line bg-paper px-4 py-3.5 hover:border-ink/30 hover:bg-wash"
+    >
+      <Receipt className="h-5 w-5 shrink-0 text-phosphor-ink" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-ink">
+          Build receipts
+        </span>
+        <span className="mt-0.5 block text-xs text-ink-soft">
+          Proof of work from your cohort.
+        </span>
+      </span>
+      <ArrowRight className="h-4 w-4 shrink-0 text-ink-faint group-hover:text-ink-soft" />
+    </Link>
   );
 }
 

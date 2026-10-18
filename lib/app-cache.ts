@@ -1,6 +1,12 @@
 import { unstable_cache } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { historyRange, recordingOrFilter, takePage } from "@/lib/event-history";
+import {
+  eventCohortIds,
+  eventVisibilityScopes,
+  historyRange,
+  recordingOrFilter,
+  takePage,
+} from "@/lib/event-history";
 
 /**
  * Cached reads for the installed app.
@@ -29,9 +35,10 @@ import { historyRange, recordingOrFilter, takePage } from "@/lib/event-history";
  * KEYING IS A SECURITY BOUNDARY. unstable_cache keys on the array passed as the
  * second argument, NOT on the closure's variables. Every value a query filters
  * by must appear in that array or one viewer will be served another's cache
- * entry. Everything below is keyed by cohort id, and none of it is per-user —
- * it is the same rows for every member of a cohort, which is precisely why it
- * is safe to share.
+ * entry. Everything below is keyed by cohort id (events by the sorted set of
+ * cohorts the viewer is enrolled in), and none of it is per-user — it is the
+ * same rows for every member of a cohort, which is precisely why it is safe
+ * to share.
  */
 
 /** A minute. Long enough to cover a burst of tab-switching, short enough that a
@@ -120,28 +127,41 @@ const EVENT_COLUMNS =
   "id, title, type, description, starts_at, ends_at, location, live_mode, zoom_url, recording_url, live_started_at, live_ended_at, assets_shared_at";
 
 /**
- * The `events read` policy's visibility, as `and` lists for PostgREST: every
- * public event, and the enrolled events of this cohort. The service-role
- * client bypasses that policy, so these filters are what enforce it here.
+ * Whose events: every cohort the viewer is ENROLLED in (enrolledCohortIds in
+ * lib/access.ts), which is what the `events read` policy opens. Not
+ * StudentAccess.cohortId: that one cohort can be one they are only accepted
+ * into, and it leaves out a returning student's earlier cohort (see
+ * eventCohortIds in lib/event-history.ts).
  */
-function visibilityScopes(cohortId: string | null): string[] {
-  return cohortId
-    ? ["visibility.eq.public", `visibility.eq.enrolled,cohort_id.eq.${cohortId}`]
-    : ["visibility.eq.public"];
+type EventScope = { cohortIds: readonly string[] };
+
+/**
+ * The scope as the queries, the cache key and the tags all see it, built
+ * once so they can never disagree about what was fetched.
+ */
+function eventScope({ cohortIds }: EventScope) {
+  const ids = eventCohortIds(cohortIds);
+  return {
+    // The visibility branches for the service-role reads below, which bypass
+    // the policy, so these filters are what enforce it here.
+    scopes: eventVisibilityScopes(ids),
+    key: ids.length > 0 ? ids.join(",") : "none",
+    tags: [...ids.map(cohortContentTag), GLOBAL_CONTENT_TAG],
+  };
 }
 
-function visibleEvents(cohortId: string | null) {
+function visibleEvents(scopes: readonly string[]) {
   const q = createAdminClient().from("events").select(EVENT_COLUMNS);
-  const [pub, cohort] = visibilityScopes(cohortId);
-  return cohort ? q.or(`${pub},and(${cohort})`) : q.eq("visibility", "public");
+  const [pub, enrolled] = scopes;
+  return enrolled ? q.or(`${pub},and(${enrolled})`) : q.eq("visibility", "public");
 }
 
 /**
- * Upcoming events for a cohort. "Upcoming" reaches back a day so a session
- * that is running (or that a host started early) still shows.
+ * Upcoming events for a student's cohorts. "Upcoming" reaches back a day so
+ * a session that is running (or that a host started early) still shows.
  *
- * Visibility mirrors the `events read` policy: enrolled events of this
- * cohort, and every public one.
+ * Visibility mirrors the `events read` policy: enrolled events of the
+ * cohorts they are enrolled in, and every public one.
  *
  * `nowBucket` is in the cache key on purpose. The query filters on "now", so
  * without it a cached entry would keep answering with a `now` from up to a
@@ -154,29 +174,29 @@ function visibleEvents(cohortId: string | null) {
  * without a recording hid every older one.
  */
 export function getCohortEvents(
-  scope: CohortScope,
+  scope: EventScope,
   nowIso: string,
 ): Promise<{ upcoming: AppEvent[] }> {
   const nowBucket = nowIso.slice(0, 16); // YYYY-MM-DDTHH:MM
-  const { cohortId } = scope;
+  const { scopes, key, tags } = eventScope(scope);
   return unstable_cache(
     async () => {
       const since = new Date(new Date(nowIso).getTime() - 24 * 60 * 60_000).toISOString();
-      const up = await visibleEvents(cohortId)
+      const up = await visibleEvents(scopes)
         .gte("starts_at", since)
         .order("starts_at", { ascending: true })
         .limit(20);
       if (up.error) throw new Error(up.error.message);
       return { upcoming: (up.data ?? []) as AppEvent[] };
     },
-    ["app-events", cohortId ?? "none", nowBucket],
-    { revalidate: CONTENT_TTL, tags: scopeTags(scope) },
+    ["app-events", key, nowBucket],
+    { revalidate: CONTENT_TTL, tags },
   )();
 }
 
 /**
- * One page of a cohort's past events that have something to watch, newest
- * first (lib/event-history.ts pages it; `hasMore` says an older page exists).
+ * One page of the past events a student may watch, newest first
+ * (lib/event-history.ts pages it; `hasMore` says an older page exists).
  *
  * The recording filter is part of the query, scoped the same way as above,
  * so paging walks every recording and nothing else. A hosted event matches
@@ -185,12 +205,12 @@ export function getCohortEvents(
  * two short of what it shows — never with a recording skipped.
  */
 export function getCohortRecordings(
-  scope: CohortScope,
+  scope: EventScope,
   nowIso: string,
   page: number,
 ): Promise<{ rows: AppEvent[]; hasMore: boolean }> {
   const nowBucket = nowIso.slice(0, 16);
-  const { cohortId } = scope;
+  const { scopes, key, tags } = eventScope(scope);
   return unstable_cache(
     async () => {
       const { from, to } = historyRange(page);
@@ -200,7 +220,7 @@ export function getCohortRecordings(
         // ONE .or(): visibility AND has-a-recording, spelled out as a flat
         // `or` of `and`s (recordingOrFilter), so nothing rests on how two
         // `or=` parameters combine.
-        .or(recordingOrFilter(visibilityScopes(cohortId)))
+        .or(recordingOrFilter(scopes))
         .lt("starts_at", nowIso)
         .order("starts_at", { ascending: false })
         .order("id", { ascending: true })
@@ -209,8 +229,8 @@ export function getCohortRecordings(
       return takePage((data ?? []) as AppEvent[]);
     },
     // `page` is in the key: page 2 is different rows from page 1.
-    ["app-recordings", cohortId ?? "none", nowBucket, String(page)],
-    { revalidate: CONTENT_TTL, tags: scopeTags(scope) },
+    ["app-recordings", key, nowBucket, String(page)],
+    { revalidate: CONTENT_TTL, tags },
   )();
 }
 
