@@ -34,17 +34,20 @@ export function CourseManager({
   cohorts,
   modules,
   lessons,
+  initialOpenModuleId = null,
 }: {
   cohorts: Cohort[];
   modules: ModuleRow[];
   lessons: LessonRow[];
+  /** From ?module=: open this one on arrival (the URL's #module-<id> scrolls to it). */
+  initialOpenModuleId?: string | null;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
   const [editingModule, setEditingModule] = useState<ModuleInput | null>(null);
   const [editingLesson, setEditingLesson] = useState<LessonInput | null>(null);
-  const [openModuleId, setOpenModuleId] = useState<string | null>(null);
+  const [openModuleId, setOpenModuleId] = useState<string | null>(initialOpenModuleId);
   const [confirmDelete, setConfirmDelete] = useState<
     | { kind: "module"; id: string; title: string }
     | { kind: "lesson"; id: string; title: string }
@@ -160,7 +163,8 @@ export function CourseManager({
           return (
             <div
               key={m.id}
-              className="rounded-xl border border-line bg-wash"
+              id={`module-${m.id}`}
+              className="scroll-mt-24 rounded-xl border border-line bg-wash"
             >
               <div className="flex items-center justify-between gap-3 px-4 py-3">
                 <button
