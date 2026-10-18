@@ -1,5 +1,6 @@
 -- ============================================================================
--- 0111 — Moving a student no longer blocks writes that reference them.
+-- 0111 — Moving a student no longer blocks writes that reference them, and
+-- takes its locks in the order every checkout function does.
 --
 -- admin_move_student_cohort() (0103) serialises moves of one student by
 -- locking their profile row first. It took that lock FOR UPDATE, the mode
@@ -7,11 +8,7 @@
 -- takes on the row it points at. 137 foreign keys in production point at
 -- public.profiles(id), so while a move was running, any other transaction
 -- inserting a row for that student (a notification, an audit row, a chat
--- message, a payment) queued behind it. And one that had already locked a
--- row the move locks next could deadlock with it: settle_enrollment_payment
--- (0081), fulfilling that student's checkout, locks their application and
--- then inserts a payment (a key-share check on the profile), while the move
--- holds the profile and asks for the application. Postgres would abort one.
+-- message, a payment) queued behind it.
 --
 -- FOR NO KEY UPDATE is enough. It conflicts with itself, so two moves of one
 -- student still run one after the other, but not with FOR KEY SHARE, so
@@ -21,15 +18,44 @@
 -- cohort_id, part of a unique key on both tables, which takes FOR UPDATE
 -- whatever the select asked for.
 --
--- The function is 0103's, re-created with only that line (and its comment)
--- changed, so its result, its refusals and its rollbacks are the same
--- (lib/admin-integrity-migration-db.test.ts runs 0103's tests against this
--- version, and compares the two bodies). Same signature, so the code in
+-- The second change is the destination cohort. Every function that touches a
+-- seat locks the cohort FOR UPDATE and then the application:
+-- reserve_checkout_seat, attach_checkout_session and settle_enrollment_payment
+-- (0081), and the refund settlement (0080). The move did it the other way
+-- round. It locked the application, and only reached the cohort at the end,
+-- through 0081's enrollment capacity guard (FOR UPDATE) and the foreign key
+-- check on the new cohort_id (FOR KEY SHARE). So a Stripe settlement for that
+-- student and cohort, holding the cohort and asking for the application,
+-- could deadlock with an admin's move holding the application and asking for
+-- the cohort. Postgres would abort one. That is exactly the "paid for this
+-- cohort, enrolled in none" repair below meeting a webhook that is still
+-- settling. The move's existing "does the cohort exist" read now takes that
+-- lock up front, before the enrollment and the application, so both orders
+-- are cohort then application. It held the same lock from the capacity guard
+-- to commit anyway, so other writes to that cohort wait no longer than a
+-- move's few statements.
+--
+-- (Under 0103 the profile lock was a second way into the same deadlock: a
+-- settlement inserting the payment needs a key-share on the profile. FOR NO
+-- KEY UPDATE removes that one.)
+--
+-- Not changed here: a full refund (apply_enrollment_refund, 0080) locks the
+-- application and then deletes or re-points the enrollment, while the move
+-- locks the enrollment and then the application, because it finds the
+-- application through the enrollment. A refund for a student in the same
+-- instant an admin moves them can still deadlock, as it could under 0103.
+-- Postgres aborts one and its caller reports it: Stripe sends a failed
+-- webhook again, and an admin sees the move or the refund fail and retries.
+--
+-- The function is 0103's, re-created with only those two lines (and their
+-- comments) changed, so its result, its refusals and its rollbacks are the
+-- same (lib/admin-integrity-migration-db.test.ts runs 0103's tests against
+-- this version, and compares the two bodies). Same signature, so the code in
 -- production before and after this deploy calls it the same way, and the
 -- privileges are restated as 0103 left them.
 --
 -- If 0103 ever runs again after this file, run this file again: 0103
--- re-creates the FOR UPDATE version (0111's verify query notices).
+-- re-creates the old locks (0111's verify query notices).
 --
 -- Idempotent; safe to re-run. Changes no data. Assumes 0103.
 -- ============================================================================
@@ -64,7 +90,11 @@ begin
   if not found then
     return jsonb_build_object('ok', false, 'code', 'no_profile');
   end if;
-  perform 1 from public.cohorts where id = p_to_cohort_id;
+  -- Locked now, before the enrollment and the application, rather than at the
+  -- end by the capacity guard: every checkout function locks the cohort and
+  -- then the application, and taking them the other way round could deadlock
+  -- with a Stripe settlement for this student (0111).
+  perform 1 from public.cohorts where id = p_to_cohort_id for update;
   if not found then
     return jsonb_build_object('ok', false, 'code', 'no_cohort');
   end if;

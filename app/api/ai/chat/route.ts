@@ -6,6 +6,7 @@ import { resolveAiTeamContext } from "@/lib/ai/team-context";
 import {
   ALREADY_ANSWERED,
   isResendOfUnanswered,
+  REFUSAL_CODE,
   replyFailedNotice,
   REPLY_IN_FLIGHT,
   REPLY_LEASE_SECONDS,
@@ -266,7 +267,7 @@ export async function POST(req: Request) {
   const lease = { kind: "ai-chat-reply", identifier: conversationId };
   const replying = await checkRateLimit({ ...lease, limit: 1, windowSeconds: REPLY_LEASE_SECONDS });
   if (!replying.ok) {
-    return new Response(JSON.stringify({ error: REPLY_IN_FLIGHT }), { status: 409 });
+    return new Response(JSON.stringify({ error: REPLY_IN_FLIGHT, code: REFUSAL_CODE.replyInFlight }), { status: 409 });
   }
 
   // The student sending again the question whose reply failed (the notice
@@ -288,7 +289,9 @@ export async function POST(req: Request) {
       .limit(1);
     if (!newestError && !isResendOfUnanswered(newest, trimmedMessage)) {
       await clearRateLimit(lease);
-      return new Response(JSON.stringify({ error: ALREADY_ANSWERED }), { status: 409 });
+      return new Response(JSON.stringify({ error: ALREADY_ANSWERED, code: REFUSAL_CODE.alreadyAnswered }), {
+        status: 409,
+      });
     }
   }
 

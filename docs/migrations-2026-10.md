@@ -94,13 +94,15 @@ check-ins, in-app files, discussions and the old recorder at once:
    their own session could get past it, and could read the team's notes on
    their request. (Production has no investor accounts today.)
 10. **Any time: 0111.** It only re-creates `admin_move_student_cohort()`
-   (0103) with a weaker lock on the student's profile row (FOR NO KEY
-   UPDATE instead of FOR UPDATE); same signature, same results, no data
-   changed, so no code depends on which runs first. Until it runs, a cohort
-   move makes every write that references that student (a notification, a
-   payment, a chat message) wait for the move to commit, and one that
-   already holds their application can deadlock with it. **If 0103 ever
-   runs again after 0111, run 0111 again**: 0103 re-creates the old lock
+   (0103) with two lock changes: the student's profile row is locked FOR NO
+   KEY UPDATE instead of FOR UPDATE, and the destination cohort is locked
+   first, before the enrollment and the application, the order every
+   checkout function uses. Same signature, same results, no data changed,
+   so no code depends on which runs first. Until it runs, a cohort move
+   makes every write that references that student (a notification, a
+   payment, a chat message) wait for the move to commit, and a Stripe
+   settlement for that student can deadlock with it. **If 0103 ever runs
+   again after 0111, run 0111 again**: 0103 re-creates the old locks
    (0111's verify query notices).
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
@@ -197,7 +199,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0106 | `0106_sms_messaging.sql` | Texting: `messaging_consent` (consent per number, no promotional consent on a student's number), the append-only `messaging_consent_log`, `sms_outbox`, `sms_campaigns`, `sms_events`, and the `sms_settings` singleton seeded with no credentials. Service-role only (RLS on, no policies, no grants). Creates only new tables, changes no data, and sends nothing: texting stays off until a number and credentials are saved. See `docs/sms.md`. |
 | 0107 | `0107_student_followups.sql` | `student_followups`: who on the team owns a check on a student, the next check date and a factual note (one open per student), written from the drawer on `/admin/progress` and due ones listed in the Overview's attention list. RLS on with no policies, every API privilege revoked. Changes no data and sends nothing. |
 | 0109 | `0109_intro_requests_server_writes.sql` | Investor intro requests lose their client write policies and table write privileges (an investor's own JWT could file requests past the five-waiting cap, or set their row back to `requested` or on to `wired`); writes go through server actions. Reads are unchanged except `admin_notes`, which only the service role reads now. Changes no rows. |
-| 0111 | `0111_hardening.sql` | `admin_move_student_cohort()` re-created with its profile lock taken FOR NO KEY UPDATE instead of FOR UPDATE: two moves of one student still run one at a time, but foreign key checks on that profile (any insert that references the student) no longer wait for a move, and can't deadlock with one. Otherwise 0103's function unchanged; changes no data. |
+| 0111 | `0111_hardening.sql` | `admin_move_student_cohort()` re-created with its profile lock taken FOR NO KEY UPDATE instead of FOR UPDATE: two moves of one student still run one at a time, but foreign key checks on that profile (any insert that references the student) no longer wait for a move. It also locks the destination cohort before the enrollment and the application, as the checkout and settlement functions do (0080, 0081), so a Stripe settlement for that student can't deadlock with a move. Otherwise 0103's function unchanged; changes no data. |
 
 ## Verify
 
@@ -351,7 +353,8 @@ select has_column_privilege('authenticated', 'public.intro_requests', 'status', 
 -- 0111
 select exists (select 1 from pg_proc
                where oid = to_regprocedure('public.admin_move_student_cohort(uuid, uuid, uuid)')
-                 and prosrc like '%from public.profiles where id = p_user_id for no key update;%') as ok;
+                 and prosrc like '%from public.profiles where id = p_user_id for no key update;%'
+                 and prosrc like '%from public.cohorts where id = p_to_cohort_id for update;%') as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,

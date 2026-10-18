@@ -218,7 +218,10 @@ test("a second send while the reply is still streaming is refused, not answered 
     tables.ai_messages = [{ role: "user", content: "How should I price?", created_at: "2026-10-17T10:01:00Z" }];
     const second = await post();
     assert.equal(second.status, 409);
-    assert.match((await second.json()).error, /still being answered/);
+    const refused = await second.json();
+    assert.match(refused.error, /still being answered/);
+    // Saved nothing: the composer puts the words back (lib/ai/chat-sends.ts).
+    assert.equal(refused.code, "reply_in_flight");
     // A different question to the same conversation waits its turn as well.
     assert.equal((await post("And what about churn?")).status, 409);
     release();
@@ -270,7 +273,11 @@ test("a resend whose question was answered while it waited isn't answered again"
   try {
     const res = await post();
     assert.equal(res.status, 409);
-    assert.match((await res.json()).error, /just answered/);
+    const refused = await res.json();
+    assert.match(refused.error, /just answered/);
+    // Saved already: the composer shows the reply instead of offering the
+    // words back, which would send them as a new question.
+    assert.equal(refused.code, "already_answered");
     assert.equal(state.modelCalls, 0);
     assert.deepEqual(state.inserted, []);
     assert.ok(!limits.has("ai-chat-reply:c1"), "and the conversation is handed back");

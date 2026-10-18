@@ -12,13 +12,21 @@ import { checkRateLimit, clientIpFrom } from "@/lib/rate-limit";
 
 /**
  * Signups one network may make in SIGNUP_IP_WINDOW_SECONDS. Generous on
- * purpose: a classroom or a school library is one address, and a teacher
- * walking a class through signup at an info session is the best day this
- * form has. A script is the other thing that arrives from one address, and
- * each account it makes is pre-confirmed and mailed a welcome — this caps it
- * at eighty an hour instead of as many as it can post.
+ * purpose: a teacher walking a class through signup at an info session is
+ * the best day this form has, and a school is usually one address for the
+ * whole building, so this one count covers every room signing up at once.
+ * Every attempt past the form's own checks counts, a retry after "that
+ * address already has an account" included, and the window runs from the
+ * first one (rate_limit_check, 0005, doesn't slide it). A class is 25 to 35,
+ * so the ceiling fits two full classes in the same quarter hour with a retry
+ * for nearly every student (lib/signup-actions.test.ts pins that). It was 20,
+ * which turned away a single class from the 21st student on. A script is the
+ * other thing that arrives from one address, and each account it makes is
+ * pre-confirmed and mailed a welcome: this caps it at 400 an hour instead of
+ * as many as it can post. The honeypot (lib/honeypot.ts) is what stops a
+ * form-filling one outright.
  */
-const SIGNUP_IP_LIMIT = 20;
+const SIGNUP_IP_LIMIT = 100;
 const SIGNUP_IP_WINDOW_SECONDS = 15 * 60;
 
 // Not exported: a "use server" module may export only async functions.

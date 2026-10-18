@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { Sparkles, Send, Loader2 } from "lucide-react";
 import { getActionError } from "@/lib/action-error";
+import { ChatSends, type ChatMsg } from "@/lib/ai/chat-sends";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = ChatMsg;
 
 export function AiChat({
   conversationId,
@@ -21,26 +22,43 @@ export function AiChat({
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const scrollRef = useRef<HTMLDivElement>(null);
-  // `streaming` is state, so it only reads true after a render: two Enter
-  // presses (or Enter and a click) inside one frame both passed the check
-  // and sent the question twice. A ref is set the moment the first send
-  // starts. The server refuses a second send while a reply streams anyway
-  // (409, app/api/ai/chat); this keeps a double press from getting that far.
-  const sendingRef = useRef(false);
-  // The conversation on screen. A send started in another one keeps reading
-  // its reply to the end (the server saves it either way) but stops drawing
-  // it here, and doesn't touch this conversation's send state when it ends.
-  const shownRef = useRef(conversationId);
+  // Every send, for as long as the panel is mounted. Picking another
+  // conversation changes this panel's props rather than remounting it, so a
+  // reply can still be streaming after the student has left its
+  // conversation, or left and come back. ChatSends decides what such a send
+  // may still draw, and holds the double-send guard (lib/ai/chat-sends.ts).
+  const [sends] = useState(
+    () =>
+      new ChatSends(
+        {
+          setMessages,
+          setInput,
+          setStreaming,
+          setError,
+          showError: (err) => setError(getActionError(err)),
+          refresh: () => router.refresh(),
+        },
+        (body) =>
+          fetch("/api/ai/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }),
+      ),
+  );
 
-  // When the conversation changes, reset.
+  // A conversation opened, or opened again: start a new visit.
   useEffect(() => {
-    shownRef.current = conversationId;
-    sendingRef.current = false;
-    setMessages(initialMessages);
-    setStreaming(false);
-    setError(undefined);
+    sends.open(conversationId, initialMessages);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
+
+  // A fresh copy from the server (router.refresh). Shown only when a send
+  // asked for it: a reply that landed while this visit showed an older copy,
+  // or the "just answered" refusal.
+  useEffect(() => {
+    sends.serverCopy(initialMessages);
+  }, [sends, initialMessages]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -49,63 +67,8 @@ export function AiChat({
     });
   }, [messages, streaming]);
 
-  async function send() {
-    const text = input.trim();
-    if (!text || streaming || sendingRef.current) return;
-    sendingRef.current = true;
-    const sentIn = conversationId;
-    const shown = () => shownRef.current === sentIn;
-    setError(undefined);
-    setInput("");
-    const before = messages;
-    const next: Msg[] = [
-      ...messages,
-      { role: "user", content: text },
-      { role: "assistant", content: "" },
-    ];
-    setMessages(next);
-    setStreaming(true);
-
-    try {
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, message: text }),
-      });
-      if (!res.ok || !res.body) {
-        // Every refusal comes before the question is saved (the hourly
-        // limit, a reply still streaming in another tab, …), so the bubbles
-        // come back off and the words go back in the box to send later.
-        if (shown()) {
-          setMessages(before);
-          setInput((current) => current || text);
-        }
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? `Request failed (${res.status})`);
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let assembled = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        assembled += decoder.decode(value, { stream: true });
-        if (!shown()) continue;
-        setMessages((prev) => {
-          const out = [...prev];
-          out[out.length - 1] = { role: "assistant", content: assembled };
-          return out;
-        });
-      }
-      router.refresh();
-    } catch (e: any) {
-      if (shown()) setError(getActionError(e));
-    } finally {
-      if (shown()) {
-        sendingRef.current = false;
-        setStreaming(false);
-      }
-    }
+  function send() {
+    void sends.send(input, messages);
   }
 
   function onKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -114,6 +77,8 @@ export function AiChat({
       send();
     }
   }
+
+  const last = messages[messages.length - 1];
 
   return (
     // Below lg the conversation list stacks ABOVE this panel, so the full
@@ -142,7 +107,10 @@ export function AiChat({
         {messages.map((m, i) => (
           <Bubble key={i} message={m} />
         ))}
-        {streaming && messages[messages.length - 1]?.content === "" && (
+        {/* Waiting for the first word: this send's empty bubble, or a reply
+            still streaming from before the student left and came back,
+            which open() doesn't draw (its transcript ends with the question). */}
+        {streaming && (last?.content === "" || last?.role === "user") && (
           <div className="flex items-center gap-2 text-xs text-ink-faint">
             <Loader2 className="h-3 w-3 animate-spin" />
             Thinking…

@@ -62,6 +62,19 @@ export const REPLY_IN_FLIGHT =
 /**
  * The 409 for a resend whose question was answered while it waited: another
  * send of it (another tab) streamed the reply, which this tab hasn't shown.
+ * The composer fetches the conversation again to show it (lib/ai/chat-sends.ts).
  */
 export const ALREADY_ANSWERED =
-  "That question was just answered. Reload the conversation to see the reply.";
+  "That question was just answered, so it wasn't sent again. The reply is above; reload if it isn't.";
+
+/**
+ * The `code` beside each 409's `error`, for the composer: the two refusals
+ * need opposite handling. REPLY_IN_FLIGHT saved nothing, so the words go back
+ * in the box to send later. ALREADY_ANSWERED means the question and its reply
+ * are both saved, so the words must not go back: sending them again would be
+ * a new message, saved and answered a second time.
+ */
+export const REFUSAL_CODE = {
+  replyInFlight: "reply_in_flight",
+  alreadyAnswered: "already_answered",
+} as const;
