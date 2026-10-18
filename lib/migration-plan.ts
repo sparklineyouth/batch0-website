@@ -91,6 +91,11 @@ where permissions @> array['ai_usage.view']::text[];`,
                where ix.indrelid = to_regclass('public.email_outbox')
                  and ix.indisunique and ix.indpred is null and ix.indnkeyatts = 1
                  and a.attname = 'dedupe_key') as ok;`,
+  "0105": `select to_regclass('public.course_assignment_drafts') is not null
+   and to_regprocedure('public.save_course_assignment_draft(uuid, uuid, text, text, integer)') is not null
+   -- By oid: NULL (not an error) when the function doesn't exist yet.
+   and not has_function_privilege('authenticated',
+         to_regprocedure('public.save_course_assignment_draft(uuid, uuid, text, text, integer)'), 'execute') as ok;`,
 };
 
 /**

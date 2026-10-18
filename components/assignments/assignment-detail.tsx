@@ -2,6 +2,7 @@ import Link from "next/link";
 import { renderLessonMarkdown } from "@/lib/lesson-content";
 import { canEditSubmission, formatEastern } from "@/lib/assignments";
 import type { StudentItem } from "@/lib/assignments-server";
+import { startingWork, type DraftLoad } from "@/lib/assignment-drafts";
 import { StatusChip } from "@/components/assignments/status-chip";
 import { SubmitForm } from "@/components/assignments/submit-form";
 import { SubmissionView } from "@/components/assignments/submission-view";
@@ -13,11 +14,14 @@ import { SubmissionView } from "@/components/assignments/submission-view";
  */
 export async function AssignmentDetail({
   item,
+  draft,
   lesson,
   lessonHref,
   showTitle = true,
 }: {
   item: StudentItem;
+  /** The student's private draft (lib/assignments-server.ts loadAssignmentDraft). */
+  draft: DraftLoad;
   lesson: { id: string; title: string } | null;
   lessonHref: (id: string) => string;
   /** The installed app puts the title in its own header. */
@@ -65,6 +69,8 @@ export async function AssignmentDetail({
               assignmentId={a.id}
               type={a.submission_type}
               initial={s ? { body: s.body ?? "", link: s.link_url ?? "" } : null}
+              start={startingWork({ submission: s, draft: draft.state === "ready" ? draft.row : null })}
+              autosave={draft.state === "ready" ? "on" : draft.state === "failed" ? "failed" : "off"}
               pastDue={!!a.due_at && Date.parse(a.due_at) < Date.now()}
             />
           ) : s && (s.body || s.link_url) ? (

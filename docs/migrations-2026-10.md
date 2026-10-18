@@ -1,4 +1,4 @@
-# Migrations 0093–0102 (October 2026)
+# Migrations 0093–0105 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -55,6 +55,10 @@ check-ins, in-app files, discussions and the old recorder at once:
    every scheduled email automation fans out to nobody: the insert fails with
    42P10 (the notifications bug 0090 §9 fixed, on the outbox) and the run is
    recorded as an error on the automation.
+4. **Any time after 0093: 0105.** It only adds the drafts table and its
+   save function; nothing reads or writes them until it runs. Until then
+   assignment forms work as before, without autosave (the page reads the
+   missing table as "not set up yet", and Submit never touches it).
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -143,6 +147,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0100 | `0100_admin_cleanup.sql` | Removes the retired `ai_usage.view` permission from roles and deletes leftover founder-pass self-check rows (negative serials). |
 | 0101 | `0101_chat.sql` | batch0 Chat: channels, DMs and group DMs (`chat_*` tables including `chat_mutes`, read-only policies, `chat_can_read()`, realtime on `chat_messages`, private presence and typing topics on `realtime.messages`, a trigram index for search, the private `chat-files` bucket), the starting channels plus one per cohort and team (kept, archived, when their team or cohort is deleted), old DMs and team threads carried in, `discord.manage` removed (not converted), admins kept out of other people's chat bells, and the Discord integration's tables, columns and settings dropped. See `docs/chat.md`. |
 | 0102 | `0102_email_outbox_dedupe_index.sql` | `email_outbox.dedupe_key` gets a plain unique index in place of 0052's partial one, so the scheduled-automation fan-out's `on conflict (dedupe_key)` works. Changes no data and sends nothing by itself. |
+| 0105 | `0105_assignment_drafts.sql` | `course_assignment_drafts`: a student's private, autosaved unsubmitted assignment work, readable by its owner only (no staff policy), and `save_course_assignment_draft()` (service role only), which re-checks access on every save and refuses one from a tab holding an older version. Adds only; changes no existing data. |
 
 ## Verify
 
@@ -220,6 +225,13 @@ select exists (select 1 from pg_index ix
                where ix.indrelid = to_regclass('public.email_outbox')
                  and ix.indisunique and ix.indpred is null and ix.indnkeyatts = 1
                  and a.attname = 'dedupe_key') as ok;
+
+-- 0105
+select to_regclass('public.course_assignment_drafts') is not null
+   and to_regprocedure('public.save_course_assignment_draft(uuid, uuid, text, text, integer)') is not null
+   -- By oid: NULL (not an error) when the function doesn't exist yet.
+   and not has_function_privilege('authenticated',
+         to_regprocedure('public.save_course_assignment_draft(uuid, uuid, text, text, integer)'), 'execute') as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,
