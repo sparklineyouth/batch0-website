@@ -73,6 +73,7 @@ const ICON_BY_TYPE: Record<string, any> = {
   chat_message: Hash,
   chat_reported: Flag,
   chat_flagged: HandHelping,
+  chat_thread: MessageSquareReply,
 };
 
 function iconFor(type: string) {

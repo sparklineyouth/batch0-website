@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarClock, ClipboardCheck, Flag, LifeBuoy, type LucideIcon } from "lucide-react";
+import { CalendarClock, CircleHelp, ClipboardCheck, Flag, LifeBuoy, type LucideIcon } from "lucide-react";
 import { ButtonLink } from "@/components/ui/button";
 import {
   attentionEmptyText,
@@ -13,6 +13,7 @@ const SOURCE_ICON: Record<AttentionSourceKey, LucideIcon> = {
   support: LifeBuoy,
   feedback: ClipboardCheck,
   chat_reports: Flag,
+  chat_questions: CircleHelp,
   followups: CalendarClock,
 };
 
@@ -20,6 +21,7 @@ const SOURCE_NAME: Record<AttentionSourceKey, string> = {
   support: "Support",
   feedback: "Feedback",
   chat_reports: "Chat reports",
+  chat_questions: "Unanswered questions",
   followups: "Follow-ups",
 };
 

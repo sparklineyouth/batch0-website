@@ -19,9 +19,9 @@
  * reports, the due follow-ups), read with the same function, so the two
  * can't disagree.
  *
- * A later "unanswered chat questions" source is one more provider: a key, a
- * permission check, a loader returning AttentionSource, and a builder like
- * the ones below.
+ * "Unanswered questions" (#help's open questions, Chat threads, migration
+ * 0110) is one more provider of the same shape: a key, a permission check, a
+ * loader, and questionItems below.
  */
 import { can, canViewAdminPath, type Capabilities } from "./permissions.ts";
 import { formatElapsed, slaState, type TicketPriority } from "./support-access.ts";
@@ -31,7 +31,7 @@ import { daysBetween, isFollowUpDue, type FollowUpStatus } from "./student-follo
 /** At most this many rows; each source's full list is one click away. */
 export const ATTENTION_LIMIT = 8;
 
-export type AttentionSourceKey = "support" | "feedback" | "chat_reports" | "followups";
+export type AttentionSourceKey = "support" | "feedback" | "chat_reports" | "chat_questions" | "followups";
 
 /**
  * How pressing a row is: past a target (overdue), at one (due), or simply
@@ -101,12 +101,16 @@ export type AttentionProvider<Ctx> = {
  *                 mentor.panel for their own cohorts and students — the
  *                 review action's rule
  *   chat_reports  /admin/chat (chat.manage)
+ *   chat_questions  a #help thread in /chat: chat.manage, which reads every
+ *                 text channel (canReadChannel) — #help included, whatever
+ *                 its audience is set to
  *   followups     /admin/progress (people.view)
  */
 export const ATTENTION_PERMITTED: Readonly<Record<AttentionSourceKey, (caps: Capabilities) => boolean>> = {
   support: (caps) => canViewAdminPath(caps, "/admin/support"),
   feedback: (caps) => canViewAdminPath(caps, "/admin/assignments") || can(caps, "mentor.panel"),
   chat_reports: (caps) => canViewAdminPath(caps, "/admin/chat"),
+  chat_questions: (caps) => can(caps, "chat.manage"),
   followups: (caps) => canViewAdminPath(caps, "/admin/progress"),
 };
 
@@ -361,6 +365,53 @@ export function chatReportItems(
         urgency: "due" as const,
         owner: { kind: "team", label: "Moderators" } as const,
         action: { label: "Review", href: `/admin/chat/reports/${r.id}` },
+      };
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Unanswered questions (#help, Chat threads — migration 0110)
+// ---------------------------------------------------------------------------
+
+export type QuestionLike = {
+  rootId: string;
+  channelId: string;
+  channelName: string | null;
+  askerName: string;
+  askedAt: string;
+  replyCount: number;
+  /** The thread's help request (a Support ticket), when someone asked the team. */
+  help: { status: "open" | "waiting_on_requester" | "resolved" | "closed"; assigneeName: string | null } | null;
+};
+
+/** A question nobody has replied to for this long is overdue. */
+export const QUESTION_STALE_MS = 24 * 3_600_000;
+
+/**
+ * Rows for #help's open questions, the ones waiting longest first. A
+ * question whose help request is still with the team isn't a row: that
+ * request is a Support row already (one record, one row), and the provider
+ * says so in its note. A row names the channel and who asked — never the
+ * question's words — and opens the thread, where it's answered and marked
+ * answered: doing that is what takes the row off.
+ */
+export function questionItems(rows: readonly QuestionLike[], now: number): AttentionItem[] {
+  return rows
+    .filter((q) => !q.help || q.help.status === "resolved" || q.help.status === "closed")
+    .map((q) => {
+      const waited = now - Date.parse(q.askedAt);
+      const unreplied = q.replyCount === 0;
+      const stale = unreplied && Number.isFinite(waited) && waited >= QUESTION_STALE_MS;
+      return {
+        key: `chat_questions:${q.rootId}`,
+        source: "chat_questions" as const,
+        reason: stale ? "No reply in 24 hours" : unreplied ? "No reply yet" : "Not marked answered",
+        context: `#${q.channelName ?? "help"} · ${q.askerName}`,
+        since: q.askedAt,
+        age: ageSince(q.askedAt, now),
+        urgency: stale ? ("overdue" as const) : ("waiting" as const),
+        owner: { kind: "team", label: "Anyone on the team" } as const,
+        action: { label: unreplied ? "Answer" : "Open", href: `/chat?c=${q.channelId}&thread=${q.rootId}` },
       };
     });
 }

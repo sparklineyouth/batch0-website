@@ -51,6 +51,8 @@ import {
   normalizeReference,
   parseCategory,
   readStoredContext,
+  chatThreadPath,
+  requesterThreadPath,
   refundWindow,
   sanitizeContext,
   sanitizeContextPage,
@@ -665,6 +667,23 @@ test("a stored context is re-checked on the way out", () => {
     }),
     { page: "/dashboard", chargeId: "11111111-1111-4111-8111-111111111111" },
   );
+});
+
+test("a Chat help request's thread (0110) survives the re-check only as two ids, and links to the thread", () => {
+  const thread = { channelId: "11111111-1111-4111-8111-111111111111", rootId: "22222222-2222-4222-8222-222222222222" };
+  assert.deepEqual(readStoredContext({ source: "chat_thread", page: "/chat", chatThread: thread }), {
+    source: "chat_thread",
+    page: "/chat",
+    chatThread: thread,
+  });
+  for (const bad of [{ ...thread, rootId: "nope" }, "a string", null, [thread], { channelId: thread.channelId }]) {
+    assert.equal(readStoredContext({ chatThread: bad }).chatThread, undefined, JSON.stringify(bad));
+  }
+  // Nothing a client sends can set it: the form's context never carries it.
+  assert.equal((sanitizeContext({ page: "/chat", chatThread: thread } as never) as { chatThread?: unknown }).chatThread, undefined);
+  assert.equal(chatThreadPath(thread), `/chat?c=${thread.channelId}&thread=${thread.rootId}`);
+  assert.equal(requesterThreadPath("B0-2345-6789"), "/dashboard/support/B0-2345-6789");
+  assert.equal(requesterThreadPath("B0-2345-6789", "app"), "/app/support/B0-2345-6789");
 });
 
 // ---------------------------------------------------------------------------

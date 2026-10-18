@@ -9,6 +9,7 @@ import { countTicketsForStaff, listTicketsForStaff } from "@/lib/support";
 import { supportScopeFor } from "@/lib/support-access";
 import { getChannelRow, getChatViewer, listReports } from "@/lib/chat";
 import { listDueFollowUps } from "@/lib/student-followups-server";
+import { loadUnansweredQuestions } from "@/lib/chat-questions";
 import { displayEmail } from "@/lib/placeholder-email";
 import {
   ATTENTION_LIMIT,
@@ -17,6 +18,7 @@ import {
   collectAttention,
   feedbackItems,
   followUpItems,
+  questionItems,
   supportItems,
   type AttentionProvider,
   type AttentionResult,
@@ -214,6 +216,43 @@ const chatReports: AttentionProvider<AttentionContext> = {
     }),
 };
 
+/**
+ * #help's open questions (Chat threads, 0110): the count its Unanswered list
+ * shows, and the oldest few as rows that open their thread. Questions whose
+ * help request is still with the team are counted but left to their Support
+ * row (questionItems), and the note says how many.
+ */
+const chatQuestions: AttentionProvider<AttentionContext> = {
+  key: "chat_questions",
+  permitted: ATTENTION_PERMITTED.chat_questions,
+  load: ({ now }) =>
+    logged("chat_questions", async () => {
+      try {
+        const q = await loadUnansweredQuestions({ limit: ATTENTION_LIMIT });
+        if (!q.ready || !q.help) return null;
+        const items = questionItems(q.rows, now).slice(0, ATTENTION_LIMIT);
+        const withHelp = q.rows.filter((r) => r.help && (r.help.status === "open" || r.help.status === "waiting_on_requester")).length;
+        return {
+          key: "chat_questions",
+          label: "Unanswered questions",
+          total: q.total,
+          href: `/chat?c=${q.help.id}`,
+          items,
+          note:
+            withHelp > 0
+              ? {
+                  text: `${withHelp === 1 ? "1 question has" : `${withHelp} questions have`} a help request open: listed under Support.`,
+                  href: "/admin/support",
+                }
+              : null,
+        };
+      } catch (err) {
+        if (isMissingSchemaError(err)) return null;
+        throw err;
+      }
+    }),
+};
+
 const followUps: AttentionProvider<AttentionContext> = {
   key: "followups",
   permitted: ATTENTION_PERMITTED.followups,
@@ -240,6 +279,7 @@ export const ATTENTION_PROVIDERS: readonly AttentionProvider<AttentionContext>[]
   support,
   feedback,
   chatReports,
+  chatQuestions,
   followUps,
 ];
 

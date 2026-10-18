@@ -20,9 +20,13 @@ export const dynamic = "force-dynamic";
  *   ?m=<message>   with ?c: open around that message and flash it
  *   ?to=<user>     open a DM with someone (a draft until the first message)
  *   ?team=<team>   open a team's channel (the Team page's "Team chat" link)
+ *   ?thread=<msg>  with ?c: open that message's thread in the side pane (0110)
+ *   ?ask=lesson:<id> | assignment:<id>
+ *                  "Ask about this": open #help with that item linked in the
+ *                  composer, when the viewer can open it (lib/chat-about.ts)
  */
 export default async function ChatPage(props: {
-  searchParams?: Promise<{ c?: string; m?: string; to?: string; team?: string }>;
+  searchParams?: Promise<{ c?: string; m?: string; to?: string; team?: string; thread?: string; ask?: string }>;
 }) {
   const sp = (await props.searchParams) ?? {};
   const { profile, caps } = await requireViewer();
@@ -40,12 +44,14 @@ export default async function ChatPage(props: {
   }
 
   const target: ChannelTarget | null = isUuid(sp.c)
-    ? { channelId: sp.c, around: isUuid(sp.m) ? sp.m : null }
+    ? { channelId: sp.c, around: isUuid(sp.m) ? sp.m : null, thread: isUuid(sp.thread) ? sp.thread : null }
     : isUuid(sp.to)
       ? { withUserId: sp.to }
       : isUuid(sp.team)
         ? { teamId: sp.team }
-        : null;
+        : typeof sp.ask === "string" && sp.ask
+          ? { systemKey: "help", ask: sp.ask.slice(0, 100) }
+          : null;
 
   let payload: ChannelPayload | null = null;
   let error: string | null = null;
