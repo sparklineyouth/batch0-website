@@ -35,7 +35,10 @@ import {
   TICKET_BODY_MAX,
   TICKET_BODY_MIN,
   canRequesterMarkSolved,
+  chatHelpReopenFields,
+  chatThreadPath,
   checkStaffReceivedAt,
+  requesterThreadPath,
   codePointLength,
   defaultPriorityFor,
   deriveSubject,
@@ -433,9 +436,7 @@ export function adminTicketPath(id: string): string {
  * app's screen on app.batch0.org. Keyed on the reference, which grants
  * nothing — the owner's session is what authorizes the page.
  */
-export function requesterThreadPath(reference: string, surface: SupportSurface = "web"): string {
-  return surface === "app" ? `/app/support/${reference}` : `/dashboard/support/${reference}`;
-}
+export { requesterThreadPath };
 
 // ---------------------------------------------------------------------------
 // Small shared pieces
@@ -802,6 +803,120 @@ export async function createTicket(input: CreateTicketInput): Promise<SupportTic
     if (error?.code !== "23505") throw dbFailure("createTicket", error);
   }
   throw dbFailure("createTicket (five reference collisions)", null);
+}
+
+// ---------------------------------------------------------------------------
+// Help requests from Chat ("Ask the team" in a thread, migration 0110)
+// ---------------------------------------------------------------------------
+
+/**
+ * The Support ticket behind a Chat thread's "Ask the team": the thread's one
+ * help request, with an owner (assigned_to) and an open/handled state the
+ * team works in Support like any other ticket. lib/chat-help.ts decides
+ * whether to make one, link the thread's existing one or reopen it.
+ *
+ * What it holds: who asked, which channel, their own note, and a link to the
+ * thread — never a word of the thread itself. A thread is readable by its
+ * channel's readers only, and Support is readable by everyone with
+ * support.view: copying the messages here would hand a cohort's channel to
+ * people who can't read it. Program category, never confidential: a
+ * safeguarding worry goes through Report, which stays its own queue.
+ *
+ * Filed without the "we got your request" email: the person asked from Chat,
+ * and their thread shows the request's state.
+ */
+export async function createChatHelpTicket(input: {
+  userId: string;
+  email: string | null;
+  name: string | null;
+  channelName: string | null;
+  chatThread: { channelId: string; rootId: string };
+  note: string;
+}): Promise<{ id: string; reference: string }> {
+  const where = `#${input.channelName ?? "a channel"}`;
+  const note = input.note.trim();
+  const link = `${env.siteUrl.replace(/\/$/, "")}${chatThreadPath(input.chatThread)}`;
+  const body = [
+    `Asked the team for help from a Chat thread in ${where}.`,
+    note ? `Their note: ${note}` : "They didn't add a note.",
+    `The thread (readable by people in ${where}): ${link}`,
+  ].join("\n\n");
+  const subject = deriveSubject({
+    subject: note ? `Chat help: ${note}` : `Chat help in ${where}`,
+    body,
+    category: "program",
+  });
+  const email = input.email?.trim().toLowerCase() || env.contactEmail;
+  const context: SupportContext = { source: "chat_thread", page: "/chat", surface: "web", chatThread: input.chatThread };
+  const admin = createAdminClient();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data, error } = await admin
+      .from("support_tickets")
+      .insert({
+        reference: mintReference(),
+        token: mintToken(),
+        user_id: input.userId,
+        requester_email: email,
+        requester_name: input.name ? trimToCodePoints(input.name.trim(), REQUESTER_NAME_MAX) || null : null,
+        category: "program",
+        subject,
+        body,
+        priority: defaultPriorityFor("program"),
+        sensitive: false,
+        channel: "web",
+        context,
+        status: "open",
+        needs_reply: true,
+      })
+      .select("id, reference")
+      .single();
+    if (!error && data) return data as { id: string; reference: string };
+    if (error?.code !== "23505") throw dbFailure("createChatHelpTicket", error);
+  }
+  throw dbFailure("createChatHelpTicket (five reference collisions)", null);
+}
+
+/**
+ * A note the team leaves itself on a help request ("Dev asked again: …").
+ * Internal, from the system: never shown to the requester, never emailed,
+ * and it moves no clock or status (0090's trigger, as for 0099's notes).
+ */
+export async function addChatHelpNote(ticketId: string, text: string): Promise<void> {
+  const body = trimToCodePoints(text.trim(), REPLY_BODY_MAX);
+  if (!body) return;
+  const { error } = await createAdminClient()
+    .from("support_ticket_replies")
+    .insert({ ticket_id: ticketId, author_id: null, is_staff: true, is_internal: true, via: "system", body });
+  if (error) throw dbFailure("addChatHelpNote", error);
+}
+
+/**
+ * Put a help request back in the team's queue: someone in the thread asked
+ * again. From `waiting_on_requester` (the team replied — asking again is the
+ * follow-up it was waiting for) or `resolved`; a closed ticket is final, and
+ * the thread gets a new one. As a requester's follow-up does
+ * (statusAfterRequesterReply), it goes to `open`, with needs_reply set, and
+ * the reply clock (requester_activity_at, 0090) starts from this ask — a
+ * request answered a week ago isn't overdue the moment it's back.
+ * Conditional on the status the caller saw: the update is the lock, and a
+ * false says it moved meanwhile (look again).
+ */
+export async function reopenChatHelpTicket(ticketId: string, from: "waiting_on_requester" | "resolved"): Promise<boolean> {
+  const now = new Date().toISOString();
+  const { data, error } = await createAdminClient()
+    .from("support_tickets")
+    .update(chatHelpReopenFields(from, now))
+    .eq("id", ticketId)
+    .eq("status", from)
+    .select("id");
+  if (error) throw dbFailure("reopenChatHelpTicket", error);
+  return (data ?? []).length > 0;
+}
+
+/** Take back a ticket made for a thread that turned out to have one already (two people asked at once). */
+export async function discardChatHelpTicket(ticketId: string): Promise<void> {
+  const { error } = await createAdminClient().from("support_tickets").delete().eq("id", ticketId);
+  if (error) console.error("[support] discardChatHelpTicket failed", error.code, error.message);
 }
 
 // ---------------------------------------------------------------------------

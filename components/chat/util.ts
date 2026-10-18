@@ -1,4 +1,5 @@
 import type { ActionResult } from "@/lib/action-result";
+import type { FlagResult } from "@/app/chat/actions";
 
 /** What a write says when it never reached the server (offline, or a deploy swapped the actions out). */
 export const OFFLINE = "Couldn't reach batch0. Check your connection and try again.";
@@ -102,4 +103,61 @@ export function stampLabel(iso: string): string {
   if (sameDay) return `Today at ${time}`;
   if (yesterday) return `Yesterday at ${time}`;
   return `${d.toLocaleDateString()} ${time}`;
+}
+
+/** "just now", "5m", "3h", "2d", "Oct 3": how long ago, for a thread's last reply. */
+export function sinceLabel(iso: string, now: number = Date.now()): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const min = Math.floor((now - t) / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d`;
+  return new Date(t).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+/**
+ * sinceLabel for a screen reader, in words: "just now", "5 minutes ago",
+ * "3 hours ago", "2 days ago", "on Oct 3" — never "5m" (read as metres) or
+ * "just now ago".
+ */
+export function spokenSince(iso: string, now: number = Date.now()): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const n = (k: number, unit: string) => `${k} ${unit}${k === 1 ? "" : "s"} ago`;
+  const min = Math.floor((now - t) / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return n(min, "minute");
+  const h = Math.floor(min / 60);
+  if (h < 24) return n(h, "hour");
+  const d = Math.floor(h / 24);
+  if (d < 7) return n(d, "day");
+  return `on ${new Date(t).toLocaleDateString([], { month: "short", day: "numeric" })}`;
+}
+
+/** #help's Unanswered list, one question for a screen reader: "Maya asked 5 minutes ago, no replies yet. Open thread". */
+export function unansweredLabel(who: string, askedAt: string, replies: number, now: number = Date.now()): string {
+  const when = spokenSince(askedAt, now);
+  const count = replies === 0 ? "no replies yet" : `${replies} ${replies === 1 ? "reply" : "replies"}`;
+  return `${who} asked${when ? ` ${when}` : ""}, ${count}. Open thread`;
+}
+
+/**
+ * What "Ask the team" says once it went through. A reference only ever
+ * comes back for the request's own requester and the team; someone else
+ * asking in the thread isn't its requester (no emails, no page of theirs to
+ * open), so they're told the team heard them — not that they've joined it.
+ */
+export function helpNotice(result: FlagResult | null): string {
+  if (!result?.outcome) return "Sent to the batch0 team. Someone will take a look.";
+  const ref = result.reference ? ` (${result.reference})` : "";
+  if (result.outcome === "created") return `Sent to the batch0 team as a help request${ref}. The thread shows when it's handled.`;
+  if (result.outcome === "reopened") {
+    return `${result.yours ? "Your" : "This thread's"} help request${ref} is back with the team. They'll pick it up again.`;
+  }
+  if (result.yours) return `Your help request${ref} is still with the team. They've been told you asked again.`;
+  return `This thread already has a help request${ref} with the team. They've been told you asked too.`;
 }

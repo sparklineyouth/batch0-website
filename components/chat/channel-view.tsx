@@ -6,6 +6,7 @@ import {
   Bell,
   BellOff,
   Ban,
+  CircleHelp,
   Flag,
   Hash,
   Loader2,
@@ -40,7 +41,8 @@ import {
 } from "./dialogs";
 import type { MarkupContext } from "./markup";
 import { chatApi, NOT_AVAILABLE, tracked } from "./api";
-import { OFFLINE, resultError } from "./util";
+import { OFFLINE, helpNotice, resultError } from "./util";
+import { aboutParam } from "@/lib/chat-threads-rules";
 import type { ActionResult } from "@/lib/action-result";
 import type { ChannelPayload, ChatPerson, ChatViewerInfo, Panel, UiMessage } from "./types";
 
@@ -83,6 +85,9 @@ export function ChannelView({
   onBlocksChanged,
   wasDeleted,
   onPeople,
+  onOpenThread,
+  onClearAsk,
+  unsentThreads,
 }: {
   viewer: ChatViewerInfo;
   payload: ChannelPayload | null;
@@ -107,7 +112,13 @@ export function ChannelView({
   onBack: () => void;
   panel: Panel;
   onPanel: (p: Exclude<Panel, null>) => void;
-  onSend: (input: { body: string; replyTo: UiMessage | null; attachments: { path: string; name: string; size: number; type: string }[] }) => void;
+  onSend: (input: {
+    body: string;
+    replyTo: UiMessage | null;
+    attachments: { path: string; name: string; size: number; type: string }[];
+    /** "Ask about this": `lesson:<id>` / `assignment:<id>` (0110). */
+    about?: string | null;
+  }) => void;
   onRetry: (m: UiMessage) => void;
   onDiscard: (id: string) => void;
   onEdit: (id: string, body: string) => Promise<string | null>;
@@ -127,6 +138,12 @@ export function ChannelView({
   wasDeleted: (id: string) => boolean;
   /** People the client learned of here (the composer's server search): names for every message. */
   onPeople: (more: Record<string, ChatPerson>) => void;
+  /** Open a message's thread in the side pane (0110). */
+  onOpenThread: (rootId: string) => void;
+  /** Take the "Ask about this" link off the composer. */
+  onClearAsk: () => void;
+  /** Roots with a thread reply that failed to send (0110): the feed says so under each. */
+  unsentThreads?: ReadonlySet<string>;
 }) {
   const channel = payload?.channel ?? null;
   const [replyTo, setReplyTo] = useState<UiMessage | null>(null);
@@ -252,8 +269,9 @@ export function ChannelView({
       onMessagePerson,
       onFlag: (m) => setFlagging(m),
       onMute: (userId, name) => setMuting({ userId, name }),
+      onOpenThread: (m) => onOpenThread(m.id),
     }),
-    [onEdit, onReact, onPin, toggleBlock, onRetry, onDiscard, onMessagePerson],
+    [onEdit, onReact, onPin, toggleBlock, onRetry, onDiscard, onMessagePerson, onOpenThread],
   );
 
   /** Run a channel-menu action; its notice and refetch go to that channel, even after a switch. */
@@ -360,6 +378,24 @@ export function ChannelView({
             <HeaderButton label="Search" panel="search" active={panel === "search"} onClick={() => onPanel("search")}>
               <Search className="h-4 w-4" />
             </HeaderButton>
+            {channel.questionChannel ? (
+              // #help's Unanswered list (0110): its open questions, in the side pane.
+              <HeaderButton
+                label={`Unanswered questions${channel.unanswered ? ` (${channel.unanswered})` : ""}`}
+                panel="unanswered"
+                active={panel === "unanswered"}
+                onClick={() => onPanel("unanswered")}
+              >
+                <span className="relative inline-flex">
+                  <CircleHelp className="h-4 w-4" />
+                  {channel.unanswered ? (
+                    <span aria-hidden className="absolute -right-2 -top-1.5 min-w-[1rem] rounded-full bg-amber-500 px-1 text-center font-mono text-[9px] font-semibold leading-4 text-white">
+                      {channel.unanswered > 99 ? "99+" : channel.unanswered}
+                    </span>
+                  ) : null}
+                </span>
+              </HeaderButton>
+            ) : null}
             <HeaderButton label={`Pinned messages${payload.pins ? ` (${payload.pins})` : ""}`} panel="pins" active={panel === "pins"} onClick={() => onPanel("pins")}>
               <Pin className="h-4 w-4" />
             </HeaderButton>
@@ -497,6 +533,7 @@ export function ChannelView({
         actions={actions}
         onNearBottom={onNearBottom}
         emptyHint={<Intro payload={payload} label={label} />}
+        unsentThreads={unsentThreads}
       />
 
       <div className="h-5 shrink-0 px-4 text-xs text-ink-faint md:px-6" aria-live="polite">
@@ -523,7 +560,9 @@ export function ChannelView({
           onCancelReply={() => setReplyTo(null)}
           people={people}
           candidates={candidates}
-          onSend={onSend}
+          onSend={(input) => onSend({ ...input, about: payload.ask ? aboutParam(payload.ask.kind, payload.ask.id) : null })}
+          about={payload.ask}
+          onClearAbout={onClearAsk}
           onTyping={onTyping}
           onEditLast={editLast}
           canMentionEveryone={!!channel?.canMentionEveryone}
@@ -592,10 +631,11 @@ export function ChannelView({
         <FlagDialog
           message={flagging}
           people={people}
+          threads={channel.threads}
           onClose={() => setFlagging(null)}
-          onDone={() => {
+          onDone={(result) => {
             setFlagging(null);
-            setNotice("Sent to the batch0 team. Someone will take a look.");
+            setNotice(helpNotice(result));
           }}
         />
       ) : null}

@@ -53,10 +53,10 @@ test("a failed probe is not 'missing' and marks the answer incomplete", async ()
   assert.deepEqual(r, { missing: ["0094"], complete: false });
 });
 
-test("probes cover 0093–0096, 0101 and 0107 by schema, 0099–0101 by leftovers", () => {
+test("probes cover 0093–0096, 0101, 0107 and 0110 by schema, 0099–0101 by leftovers", () => {
   const schema = new Set(MIGRATION_PROBES.filter((p) => !p.leftover).map((p) => p.migration));
   const leftover = new Set(MIGRATION_PROBES.filter((p) => p.leftover).map((p) => p.migration));
-  assert.deepEqual([...schema].sort(), ["0093", "0094", "0095", "0096", "0101", "0107"]);
+  assert.deepEqual([...schema].sort(), ["0093", "0094", "0095", "0096", "0101", "0107", "0110"]);
   assert.deepEqual([...leftover].sort(), ["0099", "0100", "0101"]);
   for (const p of MIGRATION_PROBES) assert.match(p.table, /^[a-z_]+$/);
 });
@@ -91,7 +91,8 @@ test("a database without Chat, or still granting discord.manage, needs 0101", as
   const noChat = await checkPendingMigrations(async (p) => ({
     error: p.table.startsWith("chat_") ? MISSING_TABLE : null,
   }));
-  assert.deepEqual(noChat, { missing: ["0101"], complete: true });
+  // …and 0110's threads, which build on it.
+  assert.deepEqual(noChat, { missing: ["0101", "0110"], complete: true });
   // An earlier draft of 0101 made the channels but not the mutes the posting
   // checks read: still needs this one.
   const draft = await checkPendingMigrations(async (p) => ({
@@ -103,4 +104,9 @@ test("a database without Chat, or still granting discord.manage, needs 0101", as
     found: !!p.leftover?.values.includes("discord.manage"),
   }));
   assert.deepEqual(stale, { missing: ["0101"], complete: true });
+});
+
+test("a database with Chat but not its threads needs 0110, and only 0110", async () => {
+  const r = await checkPendingMigrations(async (p) => ({ error: p.table === "chat_threads" ? MISSING_TABLE : null }));
+  assert.deepEqual(r, { missing: ["0110"], complete: true });
 });

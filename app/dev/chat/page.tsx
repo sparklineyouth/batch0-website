@@ -1,17 +1,25 @@
 import { notFound } from "next/navigation";
 import { ChatApp } from "@/components/chat/chat-app";
 import type { ChatPerson, SidebarData, SidebarItem } from "@/lib/chat";
+import type { ThreadSummary } from "@/lib/chat-threads-rules";
 import type { ChannelPayload } from "@/lib/chat-payload";
+import { PreviewFetch } from "./preview-fetch";
 
 /**
  * Interface preview for batch0 Chat against fixtures — no auth, no database.
  * Gated like app/dev/apply: renders on localhost and branch previews, 404s on
  * production (VERCEL_ENV, not NODE_ENV).
  *
- *   ?view=channel|dm|readonly|draft|empty   which pane to open
+ *   ?view=channel|dm|readonly|draft|empty|help|thread|ask   which pane to open
+ *   &blocked=1   the viewer has blocked Maya, who asked #help's open question:
+ *                her messages collapse in the feed, the thread's root and the
+ *                Unanswered list
  *
- * Actions still run (and fail without a database, which is fine for looking
- * at the layout); realtime simply never connects.
+ * `help` is #help with questions and threads (0110); `thread` opens one of
+ * them in the side pane; `ask` is #help opened from a lesson's "Ask about
+ * this", the lesson linked in the composer. The thread pane's reads are answered from fixtures
+ * (preview-fetch.tsx). Actions still run (and fail without a database, which
+ * is fine for looking at the layout); realtime simply never connects.
  */
 export const metadata = { title: "Chat preview · batch0", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
@@ -94,6 +102,8 @@ function payloadFor(view: string): ChannelPayload | null {
     focusId: null,
     draftTo: null,
     draftCompose: null,
+    openThread: null,
+    ask: null,
   };
   const info = {
     id: C(2),
@@ -122,6 +132,9 @@ function payloadFor(view: string): ChannelPayload | null {
     notifyIsDefault: true,
     slowmodeWait: 0,
     messageCount: msgs.length,
+    threads: true,
+    questionChannel: false,
+    unanswered: 0,
   };
   const messages = msgs.map((m) => ({
     id: m.id,
@@ -157,20 +170,72 @@ function payloadFor(view: string): ChannelPayload | null {
       cursor: ago(5),
     };
   }
+  if (view === "help" || view === "thread" || view === "ask") {
+    const help = { ...info, id: C(4), label: "help", name: "help", systemKey: "help", topic: "Stuck for twenty minutes? Ask here.", questionChannel: true, unanswered: 2 };
+    return {
+      ...base,
+      channel: help,
+      messages: helpMessages(),
+      cursor: ago(500),
+      pins: 0,
+      openThread: view === "thread" ? { rootId: Q1, focusId: null } : null,
+      ask:
+        view === "ask"
+          ? { kind: "lesson" as const, id: "l0000000-0000-4000-8000-000000000001", title: "Week 2 · Customer interviews", href: "/dashboard/course/l0000000-0000-4000-8000-000000000001" }
+          : null,
+    };
+  }
   return { ...base, channel: info, messages, cursor: ago(13) };
 }
 
-export default async function ChatPreview(props: { searchParams?: Promise<{ view?: string }> }) {
+const Q1 = "q0000000-0000-4000-8000-000000000001";
+const Q2 = "q0000000-0000-4000-8000-000000000002";
+const Q3 = "q0000000-0000-4000-8000-000000000003";
+
+/** #help's feed: an open question with replies, one answered, one nobody has replied to (0110). */
+function helpMessages() {
+  const m = (id: string, senderId: string, body: string, min: number, thread?: ThreadSummary) => ({
+    id,
+    channelId: C(4),
+    senderId,
+    body,
+    kind: "message" as const,
+    replyTo: null,
+    mentions: [],
+    mentionEveryone: false,
+    attachments: [],
+    reactions: {},
+    createdAt: ago(min),
+    editedAt: null,
+    pinnedAt: null,
+    ...(thread ? { thread } : {}),
+  });
+  return [
+    m(Q2, DEV, "Where's the interview script template?", 300, { replyCount: 1, lastReplyAt: ago(280), question: "answered", answerId: "r9" }),
+    m(Q1, MAYA, "How should I recruit my first five interviewees? Nobody at school has replied to my form.", 90, {
+      replyCount: 4,
+      lastReplyAt: ago(8),
+      question: "open",
+      answerId: null,
+      about: { kind: "lesson", id: "l0000000-0000-4000-8000-000000000001", title: "Week 2 · Customer interviews", href: "/dashboard/course/l0000000-0000-4000-8000-000000000001" },
+    }),
+    m(Q3, ME, "Is it ok to interview people I already know?", 20, { replyCount: 0, lastReplyAt: null, question: "open", answerId: null }),
+  ];
+}
+
+export default async function ChatPreview(props: { searchParams?: Promise<{ view?: string; blocked?: string }> }) {
   if (process.env.VERCEL_ENV === "production") notFound();
-  const view = (await props.searchParams)?.view ?? "channel";
+  const params = await props.searchParams;
+  const view = params?.view ?? "channel";
   return (
     <div className="fixed inset-0 z-10 flex bg-paper text-ink">
+      <PreviewFetch channelId={C(4)} rootId={Q1} people={people} me={ME} maya={MAYA} sam={SAM} rish={RISH} dev={DEV} />
       <main id="main-content" className="flex min-h-0 w-full">
         <ChatApp
           viewer={{ id: ME, name: "Ava Patel", staff: false, vetted: true }}
           home="/dashboard"
           homeLabel="Dashboard"
-          initialSidebar={sidebar}
+          initialSidebar={params?.blocked ? { ...sidebar, blocked: [MAYA] } : sidebar}
           initialPayload={payloadFor(view)}
           initialError={null}
         />

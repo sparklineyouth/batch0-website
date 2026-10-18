@@ -147,6 +147,8 @@ test("every chat bell is a settings row: DMs, mentions, reports and help flags a
     chat_dm: "important",
     chat_mention: "important",
     chat_message: "other",
+    // A reply in a thread you asked in or replied to (0110): someone answered you.
+    chat_thread: "important",
     chat_reported: "important",
     chat_flagged: "important",
   };

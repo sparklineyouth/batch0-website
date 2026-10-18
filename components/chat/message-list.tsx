@@ -3,6 +3,9 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import {
   ArrowDown,
   BellOff,
+  BookOpen,
+  CheckCircle2,
+  CircleHelp,
   Copy,
   CornerUpLeft,
   Ban,
@@ -12,6 +15,7 @@ import {
   LifeBuoy,
   Loader2,
   MessageSquare,
+  MessagesSquare,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -24,10 +28,11 @@ import { canDeleteMessage, canEditMessage, sortedReactions, type ChatViewer } fr
 import { composeMessage, decodeMentions, plainText, rawText, rebaseMentions, type PickedMention } from "@/lib/chat-format";
 import { layoutMessages, localOffset } from "@/lib/chat-view";
 import { attachmentKind, chatFileHref, formatBytes, isInlineImage } from "@/lib/chat-files-rules";
+import { showsThread, type AboutChip, type QuestionState } from "@/lib/chat-threads-rules";
 import { Avatar, RoleTag } from "./avatar";
 import { MessageMarkup, type MarkupContext } from "./markup";
 import { EmojiGrid, MenuItem, MenuSeparator, Popover } from "./popover";
-import { DELETED_NAME, clockTime, dayLabel, enterSends, imeComposing, senderName, stampLabel } from "./util";
+import { DELETED_NAME, clockTime, dayLabel, enterSends, imeComposing, senderName, sinceLabel, stampLabel } from "./util";
 import type { ChannelInfo, ChatPerson, ChatViewerInfo, UiMessage } from "./types";
 
 const NEAR_BOTTOM_PX = 120;
@@ -49,7 +54,18 @@ export type MessageActions = {
   onFlag: (m: UiMessage) => void;
   /** Staff: mute this person in chat. */
   onMute: (userId: string, name: string) => void;
+  /** Open this message's thread (0110), in the side pane. */
+  onOpenThread?: (m: UiMessage) => void;
+  /** In a #help thread: accept this reply as the question's answer. */
+  onAccept?: (m: UiMessage) => void;
 };
+
+/**
+ * A list showing one thread's replies (the thread pane) rather than a
+ * channel's feed: no thread buttons on replies (threads go one level), and
+ * the question's accepted answer marked.
+ */
+export type ThreadMode = { answerId: string | null; canAccept: boolean };
 
 /** A touch screen with no hover: actions open by tapping a message. */
 const touchOnly = () => typeof window !== "undefined" && window.matchMedia("(hover: none)").matches;
@@ -75,6 +91,12 @@ export function MessageList({
   actions,
   onNearBottom,
   emptyHint,
+  lead = null,
+  thread = null,
+  composerId = "chat-composer",
+  listKey,
+  label = "Messages",
+  unsentThreads,
 }: {
   viewer: ChatViewerInfo;
   channel: ChannelInfo | null;
@@ -97,6 +119,17 @@ export function MessageList({
   actions: MessageActions;
   onNearBottom: (near: boolean) => void;
   emptyHint: React.ReactNode;
+  /** Shown above everything, however far back the list goes: a thread's first message. */
+  lead?: React.ReactNode;
+  /** A thread's replies (the pane), not a channel's feed. */
+  thread?: ThreadMode | null;
+  /** The composer Escape goes back to. */
+  composerId?: string;
+  /** What resets the scroll position: the channel, or the thread. */
+  listKey?: string;
+  label?: string;
+  /** The feed: roots with a thread reply that failed to send (ChatApp's outbox), said under each. */
+  unsentThreads?: ReadonlySet<string>;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   // Day dividers and times are in the viewer's timezone, which the server
@@ -118,7 +151,7 @@ export function MessageList({
     [messages, viewer.id, cursor, mounted, systemKey],
   );
 
-  const channelKey = channel?.id ?? "draft";
+  const channelKey = listKey ?? channel?.id ?? "draft";
   const contentRef = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
   const prevCount = useRef(0);
@@ -310,7 +343,7 @@ export function MessageList({
     const row = e.target as HTMLElement;
     if (!row.matches("[data-mid]")) return;
     if (e.key === "Escape") {
-      const composer = document.getElementById("chat-composer");
+      const composer = document.getElementById(composerId);
       if (composer && !(composer as HTMLTextAreaElement).disabled) {
         e.preventDefault();
         composer.focus();
@@ -362,10 +395,11 @@ export function MessageList({
         // swaps in dozens at once. New messages are announced below.
         role="log"
         aria-live="off"
-        aria-label="Messages"
+        aria-label={label}
         aria-busy={loadingOlder || !mounted}
       >
         <div ref={contentRef} className="flex min-h-full flex-col justify-end pb-3 pt-6">
+          {lead}
           {hasMoreBefore ? (
             <div className="flex justify-center py-3">
               <button
@@ -420,6 +454,9 @@ export function MessageList({
                 selected={selected === r.m.id}
                 onSelect={onSelect}
                 tabbable={tabId === r.m.id}
+                thread={thread}
+                composerId={composerId}
+                threadUnsent={!!unsentThreads?.has(r.m.id)}
               />
             );
           })}
@@ -473,6 +510,9 @@ const MessageItem = memo(function MessageItem({
   selected,
   onSelect,
   tabbable,
+  thread,
+  composerId,
+  threadUnsent,
 }: {
   m: UiMessage;
   head: boolean;
@@ -498,6 +538,11 @@ const MessageItem = memo(function MessageItem({
   onSelect: (id: string) => void;
   /** The list's one Tab stop. */
   tabbable: boolean;
+  /** In a thread's pane (0110): its question's answer, and who may accept one. */
+  thread: ThreadMode | null;
+  composerId: string;
+  /** In the feed: a reply to this message's thread failed to send, and waits in the thread with its Retry. */
+  threadUnsent: boolean;
 }) {
   const [menu, setMenu] = useState<"emoji" | "more" | null>(null);
   const [reveal, setReveal] = useState(false);
@@ -568,6 +613,11 @@ const MessageItem = memo(function MessageItem({
     !(channel?.archived && !viewer.staff) &&
     canDeleteMessage({ senderId: m.senderId, kind: m.kind, deletedAt: null }, { id: channel?.id ?? "", kind: channel?.kind ?? "dm" }, rules);
   const reactions = sortedReactions(m.reactions);
+  // Threads (0110): a feed message in a text channel can start one; a reply
+  // in a thread can't (one level), and the pane marks the accepted answer.
+  const canThread = !thread && live && !!channel?.threads && m.kind === "message" && !m.threadRootId && !!actions.onOpenThread;
+  const isAnswer = !!thread && !!thread.answerId && thread.answerId === m.id;
+  const canAccept = !!thread && thread.canAccept && live && m.kind === "message" && !isAnswer && !!actions.onAccept;
   // A person to message: someone else, with an account.
   const other = !mine && !!m.senderId && !!sender;
   const first = name.split(" ")[0];
@@ -642,7 +692,10 @@ const MessageItem = memo(function MessageItem({
                 {mounted ? stampLabel(m.createdAt) : ""}
               </time>
               {m.pinnedAt ? <Pin className="h-3 w-3 text-phosphor-ink" aria-label="Pinned" /> : null}
+              {isAnswer ? <AnswerBadge /> : null}
             </div>
+          ) : isAnswer ? (
+            <AnswerBadge />
           ) : null}
 
           {editing ? (
@@ -652,7 +705,7 @@ const MessageItem = memo(function MessageItem({
               onDone={() => {
                 setEditingId(null);
                 // Back to where the ↑ (or the Edit button) came from.
-                document.getElementById("chat-composer")?.focus({ preventScroll: true });
+                document.getElementById(composerId)?.focus({ preventScroll: true });
               }}
               onSave={(body) => actions.onEdit(m.id, body)}
             />
@@ -692,6 +745,10 @@ const MessageItem = memo(function MessageItem({
             </div>
           ) : null}
 
+          {!thread && channel?.threads && (showsThread(m.thread) || !!m.thread?.about || threadUnsent) && actions.onOpenThread ? (
+            <ThreadLine m={m} tab={tab} mounted={mounted} unsent={threadUnsent} onOpen={() => actions.onOpenThread!(m)} />
+          ) : null}
+
           {m.failed ? (
             <p className="mt-1 text-xs text-red-600 dark:text-red-400" role="alert">
               {m.failed}{" "}
@@ -720,8 +777,24 @@ const MessageItem = memo(function MessageItem({
               <SmilePlus className="h-4 w-4" />
             </ToolbarButton>
           ) : null}
+          {canThread ? (
+            <ToolbarButton
+              label={showsThread(m.thread) ? "Open thread" : "Reply in thread"}
+              tabbable={showTools}
+              threadOpener={m.id}
+              onClick={() => { setMenu(null); actions.onOpenThread!(m); }}
+            >
+              <MessagesSquare className="h-4 w-4" />
+            </ToolbarButton>
+          ) : null}
           {!readOnly && channel?.compose.ok ? (
-            <ToolbarButton label="Reply" tabbable={showTools} onClick={() => { setMenu(null); actions.onReply(m); }}>
+            // In #help a feed reply is a quote in the channel, not an answer
+            // in the question's thread: say so, beside "Reply in thread".
+            <ToolbarButton
+              label={thread ? "Quote in reply" : channel?.threads && channel.questionChannel ? "Quote in channel" : "Reply"}
+              tabbable={showTools}
+              onClick={() => { setMenu(null); actions.onReply(m); }}
+            >
               <CornerUpLeft className="h-4 w-4" />
             </ToolbarButton>
           ) : null}
@@ -744,7 +817,12 @@ const MessageItem = memo(function MessageItem({
           </Popover>
           <Popover open={menu === "more"} onClose={() => setMenu(null)} toggleRef={moreRef} className="right-0 top-9 w-64">
             <div role="menu" aria-label="Message actions">
-              {channel?.canPin && !readOnly ? (
+              {canAccept ? (
+                <MenuItem icon={CheckCircle2} onClick={() => { setMenu(null); actions.onAccept!(m); }}>
+                  Accept as the answer
+                </MenuItem>
+              ) : null}
+              {channel?.canPin && !readOnly && !m.threadRootId ? (
                 <MenuItem icon={m.pinnedAt ? PinOff : Pin} onClick={() => { setMenu(null); actions.onPin(m.id); }}>
                   {m.pinnedAt ? "Unpin" : "Pin message"}
                 </MenuItem>
@@ -798,6 +876,7 @@ function ToolbarButton({
   tabbable,
   menu = false,
   expanded,
+  threadOpener,
   children,
 }: {
   ref?: React.Ref<HTMLButtonElement>;
@@ -808,6 +887,8 @@ function ToolbarButton({
   menu?: boolean;
   /** Its popover is open. */
   expanded?: boolean;
+  /** It opens this message's thread: focus comes back here when the pane closes. */
+  threadOpener?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -815,6 +896,7 @@ function ToolbarButton({
       ref={ref}
       type="button"
       onClick={onClick}
+      data-thread-opener={threadOpener}
       tabIndex={tabbable ? 0 : -1}
       aria-label={label}
       title={label}
@@ -824,6 +906,86 @@ function ToolbarButton({
     >
       {children}
     </button>
+  );
+}
+
+/** "Open question" / "Answered": #help's question state (0110), in words, not only a colour. */
+export function QuestionBadge({ state }: { state: QuestionState }) {
+  return state === "answered" ? (
+    <span className="inline-flex items-center gap-1 rounded-full border border-phosphor/50 bg-phosphor/10 px-1.5 py-px text-[11px] font-medium text-phosphor-ink">
+      <CheckCircle2 className="h-3 w-3" aria-hidden />
+      Answered
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-px text-[11px] font-medium text-amber-800 dark:text-amber-200">
+      <CircleHelp className="h-3 w-3" aria-hidden />
+      Open question
+    </span>
+  );
+}
+
+function AnswerBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-phosphor/15 px-1.5 py-px text-[11px] font-medium text-phosphor-ink">
+      <CheckCircle2 className="h-3 w-3" aria-hidden />
+      Accepted answer
+    </span>
+  );
+}
+
+/** "About: Lesson · Customer interviews" — only ever for an item this viewer can open (lib/chat-about.ts). */
+export function AboutLink({ about, tab = 0 }: { about: AboutChip; tab?: number }) {
+  return (
+    <a
+      href={about.href}
+      tabIndex={tab}
+      className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md border border-line px-1.5 py-0.5 text-[11px] text-ink-soft hover:border-ink/30 hover:text-ink"
+    >
+      <BookOpen className="h-3 w-3 shrink-0" aria-hidden />
+      <span className="shrink-0">About {about.kind === "lesson" ? "lesson" : "assignment"}:</span>
+      <span className="min-w-0 truncate font-medium">{about.title}</span>
+    </a>
+  );
+}
+
+const NO_THREAD = { replyCount: 0, lastReplyAt: null, question: null, answerId: null } as const;
+
+/**
+ * Under a message that starts a thread: its question state, "4 replies ·
+ * 3h", and what it's about — and, when a reply to it didn't send, that it's
+ * waiting in the thread with its Retry. One button opens the thread; its
+ * label says all of it for a screen reader. With no replies yet it says
+ * "Reply in thread", the same as the toolbar's button, so it's never
+ * mistaken for the toolbar's quote-in-the-channel.
+ */
+function ThreadLine({ m, tab, mounted, unsent, onOpen }: { m: UiMessage; tab: number; mounted: boolean; unsent: boolean; onOpen: () => void }) {
+  const t = m.thread ?? NO_THREAD;
+  const count = t.replyCount === 0 ? "No replies yet" : `${t.replyCount} ${t.replyCount === 1 ? "reply" : "replies"}`;
+  const state = t.question ? `, question ${t.question === "answered" ? "answered" : "open"}` : "";
+  return (
+    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-xs">
+      {t.question ? <QuestionBadge state={t.question} /> : null}
+      <button
+        type="button"
+        tabIndex={tab}
+        data-thread-opener={m.id}
+        onClick={onOpen}
+        aria-label={`${count}${state}. Open thread`}
+        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-phosphor-ink hover:bg-wash"
+      >
+        <MessagesSquare className="h-3.5 w-3.5" aria-hidden />
+        {t.replyCount === 0 ? "Reply in thread" : count}
+        {t.replyCount > 0 && t.lastReplyAt && mounted ? (
+          <span className="font-normal text-ink-faint">· {sinceLabel(t.lastReplyAt)}</span>
+        ) : null}
+      </button>
+      {m.thread?.about ? <AboutLink about={m.thread.about} tab={tab} /> : null}
+      {unsent ? (
+        <span role="alert" className="text-red-600 dark:text-red-400">
+          A reply didn&apos;t send. Open the thread to retry.
+        </span>
+      ) : null}
+    </div>
   );
 }
 
@@ -871,7 +1033,7 @@ function ReplyQuote({
 }
 
 /** `tab`: -1 keeps the links out of the Tab order until focus is in the message. */
-function Attachments({ m, tab }: { m: UiMessage; tab: number }) {
+export function Attachments({ m, tab }: { m: UiMessage; tab: number }) {
   return (
     <div className="mt-1.5 flex min-w-0 flex-wrap gap-2">
       {m.attachments.map((a, i) => {

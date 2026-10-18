@@ -1,4 +1,4 @@
-# Migrations 0093–0109 (October 2026)
+# Migrations 0093–0110 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -93,6 +93,22 @@ check-ins, in-app files, discussions and the old recorder at once:
    enforced by the app alone: an investor calling the API directly with
    their own session could get past it, and could read the team's notes on
    their request. (Production has no investor accounts today.)
+10. **Any time after 0101 and 0104: 0110.** Chat threads and #help's
+   questions (`docs/chat.md`, *Threads*). It adds `chat_messages.thread_root_id`
+   (a reply's root, held to the reply's own channel by a foreign key), the
+   service-role-only `chat_threads`, `chat_thread_follows` and
+   `chat_thread_events` tables with their triggers, and replaces 0101's
+   `chat_messages_touch_channel()` and `chat_unread()` with the same bodies
+   plus "not a thread reply". No existing data changes; from then on a
+   top-level post in #help from outside the team gets an open question row.
+   Either order works: the code asks for the column once a minute and, until
+   it's there, shows no threads, no question state and no Unanswered list,
+   while sends, the feed, search and *Ask the team* work as before (the team
+   gets the bell, but no Support ticket is filed). The previous code running
+   against it sees nothing new. **If 0101 ever runs again after 0110, run
+   0110 again**: 0101 re-creates those two functions without the thread
+   clause and takes `thread_root_id`'s column grant away (0110's verify
+   query notices both).
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -162,10 +178,21 @@ check-ins, in-app files, discussions and the old recorder at once:
   `profiles.discord_username`), its every-minute Discord cron fails, and
   Discord linking can't save. Fix forward instead. Before any of them has
   run, rolling back is safe.
+- **Don't roll the code back past 0110 once anyone has replied in a
+  thread.** 0110 itself is safe under the previous code (it ignores the new
+  column and tables), and nothing needs undoing in the database. But the
+  previous code's feed doesn't filter `thread_root_id`: every thread reply
+  shows in its channel's main feed as a plain message, out of context, and
+  live clients add new ones there and can pin or quote them, while 0110's
+  `chat_unread()` keeps leaving them out of unread counts. Fix forward. If a
+  revert is unavoidable, replies show in the feeds until the fix ships;
+  don't drop `thread_root_id` to hide them, since it's the only record of
+  which thread each reply belongs to. Before the first thread reply, a
+  revert is harmless.
 - People with `settings.manage` see one line on `/admin`, *Database update
   needed: run migration(s) …* naming the ones missing, while a probe finds one
   (`lib/pending-migrations.ts`, cached 5 minutes). It checks the new tables and
-  columns of 0093–0096, 0101 and 0107, and the retired permission keys 0099, 0100
+  columns of 0093–0096, 0101, 0107 and 0110, and the retired permission keys 0099, 0100
   and 0101 strip from roles. The policy changes in 0097–0099 are invisible to it: the line
   going away does not prove those ran, so run the verify queries below.
 
@@ -188,6 +215,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0106 | `0106_sms_messaging.sql` | Texting: `messaging_consent` (consent per number, no promotional consent on a student's number), the append-only `messaging_consent_log`, `sms_outbox`, `sms_campaigns`, `sms_events`, and the `sms_settings` singleton seeded with no credentials. Service-role only (RLS on, no policies, no grants). Creates only new tables, changes no data, and sends nothing: texting stays off until a number and credentials are saved. See `docs/sms.md`. |
 | 0107 | `0107_student_followups.sql` | `student_followups`: who on the team owns a check on a student, the next check date and a factual note (one open per student), written from the drawer on `/admin/progress` and due ones listed in the Overview's attention list. RLS on with no policies, every API privilege revoked. Changes no data and sends nothing. |
 | 0109 | `0109_intro_requests_server_writes.sql` | Investor intro requests lose their client write policies and table write privileges (an investor's own JWT could file requests past the five-waiting cap, or set their row back to `requested` or on to `wired`); writes go through server actions. Reads are unchanged except `admin_notes`, which only the service role reads now. Changes no rows. |
+| 0110 | `0110_chat_threads.sql` | Chat threads and #help's questions: `chat_messages.thread_root_id` (one level, a reply's root always in its own channel by a `(thread_root_id, channel_id)` foreign key, readable by the channel's readers for Realtime), `chat_threads` (live reply count, #help's open/answered state with an accepted answer that must be a live reply in that thread, the thread's one Support help request, the course item a question is about), `chat_thread_events` (append-only audit of every question transition, written by trigger), and `chat_thread_follows` (who hears about replies). Deleting the accepted answer reopens its question in the same statement. Thread replies are left out of channel summaries and unread counts (two 0101 functions replaced, bodies otherwise unchanged). New tables are service role only. Changes no existing data. See `docs/chat.md`. |
 
 ## Verify
 
@@ -337,6 +365,24 @@ select has_column_privilege('authenticated', 'public.intro_requests', 'status', 
    and not exists (select 1 from pg_policies
                    where schemaname = 'public' and tablename = 'intro_requests'
                      and cmd <> 'SELECT') as ok;
+
+-- 0110
+select to_regclass('public.chat_threads') is not null
+   and to_regclass('public.chat_thread_follows') is not null
+   and to_regclass('public.chat_thread_events') is not null
+   and exists (select 1 from pg_constraint
+               where conrelid = to_regclass('public.chat_messages')
+                 and conname = 'chat_messages_thread_root_fkey' and contype = 'f')
+   and exists (select 1 from pg_trigger
+               where tgrelid = to_regclass('public.chat_messages') and tgname = 'chat_messages_touch_thread')
+   -- Readers may select it (Realtime routes a reply by it), and the unread
+   -- count skips replies: re-running 0101 takes both away.
+   and exists (select 1 from information_schema.column_privileges
+               where table_schema = 'public' and table_name = 'chat_messages'
+                 and column_name = 'thread_root_id' and grantee = 'authenticated'
+                 and privilege_type = 'SELECT')
+   and coalesce(position('thread_root_id' in
+         pg_get_functiondef(to_regprocedure('public.chat_unread(uuid, uuid[])'))) > 0, false) as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,

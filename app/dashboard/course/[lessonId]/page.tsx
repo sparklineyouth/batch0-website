@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { LessonPlayer } from "./lesson-player";
-import { ArrowLeft, FileText } from "lucide-react";
+import { ArrowLeft, CircleHelp, FileText } from "lucide-react";
+import { askAboutHref } from "@/lib/chat-threads-rules";
 import { renderLessonMarkdown } from "@/lib/lesson-content";
 import { loadStudentAssignments } from "@/lib/assignments-server";
 import { formatEastern } from "@/lib/assignments";
@@ -87,6 +88,15 @@ export default async function LessonPage(
         <h1 className="mt-1 text-2xl font-bold tracking-tight md:text-3xl">
           {lesson.title}
         </h1>
+        {/* "Ask about this" (Chat threads, 0110): opens #help with this lesson
+            linked by id. Chat shows its title only to people who can open it. */}
+        <Link
+          href={askAboutHref("lesson", lesson.id)}
+          prefetch={false}
+          className="mt-2 inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink"
+        >
+          <CircleHelp className="h-4 w-4" aria-hidden /> Ask about this lesson in #help
+        </Link>
       </div>
 
       {attached.items.map(({ assignment: a, status }) => (

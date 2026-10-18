@@ -5,6 +5,8 @@ import { ACCEPTED_STATUSES } from "@/lib/pre-cohort";
 import { can, type Capabilities } from "@/lib/permissions";
 import { isMissingSchemaError } from "@/lib/schema-ready";
 import { clientIdsReady } from "@/lib/chat-send";
+import { loadThreadRows, threadsReady, toSummary } from "@/lib/chat-thread-rows";
+import { THREAD_PAGE_SIZE, type ThreadSummary } from "@/lib/chat-threads-rules";
 import {
   attentionFor,
   canReadChannel,
@@ -118,6 +120,13 @@ export type ChatMessage = {
    * elsewhere, and on every read before 0104 runs.
    */
   clientId?: string;
+  /**
+   * A thread reply (0110): the message it hangs off. Thread replies are read
+   * with their thread, never in the channel's feed.
+   */
+  threadRootId?: string;
+  /** A feed message with replies, or one of #help's questions: its thread (0110). */
+  thread?: ThreadSummary;
 };
 
 /**
@@ -252,15 +261,18 @@ function toMessage(r: any, reply: ReplyPreview | null): ChatMessage {
     editedAt: r.edited_at ?? null,
     pinnedAt: r.pinned_at ?? null,
     ...(typeof r.client_id === "string" ? { clientId: r.client_id } : {}),
+    ...(typeof r.thread_root_id === "string" ? { threadRootId: r.thread_root_id } : {}),
   };
 }
 
 /**
  * The columns a page of messages for the screen reads: MESSAGE_COLS, plus
- * 0104's client_id once the database has it (lib/chat-send.ts).
+ * 0104's client_id and 0110's thread_root_id once the database has them
+ * (lib/chat-send.ts, lib/chat-thread-rows.ts).
  */
 async function screenMessageCols(): Promise<string> {
-  return (await clientIdsReady()) ? `${MESSAGE_COLS}, client_id` : MESSAGE_COLS;
+  const [clientIds, threads] = await Promise.all([clientIdsReady(), threadsReady()]);
+  return MESSAGE_COLS + (clientIds ? ", client_id" : "") + (threads ? ", thread_root_id" : "");
 }
 
 // ---------------------------------------------------------------------------
@@ -1053,14 +1065,25 @@ async function attachReplies(rows: any[]): Promise<ChatMessage[]> {
       });
     }
   }
-  return rows.map((r) =>
-    toMessage(
+  // "4 replies" and a question's state, for the messages that start threads
+  // (0110). Nothing before 0110, or when the read fails: the page still shows.
+  const threads = await loadThreadRows(rows.filter((r) => !r.thread_root_id && !r.deleted_at).map((r) => r.id));
+  return rows.map((r) => {
+    const m = toMessage(
       r,
       r.reply_to_id
         ? (replies.get(r.reply_to_id) ?? { id: r.reply_to_id, senderId: null, preview: "", deleted: true, mentions: [] })
         : null,
-    ),
-  );
+    );
+    const t = threads.get(r.id);
+    // A message with only an "Ask about this" link (a staff post, a quote, a
+    // question someone unmarked) gets an empty summary too, so the per-viewer
+    // chip has somewhere to go (lib/chat-about.ts withAbout). The summary
+    // never says there's a link: a viewer who can't read the item sees the
+    // same as for a message with no thread at all.
+    if (t && (t.replyCount > 0 || t.question || t.about)) m.thread = toSummary(t);
+    return m;
+  });
 }
 
 export const PAGE_SIZE = 50;
@@ -1088,17 +1111,44 @@ function beforeKey(createdAt: string, id: string): string {
 export async function listMessages(
   channelId: string,
   opts: { before?: string; beforeId?: string; around?: string; limit?: number } = {},
-): Promise<{ messages: ChatMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean }> {
+): Promise<{
+  messages: ChatMessage[];
+  hasMoreBefore: boolean;
+  hasMoreAfter: boolean;
+  /** `around` named a thread reply: the window is around its root, and this is the thread to open at it. */
+  thread?: { rootId: string; focusId: string };
+}> {
   const admin = createAdminClient();
   const limit = Math.min(Math.max(opts.limit ?? PAGE_SIZE, 1), 100);
   const cols = await screenMessageCols();
-  const base = () => admin.from("chat_messages").select(cols).eq("channel_id", channelId).is("deleted_at", null);
+  // The channel's feed: thread replies (0110) are read with their thread.
+  const threaded = cols.includes("thread_root_id");
+  const base = () => {
+    const q = admin.from("chat_messages").select(cols).eq("channel_id", channelId).is("deleted_at", null);
+    return threaded ? q.is("thread_root_id", null) : q;
+  };
 
   if (opts.around && isUuid(opts.around)) {
-    const target = must(
-      await admin.from("chat_messages").select("id, created_at").eq("id", opts.around).eq("channel_id", channelId).maybeSingle(),
+    let target = must(
+      await admin
+        .from("chat_messages")
+        .select(threaded ? "id, created_at, thread_root_id" : "id, created_at")
+        .eq("id", opts.around)
+        .eq("channel_id", channelId)
+        .maybeSingle(),
       "the message",
-    ) as { id: string; created_at: string } | null;
+    ) as { id: string; created_at: string; thread_root_id?: string | null } | null;
+    // A link to a thread reply (a bell, a search hit): the feed opens around
+    // the message the thread hangs off, and the thread opens at the reply.
+    let thread: { rootId: string; focusId: string } | undefined;
+    if (target?.thread_root_id) {
+      thread = { rootId: target.thread_root_id, focusId: target.id };
+      target = must(
+        await admin.from("chat_messages").select("id, created_at").eq("id", target.thread_root_id).eq("channel_id", channelId).maybeSingle(),
+        "the message",
+      ) as { id: string; created_at: string } | null;
+      if (!target) return { ...(await listMessages(channelId, { limit })), thread };
+    }
     if (target) {
       const half = Math.floor(limit / 2);
       const t = quoted(target.created_at);
@@ -1117,7 +1167,12 @@ export async function listMessages(
       const o = (must(older, "messages") ?? []) as any[];
       const n = (must(newer, "messages") ?? []) as any[];
       const rows = [...o.slice(0, half).reverse(), ...n.slice(0, half)];
-      return { messages: await attachReplies(rows), hasMoreBefore: o.length > half, hasMoreAfter: n.length > half };
+      return {
+        messages: await attachReplies(rows),
+        hasMoreBefore: o.length > half,
+        hasMoreAfter: n.length > half,
+        ...(thread ? { thread } : {}),
+      };
     }
   }
 
@@ -1133,12 +1188,43 @@ export async function listMessages(
   return { messages: await attachReplies(page), hasMoreBefore: rows.length > limit, hasMoreAfter: false };
 }
 
+/**
+ * A page of one thread's replies (0110), in posting order: the newest
+ * THREAD_PAGE_SIZE, or the ones before a (createdAt, id) cursor — the
+ * channel feed's keyset, so replies sharing a timestamp are neither skipped
+ * nor repeated across pages. Deleted replies are left out. Only call after
+ * the channel's read check, with the root already checked to be in it: a
+ * reply is read by whoever reads its channel, nobody else.
+ */
+export async function listThreadReplies(
+  channelId: string,
+  rootId: string,
+  opts: { before?: string; beforeId?: string; limit?: number } = {},
+): Promise<{ replies: ChatMessage[]; hasMoreBefore: boolean }> {
+  if (!(await threadsReady())) return { replies: [], hasMoreBefore: false };
+  const limit = Math.min(Math.max(opts.limit ?? THREAD_PAGE_SIZE, 1), 100);
+  let q = createAdminClient()
+    .from("chat_messages")
+    .select(await screenMessageCols())
+    .eq("channel_id", channelId)
+    .eq("thread_root_id", rootId)
+    .is("deleted_at", null);
+  if (opts.before && Number.isFinite(Date.parse(opts.before))) {
+    q = isUuid(opts.beforeId) ? q.or(beforeKey(opts.before, opts.beforeId.toLowerCase())) : q.lt("created_at", opts.before);
+  }
+  const rows = (must(
+    await q.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit + 1),
+    "replies",
+  ) ?? []) as any[];
+  return { replies: await attachReplies(rows.slice(0, limit).reverse()), hasMoreBefore: rows.length > limit };
+}
+
 export async function getMessageRow(id: string): Promise<any | null> {
   if (!isUuid(id)) return null;
   return must(
     await createAdminClient()
       .from("chat_messages")
-      .select(MESSAGE_COLS + ", deleted_by, pinned_by")
+      .select((await screenMessageCols()) + ", deleted_by, pinned_by")
       .eq("id", id.toLowerCase())
       .maybeSingle(),
     "the message",
@@ -1211,6 +1297,8 @@ export async function searchMessages(
   }
   if (ids.length === 0) return [];
   const admin = createAdminClient();
+  // With thread_root_id (0110), so a hit in a thread opens in its thread.
+  const cols = await screenMessageCols();
   const rows = (
     await Promise.all(
       chunks(ids).map(
@@ -1218,7 +1306,7 @@ export async function searchMessages(
           (must(
             await admin
               .from("chat_messages")
-              .select(MESSAGE_COLS)
+              .select(cols)
               .in("channel_id", part)
               .is("deleted_at", null)
               .eq("kind", "message")

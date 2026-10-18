@@ -385,6 +385,15 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     group: "Conversations",
     default: "other",
   },
+  // Threads (migration 0110): a reply in a thread you started, replied to or
+  // followed. A mention in a thread is a chat_mention.
+  {
+    type: "chat_thread",
+    label: "Replies in a chat thread you follow",
+    hint: "Threads you started or replied in, until you unfollow.",
+    group: "Conversations",
+    default: "important",
+  },
   {
     type: "intro_request",
     label: "Intro requested",
