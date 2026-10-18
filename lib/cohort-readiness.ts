@@ -1,8 +1,9 @@
 /**
  * Cohort readiness — the launch checklist on /admin/cohorts. Pure rules: the
- * server loader (lib/cohort-readiness-server.ts) reads the rows and asks
- * storage which files exist, then everything that decides pass / warn / fail
- * lives here so lib/cohort-readiness.test.ts can run it with `node --test`.
+ * loader (lib/cohort-readiness-load.ts, imported through
+ * lib/cohort-readiness-server.ts) reads the rows and asks storage which files
+ * exist, then everything that decides pass / warn / fail lives here so
+ * lib/cohort-readiness.test.ts can run it with `node --test`.
  *
  * Not to be confused with scripts/cohort-readiness-winter.mjs
  * (docs/cohort-readiness.md), the offline Winter curriculum preparer. That
@@ -10,7 +11,8 @@
  *
  * Every check reads data the product already uses, and each problem names the
  * existing editor that fixes it. Nothing is inferred: "no session in week 4"
- * means no event for this cohort starts that week, not that one is overdue.
+ * means no event this cohort's students see starts that week (its own, or
+ * one for everyone signed in), not that one is overdue.
  *
  * States:
  *   fail  students would hit something broken or wrong (a lesson file that
@@ -28,8 +30,10 @@ import {
   courseWeekAt,
   courseWeekStart,
   easternDate,
+  easternToUtc,
   formatEastern,
 } from "./assignments.ts";
+import { cohortEligibility } from "./cohort-eligibility.ts";
 import { isSafeHref, type KickoffRow } from "./kickoff.ts";
 import type { Permission } from "./permissions.ts";
 
@@ -137,6 +141,8 @@ export type ReadinessResource = {
   id: string;
   title: string;
   storage_path: string | null;
+  /** Wins over storage_path when both are set (app/dashboard/resources/open). */
+  external_url?: string | null;
 };
 
 export type ReadinessAssignment = {
@@ -241,7 +247,10 @@ function weekList(weeks: number[]): string {
 
 type Ctx = ReadinessInput & {
   today: string;
-  started: boolean;
+  /** Day one has come in New York; see hasBegun. */
+  begun: boolean;
+  /** 00:00 New York on day one, the instant admissions switch to late entry. */
+  dayOne: string | null;
   weekCount: number | null;
 };
 
@@ -263,9 +272,15 @@ function check(
   return { id, label, state, detail, fix, items };
 }
 
-/** Program time: a cohort has begun once it's flipped active (or done) or its first day has come in New York. */
-function hasStarted(c: ReadinessCohort, today: string): boolean {
-  if (c.status === "active" || c.status === "completed") return true;
+/**
+ * Day one has come in New York. The calendar alone decides it, as it does for
+ * admissions (lib/cohort-eligibility.ts): an admin can flip a cohort Active
+ * early, which opens the student app (cohortHasStarted in lib/pre-cohort.ts),
+ * but applications still close, the kickoff still happens and the first
+ * deadlines still fall on the dates. So status never counts as "begun" here;
+ * the dates check flags an early Active instead.
+ */
+function hasBegun(c: ReadinessCohort, today: string): boolean {
   return !!c.starts_on && c.starts_on <= today;
 }
 
@@ -282,7 +297,8 @@ function materialsOf(lesson: ReadinessLesson): { title: string | null; path: str
     .filter((m): m is Record<string, unknown> => !!m && typeof m === "object")
     .map((m) => ({
       title: typeof m.title === "string" && m.title.trim() ? m.title.trim() : null,
-      path: typeof m.path === "string" && m.path.trim() ? m.path.trim() : null,
+      // As stored: the lesson page signs the raw path.
+      path: typeof m.path === "string" && m.path.trim() ? m.path : null,
     }));
 }
 
@@ -290,13 +306,27 @@ function materialsOf(lesson: ReadinessLesson): { title: string | null; path: str
 // Files
 // ---------------------------------------------------------------------------
 
-export type FileRef = { bucket: Bucket; path: string; text: string; link: ReadinessLink };
+export type FileRef = {
+  bucket: Bucket;
+  path: string;
+  text: string;
+  link: ReadinessLink;
+  /** What students get instead when the object is missing, if anything. */
+  fallback?: string;
+};
 
 /**
  * Every storage object this cohort's students are meant to open: lesson
  * videos, lesson materials and the cohort's own resources. The loader signs
  * exactly these paths; the files check reads the answer. Shared resources
  * (no cohort) belong to every cohort and aren't counted against any one.
+ *
+ * Paths are kept as stored, because that's what the student pages sign; trim
+ * only decides whether one is set. Two fallbacks follow the student pages:
+ * the lesson page shows video_url when video_path won't sign, so a missing
+ * upload there still plays something; and the resource route sends students
+ * to external_url before it looks at storage_path, so that upload is never
+ * opened and isn't checked.
  */
 export function cohortFileRefs(
   modules: readonly ReadinessModule[] | null,
@@ -308,8 +338,15 @@ export function cohortFileRefs(
     const link = to("course", courseHref(m.id));
     for (const l of m.lessons) {
       const where = `Week ${m.week} · ${l.title}`;
-      const video = l.video_path?.trim();
-      if (video) refs.push({ bucket: "course-videos", path: video, text: `${where}: video`, link });
+      if (l.video_path?.trim()) {
+        refs.push({
+          bucket: "course-videos",
+          path: l.video_path,
+          text: `${where}: video`,
+          link,
+          ...(l.video_url?.trim() ? { fallback: "the video link" } : {}),
+        });
+      }
       for (const mat of materialsOf(l)) {
         if (mat.path) {
           refs.push({ bucket: "course-materials", path: mat.path, text: `${where}: ${mat.title ?? mat.path}`, link });
@@ -321,11 +358,10 @@ export function cohortFileRefs(
     }
   }
   for (const r of resources ?? []) {
-    const path = r.storage_path?.trim();
-    if (path) {
+    if (r.storage_path?.trim() && !r.external_url?.trim()) {
       refs.push({
         bucket: "resources",
-        path,
+        path: r.storage_path,
         text: `Resource · ${r.title}`,
         link: to("resources", `/admin/resources/${r.id}`),
       });
@@ -357,6 +393,17 @@ function datesCheck(c: Ctx): ReadinessCheck {
   if (status === "active" && end! < c.today) {
     return check("dates", "Dates", "warn", `${span}. Ended ${day(end!)}, still marked Active.`, COHORT_FORM);
   }
+  // Active opens the whole student app (cohortHasStarted), and the kickoff
+  // page takes it as begun: "Kickoff was Dec 14" weeks ahead of Dec 14.
+  if (status === "active" && !c.begun) {
+    return check(
+      "dates",
+      "Dates",
+      "warn",
+      `${span}. Marked Active before its ${day(start!)} start: students get the full app now, and the kickoff page reads as past.`,
+      COHORT_FORM,
+    );
+  }
   return check("dates", "Dates", "pass", `${span}.`);
 }
 
@@ -382,35 +429,54 @@ function enrollmentCheck(c: Ctx): ReadinessCheck {
   if (hasDeadline !== hasPlan) {
     flag("warn", hasDeadline ? "Late entry has a deadline but no catch-up plan." : "Late entry has a catch-up plan but no deadline.");
   }
-  // Once a cohort starts, admissions read late_entry_until, not
-  // applications_close_at — a close date after day one is never reached.
-  // Only worth saying beforehand: a running cohort's close date is history.
-  if (!c.started && k.applications_close_at && k.starts_on && Number.isFinite(Date.parse(k.applications_close_at))) {
-    if (easternDate(k.applications_close_at) > k.starts_on) {
-      flag("warn", `Applications close ${easternDay(k.applications_close_at)}, after the ${day(k.starts_on)} start; from day one only late entry admits.`);
-    }
+  // From 00:00 New York on day one, admissions read late_entry_until, not
+  // applications_close_at, so a close time after that instant is never
+  // reached, including a close later on day one itself. Only worth saying
+  // beforehand: a running cohort's close date is history.
+  if (!c.begun && closesAfterDayOne(c)) {
+    const closes = easternDate(k.applications_close_at!);
+    const when = closes === k.starts_on ? "the day it starts" : `after the ${day(k.starts_on!)} start`;
+    flag("warn", `Applications close ${day(closes)}, ${when}; from day one only late entry admits.`);
   }
 
   const parts = [price > 0 ? `${money(price)} list` : null, seats, admissionsNote(c)].filter(Boolean);
   return check("enrollment", "Enrollment and price", state, `${parts.join(" · ")}.`, state === "pass" ? null : COHORT_FORM, items);
 }
 
-/** Where admissions stand, in the terms lib/cohort-eligibility.ts decides them. */
+function closesAfterDayOne(c: Ctx): boolean {
+  const close = c.cohort.applications_close_at;
+  if (!close || !c.dayOne || !Number.isFinite(Date.parse(close))) return false;
+  return Date.parse(close) > Date.parse(c.dayOne);
+}
+
+/**
+ * Where admissions stand. cohortEligibility is the rule /apply and checkout
+ * run, so the note can't disagree with them; capacity is left out because
+ * the seat count sits next to it.
+ */
 function admissionsNote(c: Ctx): string | null {
   const k = c.cohort;
-  const now = c.now.getTime();
   if (k.ends_on && c.today > k.ends_on) return null;
-  if (c.started) {
-    const until = k.late_entry_until;
-    if (until && k.catch_up_plan?.trim() && Date.parse(until) > now) return `late entry until ${easternDay(until)}`;
-    return "enrollment closed";
+  const e = cohortEligibility(
+    {
+      status: k.status,
+      starts_on: k.starts_on,
+      ends_on: k.ends_on,
+      applications_close_at: k.applications_close_at ?? null,
+      late_entry_until: k.late_entry_until ?? null,
+      catch_up_plan: k.catch_up_plan ?? null,
+    },
+    c.now,
+  );
+  if (e.mode === "late_entry" && e.deadline) return `late entry until ${easternDay(e.deadline)}`;
+  if (e.mode === "open") {
+    // No close date, or one past day one: open until kickoff either way.
+    if (!e.deadline || closesAfterDayOne(c)) return k.starts_on ? `applications open until the ${day(k.starts_on)} start` : "applications open";
+    return `applications close ${easternDay(e.deadline)}`;
   }
-  if (k.applications_close_at && Number.isFinite(Date.parse(k.applications_close_at))) {
-    return Date.parse(k.applications_close_at) > now
-      ? `applications close ${easternDay(k.applications_close_at)}`
-      : `applications closed ${easternDay(k.applications_close_at)}`;
-  }
-  return null;
+  if (c.begun) return "enrollment closed";
+  const close = k.applications_close_at;
+  return close && Number.isFinite(Date.parse(close)) ? `applications closed ${easternDay(close)}` : "applications closed";
 }
 
 function contentCheck(c: Ctx): ReadinessCheck {
@@ -454,9 +520,12 @@ function filesCheck(c: Ctx): ReadinessCheck {
   if (!c.modules) return check("files", label, "warn", "Couldn't load lessons.", course);
   const { refs, unattached } = cohortFileRefs(c.modules, c.resources);
   const unchecked = refs.filter((r) => !c.files[r.bucket]);
-  const missing: ReadinessItem[] = refs
-    .filter((r) => c.files[r.bucket] && !c.files[r.bucket]!.has(r.path))
-    .map((r) => ({ text: r.text, link: r.link }));
+  const absent = refs.filter((r) => c.files[r.bucket] && !c.files[r.bucket]!.has(r.path));
+  const missing: ReadinessItem[] = absent.filter((r) => !r.fallback).map((r) => ({ text: r.text, link: r.link }));
+  // Not broken for students, but the upload the team made isn't what plays.
+  const covered: ReadinessItem[] = absent
+    .filter((r) => r.fallback)
+    .map((r) => ({ text: `${r.text} isn't in storage; students get ${r.fallback} instead`, link: r.link }));
   if (missing.length || unattached.length) {
     const parts = [
       missing.length ? `${missing.length} of ${plural(refs.length, "file")} not in storage` : null,
@@ -464,7 +533,21 @@ function filesCheck(c: Ctx): ReadinessCheck {
     ].filter(Boolean);
     // The lesson page skips a material it can't sign and shows no video for a
     // missing one; the resource download fails on click.
-    return check("files", label, "fail", `${parts.join("; ")}. Students don't get them.`, course, [...unattached, ...missing]);
+    return check("files", label, "fail", `${parts.join("; ")}. Students don't get them.`, course, [
+      ...unattached,
+      ...missing,
+      ...covered,
+    ]);
+  }
+  if (covered.length) {
+    return check(
+      "files",
+      label,
+      "warn",
+      `${covered.length} of ${plural(refs.length, "file")} not in storage; students get a link instead.`,
+      course,
+      covered,
+    );
   }
   if (unchecked.length) {
     return check("files", label, "warn", `Couldn't reach storage to check ${plural(unchecked.length, "file")}.`, course);
@@ -508,7 +591,7 @@ function assignmentsCheck(c: Ctx): ReadinessCheck {
     const label = `${a.title}: due ${formatEastern(a.due_at)}`;
     // Before day one every published deadline is still ahead; one that has
     // passed already shows enrolled students a missing assignment.
-    if (!c.started && Date.parse(a.due_at) < c.now.getTime()) {
+    if (!c.begun && Date.parse(a.due_at) < c.now.getTime()) {
       flag("fail", `${label}, already past.`);
       continue;
     }
@@ -531,7 +614,11 @@ function assignmentsCheck(c: Ctx): ReadinessCheck {
   return check("assignments", "Assignment dates", "pass", start && end ? `${summary}, all due inside the cohort's dates.` : `${summary}.`);
 }
 
-/** Events that are this cohort's sessions: shown to students, starting inside its dates. */
+/**
+ * Events that are this cohort's sessions: shown to its students (the loader
+ * passes the cohort's own plus "Everyone signed in" events with no cohort),
+ * starting inside its dates.
+ */
 function cohortSessions(c: Ctx): ReadinessEvent[] {
   const { starts_on: start, ends_on: end } = c.cohort;
   return (c.events ?? [])
@@ -546,8 +633,9 @@ function cohortSessions(c: Ctx): ReadinessEvent[] {
 function kickoffCheck(c: Ctx): ReadinessCheck {
   const page = to("kickoff", `/admin/cohorts/${c.cohort.id}/kickoff`);
   const start = c.cohort.starts_on;
-  if (c.started && start) return check("kickoff", "Kickoff", "pass", `Kicked off ${dayYearFmt.format(new Date(`${start}T12:00:00Z`))}.`);
-  if (c.started) return check("kickoff", "Kickoff", "pass", "Already started.");
+  // Status doesn't count: a cohort flipped Active early still kicks off on
+  // its start date, and needs its time, place and session until then.
+  if (c.begun && start) return check("kickoff", "Kickoff", "pass", `Kicked off ${dayYearFmt.format(new Date(`${start}T12:00:00Z`))}.`);
   if (!start) return check("kickoff", "Kickoff", "warn", "No kickoff date: the cohort has no start date.", COHORT_FORM);
   if (!c.kickoff) return check("kickoff", "Kickoff", "warn", "Couldn't load the kickoff page.", page);
 
@@ -592,7 +680,7 @@ function sessionsCheck(c: Ctx): ReadinessCheck {
     if (w) byWeek.add(w);
   }
   // A running cohort's past weeks are history; only the rest can be fixed.
-  const from = c.started ? Math.max(1, courseWeekAt(start, c.now) ?? 1) : 1;
+  const from = c.begun ? Math.max(1, courseWeekAt(start, c.now) ?? 1) : 1;
   const empty: number[] = [];
   for (let w = from; w <= c.weekCount; w++) if (!byWeek.has(w)) empty.push(w);
   const scope = from > 1 ? "every remaining week" : "every week";
@@ -652,7 +740,8 @@ export function cohortReadiness(input: ReadinessInput): CohortReadiness {
   const ctx: Ctx = {
     ...input,
     today,
-    started: hasStarted(input.cohort, today),
+    begun: hasBegun(input.cohort, today),
+    dayOne: input.cohort.starts_on ? easternToUtc(input.cohort.starts_on, "00:00") : null,
     weekCount: cohortWeekCount(input.cohort.starts_on, input.cohort.ends_on),
   };
   const permitted = (l: ReadinessLink | null) => (l && canOpen(l.editor) ? l : null);

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { courseWeekStart, courseWeekWindow, easternToUtc } from "./assignments.ts";
+import { cohortEligibility, easternEndOfDay } from "./cohort-eligibility.ts";
 import {
   cohortFileRefs,
   cohortReadiness,
@@ -472,6 +473,33 @@ test("enrollment flags a $0 price, half-set late entry and a close date after da
     "Applications close Dec 18, after the Dec 14 start; from day one only late entry admits.",
   ]);
   assert.deepEqual(e.fix, { editor: "cohort", href: "/admin/cohorts" });
+  // The note says when applications really close, not the stored date.
+  assert.equal(e.detail, "6 of 24 seats · applications open until the Dec 14 start.");
+});
+
+test("a close time later on day one is flagged too: admissions switch to late entry at midnight", () => {
+  // Admissions read late_entry_until from 00:00 New York on Dec 14, so a
+  // 6 p.m. Dec 14 close is never reached either.
+  const cohort = { ...readyInput().cohort, applications_close_at: easternToUtc(START, "18:00") };
+  const e = byId(cohortReadiness(readyInput({ cohort })).checks, "enrollment");
+  assert.equal(e.state, "warn");
+  assert.deepEqual(e.items.map((i) => i.text), [
+    "Applications close Dec 14, the day it starts; from day one only late entry admits.",
+  ]);
+  assert.equal(e.detail, "$130 list · 6 of 24 seats · applications open until the Dec 14 start.");
+
+  // The end of Dec 13 is the last moment that close date can mean anything.
+  const eve = { ...readyInput().cohort, applications_close_at: easternEndOfDay("2026-12-13") };
+  const ok = byId(cohortReadiness(readyInput({ cohort: eve })).checks, "enrollment");
+  assert.equal(ok.state, "pass");
+  assert.equal(ok.detail, "$130 list · 6 of 24 seats · applications close Dec 13.");
+});
+
+test("a cohort with no close date is open until day one", () => {
+  const cohort = { ...readyInput().cohort, applications_close_at: null };
+  const e = byId(cohortReadiness(readyInput({ cohort })).checks, "enrollment");
+  assert.equal(e.state, "pass");
+  assert.equal(e.detail, "$130 list · 6 of 24 seats · applications open until the Dec 14 start.");
 });
 
 test("a running cohort's old applications close date isn't flagged", () => {
@@ -489,6 +517,141 @@ test("a running cohort's old applications close date isn't flagged", () => {
   const e = byId(cohortReadiness(readyInput({ cohort, now: new Date("2026-10-15T16:00:00Z") })).checks, "enrollment");
   assert.equal(e.state, "pass");
   assert.equal(e.detail, "$130 list · 6 of 24 seats · late entry until Oct 16.");
+});
+
+// ---------------------------------------------------------------------------
+// Active before day one
+// ---------------------------------------------------------------------------
+
+/** Winter flipped to Active on Oct 17, eight weeks before its Dec 14 start. */
+function activeEarly(overrides: Partial<ReadinessInput> = {}): ReadinessInput {
+  return readyInput({ cohort: { ...readyInput().cohort, status: "active" }, ...overrides });
+}
+
+test("a cohort marked Active before its start date still runs on its dates", () => {
+  const r = cohortReadiness(activeEarly());
+  // Admissions decide by date, so applications are still open until Dec 12.
+  const e = byId(r.checks, "enrollment");
+  assert.equal(e.state, "pass");
+  assert.equal(e.detail, "$130 list · 6 of 24 seats · applications close Dec 12.");
+  // The kickoff is still ahead and still checked.
+  const kickoff = byId(r.checks, "kickoff");
+  assert.equal(kickoff.state, "pass");
+  assert.equal(kickoff.detail, "Dec 14: time and place set, session scheduled.");
+  // The status is what's worth a look: it opens the app and the kickoff page
+  // reads "Kickoff was Dec 14" in October.
+  const dates = byId(r.checks, "dates");
+  assert.equal(dates.state, "warn");
+  assert.equal(
+    dates.detail,
+    "Dec 14, 2026 – Feb 12, 2027 · 9 weeks. Marked Active before its Dec 14 start: students get the full app now, and the kickoff page reads as past.",
+  );
+  assert.deepEqual(dates.fix, { editor: "cohort", href: "/admin/cohorts" });
+  assert.deepEqual(readinessSummary(r), { tone: "warn", label: "1 to check" });
+});
+
+test("Active before day one still gets the kickoff, close-date and past-deadline checks", () => {
+  const r = cohortReadiness(
+    activeEarly({
+      cohort: { ...readyInput().cohort, status: "active", applications_close_at: "2026-12-18T23:59:00Z" },
+      kickoff: { row: null },
+      assignments: [
+        ...weeklyUpdates(),
+        {
+          id: "old",
+          title: "Problem statement",
+          status: "published",
+          module_id: null,
+          lesson_id: null,
+          week: null,
+          opens_at: null,
+          due_at: "2026-10-01T03:59:00Z",
+        },
+      ],
+    }),
+  );
+  assert.deepEqual(byId(r.checks, "enrollment").items.map((i) => i.text), [
+    "Applications close Dec 18, after the Dec 14 start; from day one only late entry admits.",
+  ]);
+  const kickoff = byId(r.checks, "kickoff");
+  assert.equal(kickoff.state, "warn");
+  assert.deepEqual(kickoff.items.map((i) => i.text), [
+    "Kickoff page not filled in: students see the defaults, with no time or place.",
+  ]);
+  assert.deepEqual(byId(r.checks, "assignments").items.map((i) => i.text), [
+    "Problem statement: due Wed, Sep 30, 11:59 PM ET, already past.",
+  ]);
+});
+
+test("the admissions note agrees with cohortEligibility, whatever the status", () => {
+  const base = readyInput().cohort;
+  const plan = "Watch the recordings and book a call.";
+  const cases: { status: string; now: string; patch?: Partial<typeof base> }[] = [
+    { status: "upcoming", now: "2026-10-17T16:00:00Z" },
+    { status: "active", now: "2026-10-17T16:00:00Z" },
+    { status: "active", now: "2026-12-13T16:00:00Z" }, // past the Dec 12 close
+    { status: "active", now: "2026-12-15T16:00:00Z" }, // day two, no late entry
+    {
+      status: "active",
+      now: "2026-12-15T16:00:00Z",
+      patch: { late_entry_until: easternEndOfDay("2026-12-20"), catch_up_plan: plan },
+    },
+    { status: "upcoming", now: "2026-12-15T16:00:00Z", patch: { late_entry_until: easternEndOfDay("2026-12-20") } },
+  ];
+  for (const { status, now, patch } of cases) {
+    const cohort = { ...base, status, ...patch };
+    const note = byId(cohortReadiness(readyInput({ cohort, now: new Date(now) })).checks, "enrollment").detail;
+    // Capacity is the seat count's business, not the note's.
+    const { mode } = cohortEligibility({ ...cohort, capacity: undefined }, new Date(now));
+    const expected =
+      mode === "open" ? /applications (close|open until)/ : mode === "late_entry" ? /late entry until/ : /(enrollment|applications) closed/;
+    assert.match(note, expected, `${status} at ${now}: ${note} (${mode})`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// File fallbacks
+// ---------------------------------------------------------------------------
+
+test("a missing uploaded video with a video link is a warning: students get the link", () => {
+  const mods = modules();
+  mods[4].lessons[0].video_path = "winter/week-5.mp4";
+  mods[4].lessons[0].video_url = "https://youtu.be/x";
+  const files = byId(cohortReadiness(readyInput({ modules: mods })).checks, "files");
+  assert.equal(files.state, "warn");
+  assert.equal(files.detail, "1 of 10 files not in storage; students get a link instead.");
+  assert.deepEqual(files.items, [
+    {
+      text: "Week 5 · Lesson 5: video isn't in storage; students get the video link instead",
+      link: { editor: "course", href: courseHref("m5") },
+    },
+  ]);
+
+  // Alongside a file nobody gets, the check fails and lists both.
+  const input = readyInput({ modules: mods });
+  const stored = new Set(input.files["course-materials"]!);
+  stored.delete("winter/workbook-1.pdf");
+  input.files = { ...input.files, "course-materials": stored };
+  const both = byId(cohortReadiness(input).checks, "files");
+  assert.equal(both.state, "fail");
+  assert.equal(both.detail, "1 of 10 files not in storage. Students don't get them.");
+  assert.equal(both.items.length, 2);
+});
+
+test("a resource with an external link isn't checked for its upload: students are sent to the link", () => {
+  const resources = [
+    { id: "r1", title: "Pitch template", storage_path: "cohort/stale.pptx", external_url: "https://docs.google.com/x" },
+    { id: "r2", title: "Reading list", storage_path: "cohort/reading.pdf", external_url: null },
+  ];
+  assert.deepEqual(
+    cohortFileRefs([], resources).refs.map((r) => r.path),
+    ["cohort/reading.pdf"],
+  );
+  const input = readyInput({ resources });
+  input.files = { ...input.files, resources: new Set(["cohort/reading.pdf"]) };
+  const files = byId(cohortReadiness(input).checks, "files");
+  assert.equal(files.state, "pass");
+  assert.equal(files.detail, "All 10 files are in storage.");
 });
 
 test("non-whole prices keep their cents", () => {
