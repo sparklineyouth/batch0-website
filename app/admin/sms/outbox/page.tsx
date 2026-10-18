@@ -165,12 +165,15 @@ export default async function SmsOutboxPage(props: {
             Every text, queued and sent. A <strong>skipped</strong> row is
             usually the consent gate doing its job — the drain re-checks consent
             at send time, so a STOP that arrives after a campaign is queued stops
-            the rest of it. Anything still pending can be cancelled; once
-            it&rsquo;s sent, it&rsquo;s on somebody&rsquo;s phone.
+            the rest of it. Anything still pending, or failed and waiting for
+            its retry, can be cancelled; once it&rsquo;s sent, it&rsquo;s on
+            somebody&rsquo;s phone.
           </p>
         </div>
+        {/* Claimed rows count too: stopping a campaign cancels the ones a
+            drain has claimed but not yet reached (cancelCampaign). */}
         <SmsQueueControls
-          pendingCount={counts.pending ?? 0}
+          pendingCount={(counts.pending ?? 0) + (counts.sending ?? 0)}
           campaign={focused}
         />
       </div>

@@ -2,11 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   OPT_OUTS_THE_FORM_CANNOT_LIFT,
+  campaignMayText,
   mayLiftOptOut,
   planGrant,
   purposesToRestore,
   sendVerdict,
+  stopShouldBeRecorded,
+  unrecordedOptOuts,
   type ConsentRow,
+  type LedgerRow,
 } from "./sms/consent-rules.ts";
 import { PURPOSE_REFUSED } from "./sms/policy.ts";
 
@@ -26,7 +30,12 @@ const row = (over: Partial<ConsentRow> = {}): ConsentRow => ({
   ...over,
 });
 
-const studentGrant = { party: "student" as const, purposes: ["transactional"], source: "dashboard_phone" };
+const studentGrant = {
+  party: "student" as const,
+  purposes: ["transactional"],
+  source: "dashboard_phone",
+  userId: "student-a",
+};
 
 // ---------------------------------------------------------------------------
 // Marketing is off
@@ -112,13 +121,60 @@ test("START from the phone lifts any opt-out", () => {
   }
 });
 
-test("the dashboard may undo an opt-out the dashboard recorded", () => {
+test("the dashboard may undo an opt-out the same account recorded there", () => {
   const plan = planGrant(
-    row({ opted_out_at: "2026-10-02T00:00:00Z", opted_out_source: "dashboard_phone" }),
+    row({ opted_out_at: "2026-10-02T00:00:00Z", opted_out_source: "dashboard_phone", opted_out_by: "student-a" }),
     studentGrant,
   );
   assert.ok(plan.ok);
   assert.equal(plan.ok && plan.liftsOptOut, true);
+});
+
+test("another account can't undo a dashboard opt-out by saving the same number", () => {
+  // Siblings share a phone. A turns texts off; B saves the shared number on
+  // B's own dashboard with the box ticked. That is not A agreeing again.
+  const optedOut = row({
+    opted_out_at: "2026-10-02T00:00:00Z",
+    opted_out_source: "dashboard_phone",
+    opted_out_by: "student-a",
+  });
+  const plan = planGrant(optedOut, { ...studentGrant, userId: "student-b" });
+  assert.equal(plan.ok, false);
+  assert.match(plan.ok ? "" : plan.error, /another batch0 account/);
+  assert.match(plan.ok ? "" : plan.error, /START/);
+  assert.equal(mayLiftOptOut("dashboard_phone", "dashboard_phone", { optedOutBy: "student-a", userId: "student-b" }), false);
+  // Nor with no account on either side to match: unknown is not "the same".
+  assert.equal(mayLiftOptOut("dashboard_phone", "dashboard_phone", { optedOutBy: null, userId: "student-a" }), false);
+  assert.equal(mayLiftOptOut("dashboard_phone", "dashboard_phone", { optedOutBy: "student-a", userId: null }), false);
+  assert.equal(mayLiftOptOut("dashboard_phone", "dashboard_phone"), false);
+  // START from the phone still lifts it, whoever's account it was.
+  assert.equal(mayLiftOptOut("dashboard_phone", "sms_start", { optedOutBy: "student-a" }), true);
+});
+
+test("an opt-out source the rules don't know stays suppressed until START", () => {
+  // Allowlist, not denylist: a new revoke path must not become form-liftable
+  // by default.
+  for (const source of [null, "", "something_new"]) {
+    assert.equal(mayLiftOptOut(source, "dashboard_phone", { optedOutBy: "student-a", userId: "student-a" }), false, String(source));
+  }
+});
+
+test("a STOP onto a dashboard opt-out is recorded; onto a STOP it is not", () => {
+  // From the phone, a STOP has to lock the number even when the dashboard had
+  // already turned texts off — otherwise the form could still lift it.
+  assert.equal(stopShouldBeRecorded(null), true, "no row: record it");
+  assert.equal(stopShouldBeRecorded(row()), true, "opted in: record it");
+  assert.equal(
+    stopShouldBeRecorded(row({ opted_out_at: "2026-10-02T00:00:00Z", opted_out_source: "dashboard_phone", opted_out_by: "student-a" })),
+    true,
+  );
+  for (const source of ["sms_stop", "provider_21610", "admin"]) {
+    assert.equal(
+      stopShouldBeRecorded(row({ opted_out_at: "2026-10-02T00:00:00Z", opted_out_source: source })),
+      false,
+      source,
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -171,6 +227,77 @@ test("an admin test opt-in can't touch a student's number or lift anyone's opt-o
     const plan = planGrant(row({ party: "unknown", opted_out_at: "2026-10-02T00:00:00Z", opted_out_source: source }), admin);
     assert.equal(plan.ok, false, source);
   }
+});
+
+test("an admin's test opt-in reaches test sends, never a campaign", () => {
+  // The audience is students' application numbers; only a student's own tick
+  // (party student) speaks for one. A test opt-in writes party unknown.
+  assert.equal(campaignMayText(row()), true);
+  assert.equal(campaignMayText(row({ party: "unknown" })), false);
+  assert.equal(campaignMayText(row({ party: "parent" })), false);
+  assert.equal(campaignMayText(row({ opted_out_at: "2026-10-02T00:00:00Z", opted_out_source: "sms_stop" })), false);
+  assert.equal(campaignMayText(row({ transactional: false })), false);
+  assert.equal(campaignMayText(null), false);
+  // And the send gate itself still lets the test through.
+  assert.equal(sendVerdict(row({ party: "unknown" }), "transactional").allowed, true);
+});
+
+// ---------------------------------------------------------------------------
+// Opt-outs the webhook didn't record
+// ---------------------------------------------------------------------------
+
+test("an opt-out text with nothing after it in the ledger is owed", () => {
+  const P = "+16095550123";
+  const inbound = [
+    { phone_e164: P, body: "what time is the call", created_at: "2026-10-16T10:00:00Z" },
+    { phone_e164: P, body: "please stop texting me", created_at: "2026-10-16T12:00:00Z" },
+  ];
+  const owed = unrecordedOptOuts(inbound, new Map([[P, row()]]), []);
+  assert.deepEqual(owed, [{ phone: P, body: "please stop texting me", at: "2026-10-16T12:00:00Z" }]);
+});
+
+test("a recorded revoke, a later START, or a STOP-locked number settles it", () => {
+  const P = "+16095550123";
+  const stop = [{ phone_e164: P, body: "STOP", created_at: "2026-10-16T12:00:00Z" }];
+  const ledger = (entries: Partial<LedgerRow>[]): LedgerRow[] =>
+    entries.map((e) => ({ phone_e164: P, action: "revoke", source: "sms_stop", created_at: "2026-10-16T12:00:01Z", ...e }));
+  const consented = new Map([[P, row()]]);
+
+  assert.deepEqual(unrecordedOptOuts(stop, consented, ledger([{}])), [], "the webhook recorded it");
+  assert.deepEqual(
+    unrecordedOptOuts(stop, consented, ledger([{ action: "grant", source: "sms_start", created_at: "2026-10-16T13:00:00Z" }])),
+    [],
+    "they texted START afterwards",
+  );
+  assert.deepEqual(
+    unrecordedOptOuts(stop, new Map([[P, row({ opted_out_at: "2026-10-01T00:00:00Z", opted_out_source: "sms_stop" })]]), []),
+    [],
+    "a second STOP onto a STOP changes nothing",
+  );
+  // A revoke from BEFORE the text doesn't answer it.
+  assert.equal(unrecordedOptOuts(stop, consented, ledger([{ created_at: "2026-10-15T00:00:00Z" }])).length, 1);
+  // A later dashboard tick doesn't either: it would have been refused had the
+  // STOP been recorded.
+  assert.equal(
+    unrecordedOptOuts(stop, consented, ledger([{ action: "grant", source: "dashboard_phone", created_at: "2026-10-16T13:00:00Z" }])).length,
+    1,
+  );
+  // Nor does a dashboard opt-out: the STOP still has to lock it.
+  assert.equal(
+    unrecordedOptOuts(stop, new Map([[P, row({ opted_out_at: "2026-10-01T00:00:00Z", opted_out_source: "dashboard_phone" })]]), []).length,
+    1,
+  );
+});
+
+test("questions, HELP and START are never read as opt-outs", () => {
+  const P = "+16095550123";
+  const inbound = ["HELP", "START", "Can you stop by on Thursday?", "ok thanks"].map((body, i) => ({
+    phone_e164: P,
+    body,
+    created_at: `2026-10-16T1${i}:00:00Z`,
+  }));
+  assert.deepEqual(unrecordedOptOuts(inbound, new Map([[P, row()]]), []), []);
+  assert.deepEqual(unrecordedOptOuts([{ phone_e164: null, body: "STOP", created_at: "2026-10-16T10:00:00Z" }], new Map(), []), []);
 });
 
 // ---------------------------------------------------------------------------

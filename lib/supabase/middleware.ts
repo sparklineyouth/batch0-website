@@ -100,7 +100,7 @@ const PUBLIC_STATIC_PREFIXES = [
   // The texting disclosure page. Every HELP reply prints its URL, so it is
   // opened from a phone by someone who is very often not signed in, and it
   // reads nothing per-request (scripts/verify-static.mjs keeps it static).
-  "/messages",
+  "/texts",
   "/sponsors",
   // The service worker's offline fallback. It is precached at install time and
   // served from the device with no network, so it reads nothing about the

@@ -43,7 +43,7 @@ export default async function SettingsPage() {
         {/* The number and the texting opt-in live on their own page (it's the
             one a carrier reviews). Linked here because "stop texting me" and
             "change my number" are settings-page questions, and the privacy
-            policy and /messages both point people at that page by name. */}
+            policy and /texts both point people at that page by name. */}
         <p>
           Your phone number, or texts on or off?{" "}
           <Link

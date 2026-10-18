@@ -117,7 +117,7 @@ export default async function Footer({ config, applyHref = "/apply" }: { config?
             to opt out, and a page reachable only from inside a text is a page
             they conclude does not exist.
           */}
-          <Link href="/messages" className="hover:text-ink">
+          <Link href="/texts" className="hover:text-ink">
             Text messages
           </Link>
         </div>

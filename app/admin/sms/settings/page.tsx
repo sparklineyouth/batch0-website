@@ -2,6 +2,7 @@ import { Card } from "@/components/ui/card";
 import { env } from "@/lib/env";
 import { getPublicSmsSettings } from "@/lib/sms/settings";
 import { smsTransportStatus } from "@/lib/sms/send";
+import { smsWebhookConsoleUrl } from "@/lib/sms/webhook-url";
 import { SmsSettingsForm } from "./settings-form";
 
 export const metadata = { title: "SMS settings · Admin" };
@@ -14,7 +15,10 @@ export default async function SmsSettingsPage() {
   // costs one query.
   const [s, status] = await Promise.all([getPublicSmsSettings(), smsTransportStatus()]);
 
-  const webhookUrl = `${env.siteUrl}/api/webhooks/sms`;
+  // With Twilio's retry override on the end (lib/sms/webhook-url.ts): without
+  // it, Twilio drops any request the route answers with a 500, including an
+  // opt-out it couldn't write.
+  const webhookUrl = smsWebhookConsoleUrl(env.siteUrl);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -112,6 +116,15 @@ export default async function SmsSettingsPage() {
                 and the outbox shows everything as sent forever, because nothing
                 ever reports back.
               </p>
+              <p className="mt-2 text-xs text-ink-soft">
+                Paste it with the{" "}
+                <code className="font-mono">#rp=ct,5xx&amp;rc=3</code> on the
+                end. That tells Twilio to retry when we answer with an error —
+                which we do when an opt-out couldn&rsquo;t be saved — and by
+                default it doesn&rsquo;t. Twilio leaves the part after{" "}
+                <code className="font-mono">#</code> out of the signature, so
+                it doesn&rsquo;t affect the check in step 3.
+              </p>
             </div>
           </li>
 
@@ -151,7 +164,7 @@ export default async function SmsSettingsPage() {
                 service&rsquo;s opt-out management) is set to send. If both reply,
                 someone who texts HELP gets two answers; if Twilio&rsquo;s wording
                 differs from ours, the text and{" "}
-                <code className="font-mono">/messages</code> disagree.
+                <code className="font-mono">/texts</code> disagree.
               </p>
             </div>
           </li>

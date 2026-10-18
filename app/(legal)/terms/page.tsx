@@ -73,7 +73,7 @@ export default function TermsPage() {
         messages, and we don&rsquo;t guarantee that any particular text arrives
         or arrives on time — your dashboard and email are the authoritative
         record of schedules and deadlines. Only opt in a number that is yours.
-        The full explanation is at <a href="/messages">batch0.org/messages</a>,
+        The full explanation is at <a href="/texts">batch0.org/texts</a>,
         and what we do with the number is in our{" "}
         <a href="/privacy">Privacy Policy</a>.
       </p>

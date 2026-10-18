@@ -6,11 +6,20 @@ const description =
 export const metadata = {
   title: "Text Messages · batch0",
   description,
-  alternates: { canonical: "/messages" },
+  alternates: { canonical: "/texts" },
 };
 
 /**
- * /messages — the URL printed in every HELP reply (HELP_REPLY, lib/sms/consent.ts).
+ * /texts — the URL printed in every HELP reply (HELP_REPLY, lib/sms/copy.ts).
+ *
+ * Not /messages, though that is the more natural name. /messages already
+ * belongs to Chat: next.config.js redirects it to /chat so old "messaged you"
+ * bells still open their conversation, config redirects run before any page
+ * is served, and browsers that cached the older permanent /messages redirect
+ * never ask the server for it again. A page there would be unreachable, and
+ * a carrier reviewer following the HELP link would land on a login wall.
+ * lib/sms-policy.test.ts checks no redirect in next.config.js matches this
+ * path.
  *
  * Written for one reader: someone holding a phone, looking at a text from a
  * number they don't recognise, who wants out. So the STOP instruction is the
@@ -28,7 +37,7 @@ export const metadata = {
  *
  * Static on purpose (scripts/verify-static.mjs): it reads nothing per request.
  */
-export default function MessagesPage() {
+export default function TextsPage() {
   return (
     <>
       <h1 className="text-4xl font-bold tracking-tight">Text Messages</h1>
@@ -107,16 +116,18 @@ export default function MessagesPage() {
         what that number had before — program messages, nothing wider. If the
         number was never subscribed, START does nothing except send you our
         contact details; you&rsquo;d need to opt in from your batch0 account. A
-        number that opted out by text, or that someone asked us to stop
-        texting, can only be turned back on from the phone itself, by replying
-        START.
+        number that opted out by text, that someone asked us to stop texting,
+        or that was turned off from someone else&rsquo;s batch0 account can
+        only be turned back on from the phone itself, by replying START.
       </p>
 
       <h2>Reaching a person</h2>
       <p>
         Our sending number isn&rsquo;t monitored — a reply that isn&rsquo;t one
         of the keywords above and isn&rsquo;t asking us to stop gets an
-        automatic answer saying so and pointing you at email. For anything else,
+        automatic answer saying so and pointing you at email (once a day at
+        most, so a phone that auto-replies can&rsquo;t start a loop). For
+        anything else,
         open a request at{" "}
         <a href="/support">batch0.org/support</a> or email{" "}
         <a href="mailto:hello@batch0.org">hello@batch0.org</a>. A human reads
@@ -150,14 +161,14 @@ export default function MessagesPage() {
 
       <JsonLd
         data={webPageJsonLd({
-          path: "/messages",
+          path: "/texts",
           name: "Text Messages",
           description,
           dateModified: "2026-10-17",
         })}
       />
       <JsonLd
-        data={breadcrumbJsonLd([{ name: "Text messages", path: "/messages" }])}
+        data={breadcrumbJsonLd([{ name: "Text messages", path: "/texts" }])}
       />
     </>
   );

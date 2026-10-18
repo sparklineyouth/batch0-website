@@ -3,11 +3,13 @@ import { isMissingSchemaError } from "@/lib/schema-ready";
 import { isE164, isReachableByTollFree } from "@/lib/phone";
 import { isPurposeAllowed, type SmsPurpose } from "@/lib/sms/policy";
 import {
+  campaignMayText,
   planGrant,
   purposesToRestore,
   sendVerdict,
   type ConsentParty,
   type ConsentRow,
+  type GrantPlan,
   type SendVerdict,
 } from "@/lib/sms/consent-rules";
 
@@ -119,7 +121,15 @@ export async function canSend(phone: string, purpose: ConsentPurpose): Promise<S
   return sendVerdict((data as ConsentRow | null) ?? null, purpose);
 }
 
-/** Bulk version, for showing a composer an accurate reachable count. */
+/**
+ * Bulk version for campaign audiences: which of these numbers may a campaign
+ * text? The composer's reachable count and the send itself both come from
+ * here (lib/sms/audience.ts).
+ *
+ * Stricter than canSend by one rule, campaignMayText: the consent has to be a
+ * student's own. A number whose only opt-in is an admin's test-send box gets
+ * test sends, never a campaign.
+ */
 export async function sendableNumbers(
   phones: string[],
   purpose: ConsentPurpose,
@@ -142,7 +152,7 @@ export async function sendableNumbers(
   }
   return new Set(
     ((data ?? []) as (ConsentRow & { phone_e164: string })[])
-      .filter((r) => sendVerdict(r, purpose).allowed)
+      .filter((r) => sendVerdict(r, purpose).allowed && campaignMayText(r))
       .map((r) => r.phone_e164),
   );
 }
@@ -175,35 +185,35 @@ export type ConsentWriteResult = { ok: true } | { ok: false; error: string };
  * we are not acting on, which is harmless. The reverse order would leave us
  * texting a number with no record of why we were allowed to — which is the one
  * state that cannot be explained to a regulator.
+ *
+ * The state write is CONDITIONAL on the row being as it was read. A STOP can
+ * land between the read and the write — a student saving the form while their
+ * phone replies STOP — and an unconditional upsert of `opted_out_at: null`
+ * would then silently erase it: the ledger's newest entry for the number would
+ * be the revoke, and we would text them anyway. So the write only matches a row
+ * whose opt-out is unchanged (or, for a new number, only inserts when no row
+ * appeared meanwhile). On a miss the row is re-read and the rules re-asked:
+ * a STOP that landed is honoured and the grant refused, exactly as if the two
+ * had arrived in that order. The grant's ledger row stays — it is what was
+ * asked for, and an unhonoured grant is the harmless direction above.
  */
 export async function grantConsent(args: GrantArgs): Promise<ConsentWriteResult> {
   if (!isE164(args.phone)) return { ok: false, error: "Number is not in E.164 form." };
 
   const admin = createAdminClient();
-  const now = new Date().toISOString();
-
-  // Read BEFORE writing anything, and read the whole row that matters — the
-  // party, the opt-out and its source are what the rules decide on.
-  const { data: existing, error: readError } = await admin
-    .from("messaging_consent")
-    .select("party, transactional, promotional, opted_out_at, opted_out_source, first_opted_in_at")
-    .eq("phone_e164", args.phone)
-    .maybeSingle();
-  if (readError) {
-    return {
-      ok: false,
-      error: isMissingSchemaError(readError)
-        ? "Texting isn't set up yet."
-        : readError.message,
-    };
-  }
-
-  const row = (existing as ConsentRow | null) ?? null;
-  const plan = planGrant(row, {
+  const request = {
     party: args.party,
     purposes: args.purposes,
     source: args.source,
-  });
+    userId: args.userId ?? null,
+  };
+
+  // Read BEFORE writing anything, and read the whole row that matters — the
+  // party, the opt-out, its source and who recorded it are what the rules
+  // decide on.
+  let current = await readConsentRow(args.phone);
+  if (!current.ok) return current;
+  let plan = planGrant(current.row, request);
   if (!plan.ok) return plan;
 
   const { error: logError } = await admin.from("messaging_consent_log").insert({
@@ -220,26 +230,92 @@ export async function grantConsent(args: GrantArgs): Promise<ConsentWriteResult>
   });
   if (logError) return { ok: false, error: logError.message };
 
-  const { error } = await admin.from("messaging_consent").upsert(
-    {
+  // Three tries rides out two races in a row on one number — already more
+  // than a person replying from a phone while saving a form produces.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const written = await writeGrantState(args, current.row, plan);
+    if (written === "written") return { ok: true };
+    if (written !== "raced") return written;
+    current = await readConsentRow(args.phone);
+    if (!current.ok) return current;
+    plan = planGrant(current.row, request);
+    if (!plan.ok) return plan;
+  }
+  return {
+    ok: false,
+    error: "That number's texting status changed while we were saving it. Try again.",
+  };
+}
+
+async function readConsentRow(
+  phone: string,
+): Promise<{ ok: true; row: ConsentRow | null } | { ok: false; error: string }> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("messaging_consent")
+    .select(
+      "party, transactional, promotional, opted_out_at, opted_out_source, opted_out_by, first_opted_in_at",
+    )
+    .eq("phone_e164", phone)
+    .maybeSingle();
+  if (error) {
+    return {
+      ok: false,
+      error: isMissingSchemaError(error) ? "Texting isn't set up yet." : error.message,
+    };
+  }
+  return { ok: true, row: (data as ConsentRow | null) ?? null };
+}
+
+/**
+ * The state half of a grant, as a compare-and-set against what was read.
+ * "raced" means the row changed underneath us and nothing was written.
+ */
+async function writeGrantState(
+  args: GrantArgs,
+  read: ConsentRow | null,
+  plan: Extract<GrantPlan, { ok: true }>,
+): Promise<"written" | "raced" | { ok: false; error: string }> {
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+  const state = {
+    party: plan.party,
+    transactional: plan.transactional,
+    promotional: plan.promotional,
+    opted_out_at: null,
+    opted_out_source: null,
+    opted_out_by: null,
+    first_opted_in_at: read?.first_opted_in_at ?? now,
+    last_opted_in_at: now,
+    updated_at: now,
+  };
+
+  if (!read) {
+    // A plain insert, not an upsert: if a STOP created the row since we read
+    // nothing, the primary key refuses this and we re-plan against it.
+    const { error } = await admin.from("messaging_consent").insert({
       phone_e164: args.phone,
-      // Only claim the account when there isn't one already. The first account a
-      // number arrived through is the more useful provenance, and overwriting it
-      // would let a later grant quietly reassign somebody else's number.
-      ...(row ? {} : { user_id: args.userId ?? null }),
-      party: plan.party,
-      transactional: plan.transactional,
-      promotional: plan.promotional,
-      opted_out_at: null,
-      opted_out_source: null,
-      first_opted_in_at: row?.first_opted_in_at ?? now,
-      last_opted_in_at: now,
-      updated_at: now,
-    },
-    { onConflict: "phone_e164" },
-  );
+      // Claimed only by the grant that creates the row. The first account a
+      // number arrived through is the more useful provenance, and overwriting
+      // it would let a later grant quietly reassign somebody else's number.
+      user_id: args.userId ?? null,
+      ...state,
+    });
+    if (!error) return "written";
+    if ((error as { code?: string }).code === "23505") return "raced";
+    return { ok: false, error: error.message };
+  }
+
+  let update = admin.from("messaging_consent").update(state).eq("phone_e164", args.phone);
+  // The opt-out as we read it is the version stamp: every revoke sets
+  // opted_out_at to the moment it landed, so a revoke since our read can't
+  // match either branch.
+  update = read.opted_out_at
+    ? update.eq("opted_out_at", read.opted_out_at)
+    : update.is("opted_out_at", null);
+  const { data, error } = await update.select("phone_e164");
   if (error) return { ok: false, error: error.message };
-  return { ok: true };
+  return data && data.length > 0 ? "written" : "raced";
 }
 
 export type RevokeArgs = {
@@ -299,6 +375,11 @@ export async function revokeConsent(args: RevokeArgs): Promise<ConsentWriteResul
       // the purposes they had agreed to rather than silently widening them.
       opted_out_at: now,
       opted_out_source: args.source,
+      // Who turned texts off, when it was an account. A dashboard opt-out can
+      // be lifted from the dashboard only by this same account
+      // (lib/sms/consent-rules.ts mayLiftOptOut); a STOP has no account, and
+      // nothing but START lifts it anyway.
+      opted_out_by: args.userId ?? null,
       updated_at: now,
     },
     { onConflict: "phone_e164" },

@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { normalizeToE164 } from "@/lib/phone";
 import { CONSENT_COPY } from "@/lib/sms/consent";
 import { canOptInAtAge } from "@/lib/sms/policy";
-import { OPT_OUTS_THE_FORM_CANNOT_LIFT } from "@/lib/sms/consent-rules";
+import { mayLiftOptOut } from "@/lib/sms/consent-rules";
 import { getSmsSettings, hasCredentials } from "@/lib/sms/settings";
 import { PhoneForm, type ConsentSnapshot, type TextsState } from "./phone-form";
 
@@ -26,7 +26,11 @@ export const metadata = { title: "Your phone number · batch0" };
  * work in that window, so the page then shows the number field alone — no
  * texting checkbox, because there would be nowhere to record the answer.
  */
-async function textsState(phone: string | null, age: number | null): Promise<TextsState> {
+async function textsState(
+  phone: string | null,
+  age: number | null,
+  userId: string,
+): Promise<TextsState> {
   const settings = await getSmsSettings();
   if (!settings.configured) return { kind: "unavailable" };
   if (!canOptInAtAge(age)) return { kind: "under_age" };
@@ -43,7 +47,7 @@ async function textsState(phone: string | null, age: number | null): Promise<Tex
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("messaging_consent")
-    .select("transactional, opted_out_at, opted_out_source, last_opted_in_at")
+    .select("transactional, opted_out_at, opted_out_source, opted_out_by, last_opted_in_at")
     .eq("phone_e164", e164)
     .maybeSingle();
   if (error) {
@@ -55,11 +59,15 @@ async function textsState(phone: string | null, age: number | null): Promise<Tex
     ? {
         transactional: Boolean(data.transactional),
         optedOutAt: (data.opted_out_at as string | null) ?? null,
-        // Whether ticking the box here can undo the opt-out. A STOP, a carrier
-        // block, or a request someone made through support is not the form's to
-        // lift (lib/sms/consent-rules.ts), so the page says how instead.
-        liftableHere: !OPT_OUTS_THE_FORM_CANNOT_LIFT.has(
-          (data.opted_out_source as string | null) ?? "",
+        // Whether ticking the box here can undo the opt-out — the same rule
+        // the action applies. A STOP, a carrier block, a request someone made
+        // through support, or "Turn texts off" from another account (a
+        // sibling sharing the phone) is not this form's to lift
+        // (lib/sms/consent-rules.ts), so the page says how instead.
+        liftableHere: mayLiftOptOut(
+          (data.opted_out_source as string | null) ?? null,
+          "dashboard_phone",
+          { optedOutBy: (data.opted_out_by as string | null) ?? null, userId },
         ),
         lastOptedInAt: (data.last_opted_in_at as string | null) ?? null,
       }
@@ -94,7 +102,7 @@ export default async function PhonePage() {
 
   const currentPhone = (app?.phone as string | null) ?? "";
   const texts = app
-    ? await textsState(currentPhone || null, (app.age as number | null) ?? null)
+    ? await textsState(currentPhone || null, (app.age as number | null) ?? null, user.id)
     : ({ kind: "unavailable" } as const);
 
   return (
@@ -179,7 +187,7 @@ export default async function PhonePage() {
                 hello@batch0.org
               </a>
               . Full terms:{" "}
-              <Link href="/messages" className="text-phosphor-ink underline">
+              <Link href="/texts" className="text-phosphor-ink underline">
                 Text messages
               </Link>
               .

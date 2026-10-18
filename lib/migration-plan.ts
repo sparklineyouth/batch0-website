@@ -98,6 +98,9 @@ where permissions @> array['ai_usage.view']::text[];`,
    and exists (select 1 from information_schema.columns
                where table_schema = 'public' and table_name = 'sms_campaigns'
                  and column_name = 'client_key')
+   and exists (select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'messaging_consent'
+                 and column_name = 'opted_out_by')
    and exists (select 1 from pg_trigger
                where tgname = 'messaging_consent_log_no_update'
                  and tgrelid = to_regclass('public.messaging_consent_log'))

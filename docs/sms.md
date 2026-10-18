@@ -188,7 +188,7 @@ verification form for it. It asks for, and you should have ready:
 - **Privacy policy URL** — `https://batch0.org/privacy`. Its **Text messages
   (SMS)** section covers what we send, no marketing, no sharing, STOP and
   revocation; the terms at `https://batch0.org/terms` and the page at
-  `https://batch0.org/messages` cover the rest.
+  `https://batch0.org/texts` cover the rest.
 
 **The number one cause of rejection is the screenshot.** A carrier reviewer is
 looking for one specific thing: a checkbox that is (a) **unchecked** by default,
@@ -205,17 +205,33 @@ screenshot, the sentence in the database, and the sentence on the page have to
 be the same sentence.
 
 Before you submit, click every URL on the form yourself. `HELP_REPLY` and the
-privacy policy both point people at `batch0.org/messages`; reviewers follow
-links, and a 404 on the page your own help text names is an avoidable round trip.
+privacy policy both point people at `batch0.org/texts`; reviewers follow
+links, and a 404 (or a login wall) on the page your own help text names is an
+avoidable round trip. It is `/texts` and not `/messages` for exactly that
+reason: `/messages` is Chat's, and `next.config.js` redirects it to `/chat` for
+old "messaged you" bells, ahead of any page. `lib/sms-policy.test.ts` fails if a
+redirect ever matches `/texts`.
 
 ### 2. Configure the Twilio console webhooks
 
 On the number's configuration page, set **both**:
 
-- **"A message comes in"** → `https://batch0.org/api/webhooks/sms`, method
-  **POST**
-- **Status callback URL** → `https://batch0.org/api/webhooks/sms`, method
-  **POST**
+- **"A message comes in"** → `https://batch0.org/api/webhooks/sms#rp=ct,5xx&rc=3`,
+  method **POST**
+- **Status callback URL** → `https://batch0.org/api/webhooks/sms#rp=ct,5xx&rc=3`,
+  method **POST**
+
+**Keep the `#rp=ct,5xx&rc=3`.** It is a Twilio *connection override*, and it is
+what makes Twilio retry a request the route answers with a 5xx. Twilio's
+default (`rp=ct`) retries once, on a connection timeout only: a 500 is logged
+as error 11200 and dropped. The route answers 500 precisely when it couldn't
+write an opt-out, so without the override "please stop texting me" during a
+database blip is lost. Twilio strips the fragment before it signs the request,
+so it changes nothing about the signature check below. The settings page shows
+the same URL, and the app adds the same override to every message's
+`StatusCallback` (`lib/sms/webhook-url.ts`). As a last line, the drain re-reads
+the last 72 hours of inbound texts every five minutes and records any opt-out
+the webhook didn't (`reconcileOptOuts` in `lib/sms/queue.ts`).
 
 One route handles both because Twilio posts them in the same shape and telling
 them apart is a one-line check on whether `Body` is present. The send path also
@@ -246,7 +262,7 @@ Two symptoms worth memorising:
 those keywords on its own, before this app sees the message (the number's, or
 its messaging service's, opt-out settings). If both reply, someone who texts
 HELP gets two answers; if Twilio's wording differs from `lib/sms/copy.ts`, the
-text and `/messages` disagree. Make them agree, or turn Twilio's off for the
+text and `/texts` disagree. Make them agree, or turn Twilio's off for the
 keywords this app answers. Either way the app records the opt-out — the inbound
 message still reaches the webhook.
 
@@ -310,7 +326,10 @@ it at your own phone and tick **"This is my own mobile number…"**: staff have 
 application, so they can't opt in at `/dashboard/phone`, and that box records
 your agreement in the consent ledger the same way a student's is recorded
 (`CONSENT_COPY.adminTest`, your account, IP and browser). It can't opt in a
-number that belongs to a student, and can't undo anyone's opt-out.
+number that is on anyone else's application, can't undo anyone's opt-out, and
+never puts a number into a campaign: audiences only count a student's own
+opt-in. A test the pause switch parks doesn't unlock the campaign; one held for
+quiet hours does, since it goes out in the morning through the same drain.
 
 It is a **real message**, it costs real money, and it is the only end-to-end
 check of the whole chain: credentials → consent gate → quiet hours → provider →
@@ -343,10 +362,12 @@ than hourly, so a hundred deferred messages don't all leave at exactly 09:00:00.
 - **By text.** STOP and the other keywords — and a sentence asking us to stop
   ("please stop texting me", "wrong number"; `expressesRevocation` in
   `lib/sms/keywords.ts`) — are written *before* the reply is composed, return
-  500 on a failed write so the provider retries, cancel every pending outbox
-  row for the number, and get exactly one confirmation. HELP is always
+  500 on a failed write so Twilio retries (step 2's override), cancel every
+  pending outbox row for the number, and get exactly one confirmation. If the
+  write never lands, the drain records it from the inbound log. HELP is always
   answered. Anything else gets an honest "this number isn't monitored, email
-  us"; nobody is watching the number.
+  us" — once a day per number at most, so a phone that auto-replies to every
+  text can't start a billed loop with us; nobody is watching the number.
 - **From the dashboard.** "Turn texts off" at `/dashboard/phone`.
 - **Any other way.** The privacy policy promises that a reply to an email, a
   support request or `hello@batch0.org` works too, within 10 business days, and
@@ -356,7 +377,10 @@ than hourly, so a hundred deferred messages don't all leave at exactly 09:00:00.
 
 Only a START from the phone lifts a STOP, a carrier block, or an opt-out an admin
 recorded — the dashboard checkbox can't, because anyone can type a number into a
-form (`lib/sms/consent-rules.ts`).
+form (`lib/sms/consent-rules.ts`). The checkbox can undo a dashboard "Turn texts
+off" only for the account that clicked it: siblings share phones, and sibling
+B's tick must not undo sibling A's opt-out. A STOP texted onto a dashboard
+opt-out is recorded as a STOP, so it locks the number like any other.
 
 **The drain runs every 5 minutes** (`vercel.json` → `/api/cron/sms-queue`), at
 most 60 messages per invocation, with retries at 5 and 30 minutes and 3 attempts
@@ -369,11 +393,17 @@ texting is set up it returns at once with an `inert` reason and logs nothing.
 
 **The kill switch is `sms_paused` at `/admin/sms/settings`.** It **queues rather
 than drops** — the same semantics as `automations_paused` for email — so the
-backlog goes out when you unpause, subject to quiet hours. That means pausing is
+backlog goes out when you unpause, subject to quiet hours. The drain re-reads
+the switch every few seconds, so pausing mid-batch hands the rest of the batch
+back to the queue rather than letting it finish. That means pausing is
 **not** cancelling: if you pause to stop a campaign and then forget, you have
 scheduled a surprise. Killing a campaign for good is **Stop this campaign** on
-the outbox (filtered to it), which moves its pending rows to `canceled` — the
-only state the drain will not pick back up.
+the outbox (filtered to it). It closes the campaign first — the drain checks
+that before it sends or retries any campaign row — then moves every row that
+hasn't gone to `canceled`: pending, claimed by a running drain but not yet
+reached, and failed-but-waiting-for-a-retry. Only the one text being handed to
+the carrier at that instant still goes. A single failed row waiting for its
+retry can be cancelled from the outbox too.
 
 **One emoji triples the cost of a message.** A single non-GSM-7 character forces
 the whole body to UCS-2, and capacity drops from 160 characters to 70 (67 per
@@ -383,9 +413,18 @@ and `toGsmSafe()` offers the substitutions. `MAX_SEGMENTS = 6` refuses anything
 longer outright rather than billing for it.
 
 **The first message to a number gets the help text appended** automatically,
-unless the body already contains "STOP". That can push a one-segment message
-over the boundary, which is why the segment count is re-measured after the
-disclosure is added — the billed number is the one measured last.
+unless the body already names batch0, says STOP and says rates may apply — all
+three, not merely the word STOP (`withFirstMessageDisclosure` in
+`lib/sms/copy.ts`; the composer uses the same rule). That can push a
+one-segment message over the boundary, which is why the segment count is
+re-measured after the disclosure is added — the billed number is the one
+measured last.
+
+**A failed direct send is not retried by the drain.** A test text that fails is
+written at the attempt cap: the composer already showed the failure, and a
+drain re-sending it later (a timeout can mean the carrier took the first one)
+would be a duplicate on a real phone. Queued messages keep the retry ladder,
+and a message held for quiet hours doesn't use up an attempt.
 
 ---
 
@@ -447,12 +486,13 @@ it. Code that decides reachability anywhere other than `canSend()` /
 | Consent decisions / writes | `lib/sms/consent-rules.ts`, `lib/sms/consent.ts` |
 | Inbound keywords and revocation phrases | `lib/sms/keywords.ts` |
 | Transport | `lib/sms/send.ts`, `lib/sms/providers/twilio.ts` |
+| Webhook URL and Twilio's retry override | `lib/sms/webhook-url.ts` |
 | Audience | `lib/sms/audience.ts` |
 | Drain | `lib/sms/queue.ts`, `app/api/cron/sms-queue/route.ts` |
 | Receipts + inbound | `app/api/webhooks/sms/route.ts` |
 | Admin | `app/admin/sms/**`, `components/admin/sms-tabs.tsx` |
 | Opt-in | `app/dashboard/phone/**`, `components/sms-consent-prompt.tsx` |
-| Public terms | `app/(legal)/messages/page.tsx`, the SMS sections of `/privacy` and `/terms` |
+| Public terms | `app/(legal)/texts/page.tsx`, the SMS sections of `/privacy` and `/terms` |
 
 ---
 
@@ -490,10 +530,10 @@ None of these touch the live database or send a message:
 ```bash
 npm test                        # segments, quiet hours, keywords and revocation
                                 # phrases, consent rules, the policy locks, phone,
-                                # and the webhook route end to end against an
-                                # in-memory database
+                                # the webhook route, the drain and the consent
+                                # writer end to end against an in-memory database
 npm run test:sms-messaging-db   # runs migration 0106 against real Postgres (PGlite)
-npm run build                   # asserts /messages stays prerendered
+npm run build                   # asserts /texts stays prerendered
 ```
 
 `test:sms-messaging-db` is the one worth knowing about. It executes the actual

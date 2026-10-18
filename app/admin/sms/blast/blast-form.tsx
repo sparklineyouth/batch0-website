@@ -20,6 +20,7 @@ import { ConfirmDialog } from "@/components/ui/dialog";
 import { getActionError } from "@/lib/action-error";
 import { PHONE_MAX_LENGTH, isValidPhone } from "@/lib/phone";
 import { GSM_SUBSTITUTIONS, measureSms, toGsmSafe } from "@/lib/sms/segments";
+import { carriesFirstMessageDisclosure, withFirstMessageDisclosure } from "@/lib/sms/copy";
 import type { SmsAudienceSegment } from "@/lib/sms/policy";
 import {
   describeRecipients,
@@ -182,14 +183,16 @@ export function BlastForm({
   const savedSegments = afterFix ? measured.segments - afterFix.segments : 0;
 
   // The transport appends the CTIA disclosure to the FIRST text a number ever
-  // receives, and skips it when the author already wrote STOP themselves
-  // (lib/sms/send.ts withDisclosure). It can push a message over a segment
-  // boundary, so the composer shows that rather than letting the invoice do it.
-  const disclosureApplies = body.trim().length > 0 && !body.includes("STOP");
+  // receives, unless the message already names the brand, STOP and the rates
+  // notice itself — the same function decides both (lib/sms/copy.ts). It can
+  // push a message over a segment boundary, so the composer shows that rather
+  // than letting the invoice do it.
+  const disclosureApplies =
+    body.trim().length > 0 && !carriesFirstMessageDisclosure(body, helpText);
   const firstTimeSegments = useMemo(
     () =>
       disclosureApplies
-        ? measureSms(`${body}\n\n${helpText}`).segments
+        ? measureSms(withFirstMessageDisclosure(body, helpText, true)).segments
         : measured.segments,
     [body, helpText, disclosureApplies, measured.segments],
   );
@@ -696,8 +699,10 @@ export function BlastForm({
                   The first text a number ever receives also carries “{helpText}”
                   — CTIA wants the brand, an opt-out and a rates line in it. For
                   those recipients this message is {firstTimeSegments} segment
-                  {firstTimeSegments === 1 ? "" : "s"}. Write STOP into the body
-                  yourself and the transport leaves it alone.
+                  {firstTimeSegments === 1 ? "" : "s"}. Name batch0, say
+                  &ldquo;Reply STOP to opt out&rdquo; and &ldquo;Msg &amp; data
+                  rates may apply&rdquo; in the body yourself and the transport
+                  leaves it alone.
                 </p>
               )}
             </div>
@@ -819,18 +824,29 @@ export function BlastForm({
                       {test.outcome.result.queuedFor && (
                         <> Queued for {formatLocal(test.outcome.result.queuedFor)}.</>
                       )}
-                      {!test.outcome.chainProven && (
-                        <p className="mt-1">
-                          Nothing reached the provider, so nothing is proven yet.
-                          If that number hasn&apos;t agreed to texts and it&apos;s
-                          yours, tick the box above and send again; otherwise
-                          check{" "}
-                          <Link href="/admin/sms/settings" className="underline">
-                            Settings
-                          </Link>
-                          .
-                        </p>
-                      )}
+                      {!test.outcome.chainProven &&
+                        (test.outcome.result.queuedReason === "paused" ? (
+                          <p className="mt-1">
+                            Sending is paused, so the test is parked in the
+                            outbox and nothing about the campaign is proven.
+                            Resume sending in{" "}
+                            <Link href="/admin/sms/settings" className="underline">
+                              Settings
+                            </Link>{" "}
+                            and test again.
+                          </p>
+                        ) : (
+                          <p className="mt-1">
+                            Nothing reached the provider, so nothing is proven yet.
+                            If that number hasn&apos;t agreed to texts and it&apos;s
+                            yours, tick the box above and send again; otherwise
+                            check{" "}
+                            <Link href="/admin/sms/settings" className="underline">
+                              Settings
+                            </Link>
+                            .
+                          </p>
+                        ))}
                     </>
                   )}
                 </div>

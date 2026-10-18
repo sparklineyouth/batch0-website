@@ -76,8 +76,15 @@ export function invalidateSmsSettings() {
   cache = null;
 }
 
-export async function getSmsSettings(): Promise<SmsSettings> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.value;
+/**
+ * `fresh` skips the cache for the two readers that can't afford a stale row:
+ * the drain re-checking the pause switch partway through a batch, and the
+ * webhook re-checking the auth token after a signature fails (a token rotated
+ * in another instance would otherwise 403 genuine requests for up to 30s, and
+ * Twilio doesn't retry a 403).
+ */
+export async function getSmsSettings(opts: { fresh?: boolean } = {}): Promise<SmsSettings> {
+  if (!opts.fresh && cache && Date.now() - cache.at < CACHE_MS) return cache.value;
   const value = await loadSmsSettings();
   // Never cache a failed read: it would stretch one blip into thirty seconds of
   // refused sends, and the retry is one cheap query.

@@ -26,11 +26,17 @@
  *  4. The idempotency keys the composer relies on — sms_outbox.dedupe_key and
  *     sms_campaigns.client_key — are really unique, and still let any number of
  *     rows leave them empty.
+ *  5. `messaging_consent.opted_out_by` — who turned a number's texts off, which
+ *     decides whether the dashboard may turn them back on — exists even on a
+ *     database that ran an earlier draft of the file, and doesn't block
+ *     deleting that profile. And the verify query in lib/migration-plan.ts
+ *     says ok on the result.
  */
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
+import { MIGRATION_CHECKS } from "../lib/migration-plan.ts";
 
 const packagePath = process.env.BATCH0_PGLITE_MODULE;
 const moduleName = packagePath ? pathToFileURL(packagePath).href : "@electric-sql/pglite";
@@ -303,4 +309,49 @@ test("one draft is one campaign: client_key is unique, and optional", async () =
   await assert.rejects(() => insert("draft-abc12345"), /duplicate key/);
   await insert(null);
   await insert(null);
+});
+
+test("the verify query passes after 0106, and fails before it", async () => {
+  const before = new PGlite();
+  await before.exec(STUBS);
+  await assert.rejects(() => before.query(MIGRATION_CHECKS["0106"]), /does not exist/);
+  const db = await freshDb();
+  const { rows } = await db.query(MIGRATION_CHECKS["0106"]);
+  assert.deepEqual(rows, [{ ok: true }]);
+});
+
+test("opted_out_by is added to a draft-era table, and is nulled when that account is deleted", async () => {
+  // A database that ran an earlier draft of this file has the table without
+  // the column; `create table if not exists` alone would leave it that way.
+  const db = new PGlite();
+  await db.exec(STUBS);
+  await db.exec(`
+    create table public.messaging_consent (
+      phone_e164 text primary key,
+      user_id uuid references public.profiles(id) on delete set null,
+      party text not null,
+      transactional boolean not null default false,
+      promotional boolean not null default false,
+      opted_out_at timestamptz,
+      opted_out_source text,
+      first_opted_in_at timestamptz,
+      last_opted_in_at timestamptz,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+  `);
+  await db.exec(MIGRATION);
+  const { rows: verify } = await db.query(MIGRATION_CHECKS["0106"]);
+  assert.deepEqual(verify, [{ ok: true }]);
+
+  const userId = await newProfile(db);
+  await db.query(
+    `insert into public.messaging_consent (phone_e164, party, transactional, opted_out_at, opted_out_source, opted_out_by)
+     values ('+16095550123', 'student', true, now(), 'dashboard_phone', $1)`,
+    [userId],
+  );
+  await db.query("delete from public.profiles where id = $1", [userId]);
+  const { rows } = await db.query("select opted_out_by, opted_out_source from public.messaging_consent");
+  // Nobody can be matched to it any more, so only START lifts it now.
+  assert.deepEqual(rows, [{ opted_out_by: null, opted_out_source: "dashboard_phone" }]);
 });

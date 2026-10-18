@@ -186,3 +186,17 @@ export function expressesRevocation(body: string): boolean {
   const meaningful = words.filter((w) => !FILLER.has(w));
   return meaningful.length > 0 && meaningful.every((w) => STOP_WORDS.has(w));
 }
+
+/**
+ * Is this inbound text an opt-out — the STOP keyword, or a sentence asking us
+ * to stop?
+ *
+ * The one definition both the webhook and the drain's reconcile pass use, so a
+ * revocation the webhook couldn't record is recognised by the same rule when
+ * the drain finds it in the inbound log. A START, HELP or INFO is never one,
+ * even though expressesRevocation alone would not be asked about them.
+ */
+export function isOptOutRequest(body: string): boolean {
+  const intent = classifyInbound(body);
+  return intent === "stop" || (intent === "other" && expressesRevocation(body));
+}

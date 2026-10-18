@@ -13,9 +13,15 @@ import {
 } from "@/lib/sms/audience";
 import { CONSENT_COPY, grantConsent } from "@/lib/sms/consent";
 import { env } from "@/lib/env";
-import { MAX_SEGMENTS, enqueueSms, sendSms, type SmsResult } from "@/lib/sms/send";
+import {
+  MAX_SEGMENTS,
+  enqueueSms,
+  sendSms,
+  smsTransportStatus,
+  type SmsResult,
+} from "@/lib/sms/send";
 import { countSegments } from "@/lib/sms/segments";
-import { getSmsSettings } from "@/lib/sms/settings";
+import { getSmsSettings, hasCredentials } from "@/lib/sms/settings";
 import { describeDelay, nextAllowedSend } from "@/lib/sms/quiet-hours";
 import { isSmsAudienceSegment, type SmsAudienceSegment } from "@/lib/sms/policy";
 import { formatE164, maskE164, normalizeToE164 } from "@/lib/phone";
@@ -280,6 +286,17 @@ export async function sendSmsCampaign(input: CampaignInput): Promise<CampaignRes
     getSmsSettings(),
   ]);
 
+  // Inert means inert here too, not only on the page. The composer is hidden
+  // until credentials exist, but a tab left open from before they were
+  // cleared, or a direct POST from anyone holding sms.send, would otherwise
+  // park real rows — and the day someone saves credentials, the next drain
+  // would send that stale campaign at once. Same refusal as sendSms. (Paused
+  // is allowed: parking is what the pause switch means.)
+  if (!settings.configured || settings.readError || !hasCredentials(settings)) {
+    const transport = await smsTransportStatus();
+    return { ok: false, error: `Texting isn't sending yet — ${transport.detail}` };
+  }
+
   if (audience.recipients.length === 0) {
     const blocked = Object.values(audience.counts).reduce((a, b) => a + b, 0);
     return {
@@ -446,11 +463,12 @@ export type TestSendOutcome =
       /** The transport's verdict, verbatim. */
       result: SmsResult;
       /**
-       * Did the text reach the provider — sent, or parked by quiet hours for
-       * the next polite moment? That is what unlocks the composer. A refusal of
-       * any kind proves nothing about the campaign: the provider was never
-       * called, so the credentials, the sending number and the copy on a real
-       * screen are all still untested.
+       * Did the text reach the provider — or is it held by quiet hours, to go
+       * out through the same drain in the morning? That is what unlocks the
+       * composer. A refusal of any kind, or a test parked by the pause switch,
+       * proves nothing about the campaign: the provider was never called and
+       * nothing will call it, so the credentials, the sending number and the
+       * copy on a real screen are all still untested.
        */
       chainProven: boolean;
     }
@@ -467,11 +485,41 @@ export type TestSendOutcome =
  * student, or — the usual case, because staff have no application — the admin
  * ticks "this is my own phone" (`ownNumber`), which records their agreement in
  * the consent ledger exactly as a student's is recorded, with CONSENT_COPY's
- * sentence, their account, IP and browser. That grant can't touch a number
- * that belongs to a student's opt-in, and can't lift anybody's opt-out
- * (lib/sms/consent-rules.ts). A refusal is returned verbatim, because the
- * reason IS the useful part.
+ * sentence, their account, IP and browser. That grant is refused for a number
+ * on anyone else's application (numberIsAnotherApplicants, below) or already
+ * on file as a student's, can't lift anybody's opt-out
+ * (lib/sms/consent-rules.ts), and never reaches a campaign: audiences only
+ * count a student's own opt-in (campaignMayText). A refusal is returned
+ * verbatim, because the reason IS the useful part.
  */
+/**
+ * Is `e164` the number on someone else's application? True, false, or null when
+ * the check itself failed (the caller refuses on null: fail closed).
+ *
+ * Applications store the number as typed, so it can't be matched with an
+ * equality filter. Every way of typing a number that normalizes to `e164`
+ * contains its last seven digits in order, so `ilike` on those digits with
+ * wildcards between them is a superset of the matches; normalizeToE164 on each
+ * candidate is the exact test. The admin's own application, if they have one,
+ * doesn't count.
+ */
+async function numberIsAnotherApplicants(e164: string, userId: string): Promise<boolean | null> {
+  const tail = e164.replace(/\D/g, "").slice(-7);
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("applications")
+    .select("user_id, phone")
+    .ilike("phone", `%${tail.split("").join("%")}%`)
+    .limit(1000);
+  if (error) {
+    console.error("[sms/blast] applicant number check failed", error.message);
+    return null;
+  }
+  return ((data ?? []) as { user_id: string | null; phone: string | null }[]).some(
+    (r) => r.user_id !== userId && normalizeToE164(r.phone) === e164,
+  );
+}
+
 export async function sendTestSms(
   phone: string,
   body: string,
@@ -495,6 +543,18 @@ export async function sendTestSms(
   }
 
   if (ownNumber) {
+    // A student's number with no opt-in yet has no consent row, so the consent
+    // rules alone can't see that it is theirs. The application can.
+    const theirs = await numberIsAnotherApplicants(to, userId);
+    if (theirs !== false) {
+      return {
+        ran: false,
+        error:
+          theirs === null
+            ? "Couldn't check whether that number belongs to a student, so it wasn't opted in. Try again."
+            : "That number is on a student's application, so it can't be opted in as your own phone. Test on a phone that is yours.",
+      };
+    }
     const h = await headers();
     const fwd = h.get("x-forwarded-for");
     const granted = await grantConsent({
@@ -518,9 +578,12 @@ export async function sendTestSms(
     templateKey: `${CAMPAIGN_TEMPLATE_KEY}_test`,
   });
 
-  // Sent, or parked by quiet hours for the next polite moment — either way the
-  // provider path is live and the message is real.
-  const chainProven = result.ok || Boolean(result.queuedFor);
+  // Sent; or held by quiet hours, which will send this test in the morning
+  // through the same drain, credentials and window the campaign's own rows
+  // will meet — and an evening campaign is held to the same morning anyway.
+  // NOT parked by the pause switch: that never reaches the provider and says
+  // nothing about the credentials, the number or the copy.
+  const chainProven = result.ok || result.queuedReason === "quiet_hours";
 
   await logAudit({
     action: "sms.campaign_test_sent",

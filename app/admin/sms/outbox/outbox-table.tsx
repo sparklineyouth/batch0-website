@@ -123,7 +123,7 @@ export function SmsQueueControls({
           title={`Stop “${campaign.name}”?`}
           description={`Every one of the ${pendingCount} message${
             pendingCount === 1 ? "" : "s"
-          } still queued for this campaign will be cancelled, and the campaign closes. Texts already sent can't be recalled, and anything mid-send will finish.`}
+          } still queued for this campaign will be cancelled, along with any waiting for a retry, and the campaign closes. Texts already sent can't be recalled, and the one being handed to the carrier right now will finish.`}
           confirmLabel="Stop the campaign"
           pending={pending}
           destructive
@@ -253,11 +253,30 @@ function RowAction({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
 
-  const canCancel = status === "pending";
-  // The server refuses past the cap too — this only keeps the button from
+  // The server refuses past the cap too — this only keeps the buttons from
   // offering an action it knows will be turned down.
   const canRetry = status === "failed" && attempts < maxAttempts;
+  // A failed row under the cap is still queued: the drain's retry pass sends
+  // it again in five or thirty minutes. So it can be cancelled as well as
+  // retried now.
+  const canCancel = status === "pending" || canRetry;
   if (!canCancel && !canRetry) return null;
+
+  function run(action: () => Promise<{ ok: boolean; error?: string }>) {
+    start(async () => {
+      setError(undefined);
+      try {
+        const res = await action();
+        if (!res.ok) setError(res.error ?? "Failed");
+        else router.refresh();
+      } catch (err) {
+        setError(getActionError(err));
+      }
+    });
+  }
+
+  const buttonClass =
+    "inline-flex items-center gap-1 text-xs font-semibold text-ink-soft hover:text-ink disabled:opacity-50";
 
   return (
     <div className="flex items-center justify-end gap-3">
@@ -266,35 +285,26 @@ function RowAction({
           {error}
         </span>
       )}
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() =>
-          start(async () => {
-            setError(undefined);
-            try {
-              const res = canCancel
-                ? await cancelQueuedSms(id)
-                : await retryFailedSms(id);
-              if (!res.ok) setError(res.error ?? "Failed");
-              else router.refresh();
-            } catch (err) {
-              setError(getActionError(err));
-            }
-          })
-        }
-        className="inline-flex items-center gap-1 text-xs font-semibold text-ink-soft hover:text-ink disabled:opacity-50"
-      >
-        {canCancel ? (
-          <>
-            <XCircle className="h-3.5 w-3.5" /> Cancel
-          </>
-        ) : (
-          <>
-            <RotateCcw className="h-3.5 w-3.5" /> Retry
-          </>
-        )}
-      </button>
+      {canRetry && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => run(() => retryFailedSms(id))}
+          className={buttonClass}
+        >
+          <RotateCcw className="h-3.5 w-3.5" /> Retry
+        </button>
+      )}
+      {canCancel && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => run(() => cancelQueuedSms(id))}
+          className={buttonClass}
+        >
+          <XCircle className="h-3.5 w-3.5" /> Cancel
+        </button>
+      )}
     </div>
   );
 }

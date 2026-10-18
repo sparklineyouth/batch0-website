@@ -92,6 +92,12 @@ create table if not exists public.messaging_consent (
   -- test at the transport.
   opted_out_at timestamptz,
   opted_out_source text,
+  -- The account that turned texts off, when an account did (the dashboard's
+  -- "Turn texts off"). A dashboard opt-out can be lifted from the dashboard
+  -- only by this same account; otherwise sibling B ticking the box for a
+  -- shared number would undo sibling A's opt-out. Null for a STOP, which
+  -- nothing but START lifts anyway.
+  opted_out_by uuid references public.profiles(id) on delete set null,
   first_opted_in_at timestamptz,
   last_opted_in_at timestamptz,
   created_at timestamptz not null default now(),
@@ -103,6 +109,11 @@ create table if not exists public.messaging_consent (
   constraint messaging_consent_no_promo_to_students
     check (not (promotional and party = 'student'))
 );
+
+-- For a database that ran an earlier draft of this file, where the table was
+-- created without the column above.
+alter table public.messaging_consent
+  add column if not exists opted_out_by uuid references public.profiles(id) on delete set null;
 
 create index if not exists messaging_consent_user_idx
   on public.messaging_consent (user_id) where user_id is not null;

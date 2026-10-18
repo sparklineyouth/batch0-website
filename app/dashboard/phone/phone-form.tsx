@@ -414,7 +414,7 @@ function ConsentBox({
           Privacy Policy
         </Link>
         {" · "}
-        <Link href="/messages" className="text-phosphor-ink underline">
+        <Link href="/texts" className="text-phosphor-ink underline">
           Text message terms
         </Link>
       </p>

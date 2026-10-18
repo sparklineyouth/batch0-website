@@ -17,8 +17,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 //   * a STOP — or a sentence asking us to stop — is written to the ledger and
 //     the suppression row before the reply, cancels what's queued, gets ONE
 //     confirmation, and a failed write is a 500 so the provider retries;
+//   * a STOP onto a dashboard opt-out is recorded as a STOP, so it locks;
 //   * HELP always answers, START restores without widening, and anything else
-//     from an opted-out number gets silence;
+//     from an opted-out number gets silence — and from anyone else, the
+//     "not monitored" reply at most once a day;
+//   * a token rotated in another instance doesn't 403 genuine requests;
 //   * a carrier's terminal receipt fails the outbox row for good, and a
 //     `queued` receipt doesn't touch it.
 
@@ -30,10 +33,12 @@ const PHONE = "+16095550123";
 type Row = Record<string, any>;
 const state: {
   settings: Row;
+  /** What a cache-bypassing read sees, when it differs from the cached row. */
+  freshSettings: Row | null;
   tables: Record<string, Row[]>;
   /** Table → error to return from the next insert into it. */
   failInsert: Record<string, string>;
-} = { settings: {}, tables: {}, failInsert: {} };
+} = { settings: {}, freshSettings: null, tables: {}, failInsert: {} };
 
 /**
  * The PostgREST builder surface the route and lib/sms/consent.ts use, over
@@ -52,7 +57,7 @@ function from(table: string) {
         delete state.failInsert[table];
         return { data: null, error: { message: fail } };
       }
-      rows.push({ ...op.row });
+      rows.push({ created_at: new Date().toISOString(), ...op.row });
       return { data: null, error: null };
     }
     if (op.kind === "upsert") {
@@ -60,7 +65,7 @@ function from(table: string) {
       const hit = rows.find((r) => r[key] === row[key]);
       if (hit) {
         for (const [k, v] of Object.entries(row)) if (v !== undefined) hit[k] = v;
-      } else rows.push({ ...row });
+      } else rows.push({ created_at: new Date().toISOString(), ...row });
       return { data: null, error: null };
     }
     const matched = rows.filter((r) => filters.every((f) => f(r)));
@@ -73,6 +78,8 @@ function from(table: string) {
   const chain: any = {
     select: () => chain,
     eq: (k: string, v: unknown) => (filters.push((r) => r[k] === v), chain),
+    neq: (k: string, v: unknown) => (filters.push((r) => r[k] !== v), chain),
+    gte: (k: string, v: string) => (filters.push((r) => Date.parse(r[k]) >= Date.parse(v)), chain),
     in: (k: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[k])), chain),
     is: (k: string, v: unknown) => (filters.push((r) => (r[k] ?? null) === v), chain),
     order: () => chain,
@@ -95,7 +102,8 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
     const doubles: Record<string, string> = {
       "@/lib/supabase/admin": g + "export const createAdminClient=()=>({from:t.from});",
       "@/lib/env": `export const env={siteUrl:${JSON.stringify(SITE)}};`,
-      "@/lib/sms/settings": g + "export const getSmsSettings=async()=>t.state.settings;",
+      "@/lib/sms/settings":
+        g + "export const getSmsSettings=async(o)=>(o&&o.fresh&&t.state.freshSettings)||t.state.settings;",
       "@/lib/sms/queue": "export const MAX_ATTEMPTS=3;",
     };
     if (doubles[specifier]) return { url: fake(doubles[specifier]), shortCircuit: true };
@@ -136,6 +144,7 @@ const inbound = (body: string, from = PHONE, sid = `SM${Math.random().toString(3
 
 function reset(over: { consent?: Row[]; outbox?: Row[] } = {}) {
   state.settings = { configured: true, readError: null, provider: "twilio", authToken: TOKEN };
+  state.freshSettings = null;
   state.failInsert = {};
   state.tables = {
     messaging_consent: over.consent ?? [],
@@ -232,6 +241,22 @@ test("a STOP from a number we've never seen still lands as a suppression", async
   assert.equal(row?.party, "unknown");
 });
 
+test("a STOP onto a dashboard opt-out locks the number, and is confirmed by text", async () => {
+  // The dashboard's own "Turn texts off" can be undone from the dashboard. A
+  // STOP from the phone must not leave it that way.
+  reset({
+    consent: [consented({ opted_out_at: "2026-10-01T00:00:00Z", opted_out_source: "dashboard_phone", opted_out_by: "u1" })],
+  });
+  assert.equal(await twimlOf(await post(inbound("STOP"))), OPT_OUT_REPLY);
+  const row = state.tables.messaging_consent[0];
+  assert.equal(row.opted_out_source, "sms_stop");
+  assert.equal(row.opted_out_by, null, "a STOP has no account");
+  assert.equal(state.tables.messaging_consent_log.at(-1)?.source, "sms_stop");
+  // And the next one is the no-op second STOP.
+  assert.equal((await post(inbound("STOP"))).status, 204);
+  assert.equal(state.tables.messaging_consent_log.length, 1);
+});
+
 test("an opt-out that can't be written is a 500, so the provider retries", async () => {
   reset({ consent: [consented()] });
   state.failInsert.messaging_consent_log = "database is down";
@@ -250,6 +275,48 @@ test("anything else gets the honest 'not monitored' reply — or silence after a
   assert.equal(await twimlOf(await post(inbound("Is the call at 6 or 7?"))), UNMONITORED_REPLY);
   reset({ consent: [consented({ opted_out_at: "2026-10-01T00:00:00Z", opted_out_source: "sms_stop" })] });
   assert.equal((await post(inbound("Is the call at 6 or 7?"))).status, 204);
+});
+
+test("the 'not monitored' reply goes out once a day, so an auto-responder can't loop with it", async () => {
+  reset({ consent: [consented()] });
+  assert.equal(await twimlOf(await post(inbound("ok"))), UNMONITORED_REPLY);
+  // Their phone answers our reply automatically; we must not answer that.
+  assert.equal((await post(inbound("I'm driving, I'll get back to you"))).status, 204);
+  assert.equal((await post(inbound("ok"))).status, 204);
+  // Everything is still logged.
+  assert.equal(state.tables.sms_events.filter((e) => e.direction === "inbound").length, 3);
+
+  // A day later, a new question gets the reply again.
+  reset({ consent: [consented()] });
+  state.tables.sms_events.push({
+    event_key: "SMold:inbound",
+    phone_e164: PHONE,
+    direction: "inbound",
+    body: "ok",
+    created_at: new Date(Date.now() - 25 * 3_600_000).toISOString(),
+  });
+  assert.equal(await twimlOf(await post(inbound("Is the call at 6 or 7?"))), UNMONITORED_REPLY);
+  // A redelivery of the same message isn't "an earlier text": Twilio only
+  // redelivers when it never got our first answer.
+  reset({ consent: [consented()] });
+  const once = inbound("Is the call at 6 or 7?", PHONE, "SMsame");
+  assert.equal(await twimlOf(await post(once)), UNMONITORED_REPLY);
+  assert.equal(await twimlOf(await post(once)), UNMONITORED_REPLY);
+  assert.equal(state.tables.sms_events.length, 1);
+});
+
+test("a token rotated in another instance doesn't 403 a genuine request", async () => {
+  // This instance's cached settings still hold the old token; the row has the
+  // new one, and Twilio is already signing with it.
+  reset({ consent: [consented()] });
+  state.settings = { ...state.settings, authToken: "old-token" };
+  state.freshSettings = { ...state.settings, authToken: TOKEN };
+  assert.equal(await twimlOf(await post(inbound("STOP"))), OPT_OUT_REPLY);
+  assert.ok(state.tables.messaging_consent[0].opted_out_at);
+  // A forged signature is still refused after the re-read.
+  reset({ consent: [consented()] });
+  state.freshSettings = { ...state.settings };
+  assert.equal((await post(inbound("STOP"), sign(inbound("STOP"), "forged"))).status, 403);
 });
 
 test("START restores what the number had; from a stranger it subscribes nobody", async () => {

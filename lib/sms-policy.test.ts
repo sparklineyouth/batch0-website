@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import {
   DEFAULT_HELP_TEXT,
   DEFAULT_QUIET_HOURS,
@@ -15,8 +16,16 @@ import {
   HELP_REPLY,
   OPT_IN_REPLY,
   OPT_OUT_REPLY,
+  TEXTS_PAGE_PATH,
   UNMONITORED_REPLY,
+  carriesFirstMessageDisclosure,
+  withFirstMessageDisclosure,
 } from "./sms/copy.ts";
+import {
+  TWILIO_RETRY_OVERRIDE,
+  smsWebhookConsoleUrl,
+  smsWebhookSignedUrl,
+} from "./sms/webhook-url.ts";
 import { measureSms } from "./sms/segments.ts";
 import { AUDIENCE_SEGMENTS } from "./email/catalog.ts";
 
@@ -100,13 +109,13 @@ test("every automatic reply names the brand and fits in one GSM-7 segment", () =
   }
   assert.match(HELP_REPLY, /STOP/);
   assert.match(HELP_REPLY, /hello@batch0\.org/);
-  assert.match(HELP_REPLY, /batch0\.org\/messages/, "the page HELP points at has to be the one we publish");
+  assert.ok(HELP_REPLY.includes(`batch0.org${TEXTS_PAGE_PATH}`), "the page HELP points at has to be the one we publish");
   assert.match(OPT_OUT_REPLY, /START/, "the opt-out confirmation says how to undo it");
   assert.match(UNMONITORED_REPLY, /STOP/);
 });
 
-test("the /messages page says what the privacy policy says", () => {
-  const page = flat(read("../app/(legal)/messages/page.tsx"));
+test("the texting page says what the privacy policy says", () => {
+  const page = flat(read(`../app/(legal)${TEXTS_PAGE_PATH}/page.tsx`));
   assert.match(page, /We do not send promotional or marketing texts/);
   assert.match(page, /reply <strong>STOP<\/strong>/i);
   assert.match(page, /<strong>START<\/strong>/);
@@ -171,13 +180,87 @@ test("0106 leaves every existing table alone and seeds no credentials", () => {
 // Wiring outside lib/sms
 // ---------------------------------------------------------------------------
 
-test("the webhook skips the session middleware; /messages is public and static", () => {
+test("the webhook skips the session middleware; the texting page is public and static", () => {
+  assert.equal(TEXTS_PAGE_PATH, "/texts");
   assert.match(read("../middleware.ts"), /api\/webhooks\/sms\|/, "the provider's POST carries no session");
-  assert.match(read("./supabase/middleware.ts"), /^\s*"\/messages",$/m);
-  assert.match(read("../scripts/verify-static.mjs"), /^\s*"\/messages",$/m);
-  assert.match(read("../app/sitemap.ts"), /\$\{BASE\}\/messages`/);
-  assert.match(read("./app-host.ts"), /^\s*"\/messages",$/m);
-  assert.match(read("../components/footer.tsx"), /href="\/messages"/);
+  assert.match(read("./supabase/middleware.ts"), /^\s*"\/texts",$/m);
+  assert.match(read("../scripts/verify-static.mjs"), /^\s*"\/texts",$/m);
+  assert.match(read("../app/sitemap.ts"), /\$\{BASE\}\/texts`/);
+  assert.match(read("./app-host.ts"), /^\s*"\/texts",$/m);
+  assert.match(read("../components/footer.tsx"), /href="\/texts"/);
+  // Everywhere a person is pointed at the terms, it's the same page.
+  for (const file of [
+    "../app/(legal)/privacy/page.tsx",
+    "../app/(legal)/terms/page.tsx",
+    "../app/dashboard/phone/page.tsx",
+    "../app/dashboard/phone/phone-form.tsx",
+  ]) {
+    assert.match(read(file), /href="\/texts"/, file);
+    assert.doesNotMatch(read(file), /href="\/messages"/, file);
+  }
+});
+
+test("no redirect in next.config.js swallows the texting page", async () => {
+  // /messages was the first home for this page, and next.config.js redirects
+  // it (and everything under it) to /chat for old DM bells. Config redirects
+  // run before any page is served, so the page was unreachable — HELP replies,
+  // the footer and the toll-free verification form all landed on a login
+  // wall. Matched with Next's own path matcher, the way the router does.
+  const require = createRequire(import.meta.url);
+  const config = require("../next.config.js");
+  const { getPathMatch } = require("next/dist/shared/lib/router/utils/path-match");
+  const redirects: { source: string; has?: unknown; missing?: unknown }[] = await config.redirects();
+  // Host-conditioned ones fold other domains into the apex, path preserved;
+  // those are fine. Anything unconditional that matches would hide the page.
+  const hiding = redirects
+    .filter((r) => !r.has && !r.missing)
+    .filter((r) => getPathMatch(r.source, { removeUnnamedParams: true, strict: true })(TEXTS_PAGE_PATH) !== false)
+    .map((r) => r.source);
+  assert.deepEqual(hiding, [], `redirects matching ${TEXTS_PAGE_PATH}`);
+  // The matcher really does see the collision this replaced.
+  assert.ok(
+    redirects.some((r) => !r.has && getPathMatch(r.source, { removeUnnamedParams: true, strict: true })("/messages") !== false),
+    "the /messages → /chat redirect is still there for old bells",
+  );
+  assert.ok(existsSync(new URL(`../app/(legal)${TEXTS_PAGE_PATH}/page.tsx`, import.meta.url)));
+  assert.ok(!existsSync(new URL("../app/(legal)/messages", import.meta.url)), "no second, unreachable copy");
+});
+
+test("the webhook URL Twilio is given asks it to retry a 5xx, and the signed URL doesn't carry that", () => {
+  // Twilio's default retry policy is connection timeouts only, so the route's
+  // "answer 500 on a failed opt-out write so the provider retries" depends on
+  // this override being in the URL Twilio is configured with.
+  assert.equal(smsWebhookSignedUrl("https://batch0.org"), "https://batch0.org/api/webhooks/sms");
+  assert.equal(smsWebhookConsoleUrl("https://batch0.org"), "https://batch0.org/api/webhooks/sms#rp=ct,5xx&rc=3");
+  assert.match(TWILIO_RETRY_OVERRIDE, /\brp=[^&]*\b5xx\b/);
+  assert.match(TWILIO_RETRY_OVERRIDE, /\brc=[1-5]\b/);
+  assert.doesNotMatch(TWILIO_RETRY_OVERRIDE, /4xx/, "a 403 is a bad signature; retrying it changes nothing");
+  // The route verifies against the signed form; the settings page, the docs
+  // and StatusCallback hand out the console form.
+  assert.match(read("../app/api/webhooks/sms/route.ts"), /smsWebhookSignedUrl\(env\.siteUrl\)/);
+  assert.match(read("../app/admin/sms/settings/page.tsx"), /smsWebhookConsoleUrl\(env\.siteUrl\)/);
+  assert.match(read("./sms/send.ts"), /smsWebhookConsoleUrl\(base\)/);
+  assert.ok(read("../docs/sms.md").includes(smsWebhookConsoleUrl("https://batch0.org")));
+});
+
+test("the first-message disclosure is skipped only when the body already carries all of it", () => {
+  const help = DEFAULT_HELP_TEXT;
+  // The old rule skipped it for any "STOP" at all.
+  for (const body of ["Kickoff moved to 5pm. Text STOP to opt out.", "Don't STOP building!"]) {
+    assert.equal(carriesFirstMessageDisclosure(body, help), false, body);
+    assert.equal(withFirstMessageDisclosure(body, help, true), `${body}\n\n${help}`, body);
+  }
+  // Brand, STOP and the rates notice, all written by the author: left alone.
+  const full = "batch0: kickoff is at 5pm ET. Reply STOP to opt out. Msg & data rates may apply.";
+  assert.equal(withFirstMessageDisclosure(full, help, true), full);
+  // The help text itself, verbatim: left alone.
+  assert.equal(withFirstMessageDisclosure(`Kickoff at 5pm.\n\n${help}`, help, true), `Kickoff at 5pm.\n\n${help}`);
+  // Never on a number's second text.
+  assert.equal(withFirstMessageDisclosure("Kickoff at 5pm.", help, false), "Kickoff at 5pm.");
+  // The default help text is itself a full disclosure.
+  assert.equal(carriesFirstMessageDisclosure(help, ""), true);
+  // The composer previews with the same rule rather than its own copy of it.
+  assert.match(read("../app/admin/sms/blast/blast-form.tsx"), /carriesFirstMessageDisclosure\(body, helpText\)/);
 });
 
 test("the drain is on the cron, every five minutes", () => {

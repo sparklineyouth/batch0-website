@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyInbound, expressesRevocation } from "./sms/keywords.ts";
+import { classifyInbound, expressesRevocation, isOptOutRequest } from "./sms/keywords.ts";
 
 // Run with `npm test`. At the top of lib/ rather than in lib/sms/ because the
 // `test` script globs `lib/*.test.ts` and the shell expands that before Node
@@ -195,5 +195,18 @@ test("a sentence that only mentions a keyword in passing is not a revocation", (
 test("START and HELP are never read as a revocation", () => {
   for (const body of ["START", "unstop", "YES", "HELP", "info", "opt in"]) {
     assert.equal(expressesRevocation(body), false, body);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The one rule the webhook and the drain's reconcile pass share
+// ---------------------------------------------------------------------------
+
+test("isOptOutRequest is STOP or a sentence asking to stop, and never START or HELP", () => {
+  for (const body of ["STOP", "stop.", "Unsubscribe", "please stop texting me", "wrong number"]) {
+    assert.equal(isOptOutRequest(body), true, body);
+  }
+  for (const body of ["START", "HELP", "info", "Can you stop by on Thursday?", "ok thanks", ""]) {
+    assert.equal(isOptOutRequest(body), false, body);
   }
 });

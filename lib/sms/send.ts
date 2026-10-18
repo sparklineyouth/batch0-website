@@ -14,6 +14,8 @@ import {
   type ConsentPurpose,
 } from "@/lib/sms/consent";
 import { isPurposeAllowed, PURPOSE_REFUSED } from "@/lib/sms/policy";
+import { withFirstMessageDisclosure } from "@/lib/sms/copy";
+import { smsWebhookConsoleUrl } from "@/lib/sms/webhook-url";
 
 /**
  * The one place a text leaves the building.
@@ -49,8 +51,15 @@ export type SmsResult = {
   reason?: string;
   /** Provider message SID, when it actually went out. */
   id?: string;
-  /** Set when quiet hours deferred this into the outbox instead of sending. */
+  /** Set when quiet hours or the pause switch parked this in the outbox instead of sending. */
   queuedFor?: string;
+  /**
+   * Which of the two parked it. The composer's test gate needs the difference:
+   * a test held for quiet hours goes out in the morning exactly as the
+   * campaign's own rows will, but a test parked by the pause switch proves
+   * nothing about anything.
+   */
+  queuedReason?: "quiet_hours" | "paused";
   outboxId?: string;
   segments?: number;
 };
@@ -65,6 +74,18 @@ export type SmsResult = {
  * intended.
  */
 export const MAX_SEGMENTS = 6;
+
+/**
+ * Attempts before the drain stops retrying a row. Re-exported by
+ * lib/sms/queue.ts, whose retry ladder it governs; defined here because a
+ * direct send's outbox row is written here and must be born at the cap (see
+ * recordSend).
+ *
+ * The webhook needs the SAME ceiling: a row failed by a carrier receipt has
+ * never been through the drain's finish(), so it must be pushed to the cap
+ * there or the retry pass treats a permanent failure as a fresh row.
+ */
+export const MAX_ATTEMPTS = 3;
 
 export type SendSmsArgs = {
   to: string;
@@ -131,11 +152,16 @@ export async function smsTransportStatus(): Promise<TransportStatus> {
   };
 }
 
-/** Where the provider posts delivery receipts. Omitted when there's no https origin. */
-function statusCallbackUrl(): string | undefined {
+/**
+ * Where the provider posts delivery receipts. Omitted when there's no https
+ * origin. Carries Twilio's retry override (lib/sms/webhook-url.ts), so a
+ * receipt the route answered with a 500 — a 21610 suppression it couldn't
+ * write — is delivered again instead of dropped. Exported for the drain.
+ */
+export function statusCallbackUrl(): string | undefined {
   const base = env.siteUrl;
   if (!base.startsWith("https://")) return undefined; // localhost can't receive them
-  return `${base}/api/webhooks/sms`;
+  return smsWebhookConsoleUrl(base);
 }
 
 /**
@@ -167,10 +193,13 @@ export async function isFirstMessageTo(phone: string): Promise<boolean> {
   return (count ?? 0) === 0;
 }
 
+/**
+ * The rule itself is in lib/sms/copy.ts, so the composer's segment preview
+ * applies the same one: appended unless the body already names the brand, STOP
+ * AND the rates notice — not merely because the word STOP appears somewhere.
+ */
 export function withDisclosure(body: string, s: SmsSettings, first: boolean): string {
-  if (!first) return body;
-  if (body.includes("STOP")) return body; // the author already said it
-  return `${body}\n\n${s.helpText}`;
+  return withFirstMessageDisclosure(body, s.helpText, first);
 }
 
 /**
@@ -244,6 +273,7 @@ export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
       ok: false,
       reason: paused ? "Sending is paused — queued." : "Quiet hours — queued.",
       queuedFor: allowedAt.toISOString(),
+      queuedReason: paused ? "paused" : "quiet_hours",
       outboxId: queued.id,
       segments,
     };
@@ -289,7 +319,18 @@ export async function sendSms(args: SendSmsArgs): Promise<SmsResult> {
   return { ok: true, id: result.providerId, outboxId: row ?? undefined, segments: finalSegments };
 }
 
-/** Write the terminal row for a direct (non-queued) send. Best-effort. */
+/**
+ * Write the terminal row for a direct (non-queued) send. Best-effort.
+ *
+ * A failed direct send is written AT the attempt cap, so the drain's retry
+ * pass never picks it up. Its caller already has the failure in hand — the
+ * composer showing a test that didn't go out — and decides what happens next.
+ * Letting the drain re-send it instead meant an admin who saw a failed test
+ * and sent another got the first one too, five and thirty minutes later, with
+ * no dedupe key; and a timeout can mean the provider accepted the first
+ * request, so those were duplicates on a real phone. A send that wants the
+ * retry ladder goes through enqueueSms, where the drain owns the attempt.
+ */
 async function recordSend(args: {
   to: string;
   toName?: string | null;
@@ -318,7 +359,7 @@ async function recordSend(args: {
       template_key: args.templateKey ?? null,
       campaign_id: args.campaignId ?? null,
       status: ok ? "sent" : "failed",
-      attempts: 1,
+      attempts: ok ? 1 : MAX_ATTEMPTS,
       last_error: ok ? null : args.result.reason,
       provider_id: ok ? args.result.providerId : null,
       dedupe_key: args.dedupeKey ?? null,

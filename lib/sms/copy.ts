@@ -1,12 +1,14 @@
 // ---------------------------------------------------------------------------
-// Every sentence texting puts in front of a person: the opt-in disclosures and
-// the automatic replies to STOP, START, HELP and everything else.
+// Every sentence texting puts in front of a person: the opt-in disclosures,
+// the automatic replies to STOP, START, HELP and everything else, and the rule
+// for when the first-message disclosure is appended.
 //
 // Import-free, so lib/sms-policy.test.ts can load it and hold each sentence to
 // what the privacy policy promises (program texts only, STOP named, rates and
 // frequency stated, never a condition) — and to one GSM-7 segment for the
 // replies, which go out on every keyword and are billed like any other text.
-// lib/sms/consent.ts re-exports all of it.
+// The campaign composer (a client component) imports the disclosure rule from
+// here too. lib/sms/consent.ts re-exports the sentences.
 // ---------------------------------------------------------------------------
 
 // The opt-in disclosures. Each string is the legal artifact. The rendered text is snapshotted into
@@ -49,10 +51,21 @@ export const OPT_OUT_REPLY =
   "batch0: You're unsubscribed and won't get any more texts from us. " +
   "Reply START to resubscribe. Email hello@batch0.org for help.";
 
+/**
+ * The public texting page: what HELP replies, the footer, the legal pages and
+ * the toll-free verification form all point at.
+ *
+ * Not /messages. That path belongs to Chat: next.config.js redirects it to
+ * /chat for old "messaged you" bells, and a config redirect wins over any page,
+ * so a texting page there would be unreachable (lib/sms-policy.test.ts checks
+ * no redirect matches this one).
+ */
+export const TEXTS_PAGE_PATH = "/texts";
+
 /** What a HELP reply is answered with. Brand + contact + opt-out, nothing else. */
 export const HELP_REPLY =
   "batch0 (Sparkline Youth LLC) program updates. Msg & data rates may apply. " +
-  "Reply STOP to opt out. Help: hello@batch0.org or batch0.org/messages";
+  `Reply STOP to opt out. Help: hello@batch0.org or batch0.org${TEXTS_PAGE_PATH}`;
 
 /** What a START reply is answered with. */
 export const OPT_IN_REPLY =
@@ -63,3 +76,34 @@ export const OPT_IN_REPLY =
 export const UNMONITORED_REPLY =
   "batch0: This number only sends program updates and isn't monitored. " +
   "Please email hello@batch0.org and we'll get back to you. Reply STOP to opt out.";
+
+// ---------------------------------------------------------------------------
+// The first-message disclosure
+//
+// CTIA expects three things in the first text a number gets from us: the brand,
+// how to opt out, and that message and data rates may apply. The transport
+// appends the settings row's help text to that first message (lib/sms/send.ts
+// and the drain both call this), and the composer calls it too so its segment
+// count is the one we'll be billed for.
+//
+// It is skipped only when the body already carries all three. This used to be
+// skipped whenever the body contained "STOP" — so "Kickoff moved to 5pm. Text
+// STOP to opt out." went to a brand-new number with no brand and no rates
+// notice, and so did "Don't STOP building!".
+// ---------------------------------------------------------------------------
+
+/** Does `body` already say who we are, how to stop, and that rates may apply? */
+export function carriesFirstMessageDisclosure(body: string, helpText: string): boolean {
+  if (helpText && body.includes(helpText)) return true;
+  return (
+    /\bbatch0\b|sparkline youth/i.test(body) &&
+    /\bSTOP\b/.test(body) &&
+    /rates\s+may\s+apply/i.test(body)
+  );
+}
+
+/** The body as it goes on the wire: with the disclosure on a number's first text. */
+export function withFirstMessageDisclosure(body: string, helpText: string, first: boolean): string {
+  if (!first || carriesFirstMessageDisclosure(body, helpText)) return body;
+  return `${body}\n\n${helpText}`;
+}

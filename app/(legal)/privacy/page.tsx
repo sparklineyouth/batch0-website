@@ -205,7 +205,7 @@ export default function PrivacyPage() {
         box specifically about texting at{" "}
         <a href="/dashboard/phone">batch0.org/dashboard/phone</a>. We
         don&rsquo;t offer texts to applicants under 13, and we text from one US
-        toll-free number. See <a href="/messages">batch0.org/messages</a> for
+        toll-free number. See <a href="/texts">batch0.org/texts</a> for
         the details.
       </p>
       <p>
