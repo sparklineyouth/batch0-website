@@ -1,4 +1,4 @@
-# Migrations 0093–0102 (October 2026)
+# Migrations 0093–0102 and 0106 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -55,6 +55,11 @@ check-ins, in-app files, discussions and the old recorder at once:
    every scheduled email automation fans out to nobody: the insert fails with
    42P10 (the notifications bug 0090 §9 fixed, on the outbox) and the run is
    recorded as an error on the automation.
+4. **Any time: 0106.** Texting's tables (`docs/sms.md`). It only creates new
+   tables and touches nothing that exists. Until it runs, `/dashboard/phone`
+   collects a number with no texting checkbox and the Texting admin pages say
+   texting isn't set up; after it runs, texting is still inert until someone
+   saves a sending number and credentials at `/admin/sms/settings`.
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -143,6 +148,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0100 | `0100_admin_cleanup.sql` | Removes the retired `ai_usage.view` permission from roles and deletes leftover founder-pass self-check rows (negative serials). |
 | 0101 | `0101_chat.sql` | batch0 Chat: channels, DMs and group DMs (`chat_*` tables including `chat_mutes`, read-only policies, `chat_can_read()`, realtime on `chat_messages`, private presence and typing topics on `realtime.messages`, a trigram index for search, the private `chat-files` bucket), the starting channels plus one per cohort and team (kept, archived, when their team or cohort is deleted), old DMs and team threads carried in, `discord.manage` removed (not converted), admins kept out of other people's chat bells, and the Discord integration's tables, columns and settings dropped. See `docs/chat.md`. |
 | 0102 | `0102_email_outbox_dedupe_index.sql` | `email_outbox.dedupe_key` gets a plain unique index in place of 0052's partial one, so the scheduled-automation fan-out's `on conflict (dedupe_key)` works. Changes no data and sends nothing by itself. |
+| 0106 | `0106_sms_messaging.sql` | Texting: `messaging_consent` (consent per number, no promotional consent on a student's number), the append-only `messaging_consent_log`, `sms_outbox`, `sms_campaigns`, `sms_events`, and the `sms_settings` singleton seeded with no credentials. Service-role only (RLS on, no policies, no grants). Creates only new tables, changes no data, and sends nothing: texting stays off until a number and credentials are saved. See `docs/sms.md`. |
 
 ## Verify
 
@@ -220,8 +226,21 @@ select exists (select 1 from pg_index ix
                where ix.indrelid = to_regclass('public.email_outbox')
                  and ix.indisunique and ix.indpred is null and ix.indnkeyatts = 1
                  and a.attname = 'dedupe_key') as ok;
+
+-- 0106
+select to_regclass('public.messaging_consent') is not null
+   and to_regclass('public.messaging_consent_log') is not null
+   and to_regclass('public.sms_outbox') is not null
+   and to_regclass('public.sms_events') is not null
+   and exists (select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'sms_campaigns'
+                 and column_name = 'client_key')
+   and exists (select 1 from pg_trigger
+               where tgname = 'messaging_consent_log_no_update'
+                 and tgrelid = to_regclass('public.messaging_consent_log'))
+   and exists (select 1 from public.sms_settings where id) as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,
 `docs/recording.md`, `docs/batch0-live.md`, `docs/calls.md`,
-`docs/webinars.md`, `docs/chat.md`, `docs/admin.md`.
+`docs/webinars.md`, `docs/chat.md`, `docs/admin.md`, `docs/sms.md`.

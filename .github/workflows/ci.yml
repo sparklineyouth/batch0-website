@@ -42,5 +42,6 @@ jobs:
           npm run test:profile-privileges-db
           npm run test:call-cohosts-db
           npm run test:calls-db
+          npm run test:sms-messaging-db
           npm run test-blast-addressing
           node --test scripts/cohort-readiness-winter.test.mjs
