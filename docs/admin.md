@@ -114,9 +114,30 @@ team's own pages stay on `teams.manage`.
   the participant and panel keys such as `student.dashboard` don't count, so
   a delegate without them can still promote a Student), and the site always
   keeps one full admin. Rows the viewer can't change show a badge, not
-  a picker; a bulk change skips them and counts them as skipped. Migration
-  0103's `keep_a_full_admin` triggers hold the last rule in the database too,
-  for any writer and for two admins demoting each other at once.
+  a picker, with the guard's reason; a bulk change skips them and counts them
+  as skipped. Migration 0103's `keep_a_full_admin` triggers hold the last rule
+  in the database too, for any writer and for two admins demoting each other
+  at once.
+- **Role impact previews.** Before anything is saved, `lib/role-impact.ts`
+  works out what a change does from the permission catalog alone (the route
+  guard's own `canViewAdminPath`, `canAccessAdmin` and the panel keys), never
+  by acting as a real user. Editing a role shows "What saving changes" above
+  Save: the admin pages and panels its holders gain or lose, whether it opens
+  the admin panel at all and through which key, the sensitive grants with a
+  line on why, broken `PERMISSION_NEEDS` pairs and keys that do nothing as
+  ticked, and how many people hold it; Save stays off while the action would
+  refuse (`roleSaveRefusal`, which `updateRole` and `createRole` run too). The
+  email form looks the account up once the address is complete
+  (`previewRoleGrant`, read-only, the same `decideRoleChange` the write uses)
+  and shows what that person would gain or lose, or why the guard would say
+  no. The address is matched literally (`exactEmailLookup`), so `_`, `%` and
+  `*` are never wildcards and a pattern finds nobody. The row picker and the bulk change ask first with the same preview,
+  the bulk dialog grouped by current role with each skip's reason; deleting a
+  role shows what moving its holders does. The server decides again on every
+  write. `/dev/roles` renders all of it over fixtures, with every component
+  that writes in `fixture` mode: Save, Delete, Change role and Apply stop
+  before the server action, since that page's roles carry real slugs and
+  localhost can be talking to the production database.
 - **Moving a student** (profile → Manage → Move to a different cohort) is one
   database transaction (`admin_move_student_cohort`, 0103): the enrollment
   shown as current, the application it came from and their live scholarship

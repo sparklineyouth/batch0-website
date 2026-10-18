@@ -12,6 +12,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   destructive = false,
   pending = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: {
@@ -22,10 +23,13 @@ export function ConfirmDialog({
   cancelLabel?: string;
   destructive?: boolean;
   pending?: boolean;
+  /** Nothing to confirm (the description says why); Cancel still works. */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   // Scopes the Tab trap to the panel, not the outer wrapper — the wrapper
   // also holds the click-to-dismiss overlay, which must stay out of the cycle.
   const panelRef = useRef<HTMLDivElement>(null);
@@ -35,8 +39,10 @@ export function ConfirmDialog({
   // and steals focus back to the confirm button.
   const onCancelRef = useRef(onCancel);
   const pendingRef = useRef(pending);
+  const confirmDisabledRef = useRef(confirmDisabled);
   onCancelRef.current = onCancel;
   pendingRef.current = pending;
+  confirmDisabledRef.current = confirmDisabled;
 
   useEffect(() => {
     if (!open) return;
@@ -63,6 +69,14 @@ export function ConfirmDialog({
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
       const active = document.activeElement as HTMLElement | null;
+      // Focus outside the panel (it never got in, or the element holding it
+      // was disabled) comes back in rather than walking the page behind the
+      // overlay.
+      if (!active || !root.contains(active)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+        return;
+      }
       if (e.shiftKey && active === first) {
         e.preventDefault();
         last.focus();
@@ -75,8 +89,10 @@ export function ConfirmDialog({
     // Move focus to the confirm button when the dialog opens, but only
     // once per open transition. Re-running on every parent render would
     // yank focus away from inputs inside the dialog (e.g. textareas in
-    // `description`) on each keystroke.
-    confirmRef.current?.focus();
+    // `description`) on each keystroke. A disabled confirm can't take focus,
+    // and focus() on it would leave focus on the opener behind the overlay
+    // (where Enter opens the dialog again), so Cancel takes it instead.
+    (confirmDisabledRef.current ? cancelRef : confirmRef).current?.focus();
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
@@ -138,6 +154,7 @@ export function ConfirmDialog({
         </div>
         <div className="mt-6 flex justify-end gap-2">
           <Button
+            ref={cancelRef}
             type="button"
             variant="ghost"
             onClick={onCancel}
@@ -150,7 +167,7 @@ export function ConfirmDialog({
             type="button"
             variant={destructive ? "danger" : "primary"}
             onClick={onConfirm}
-            disabled={pending}
+            disabled={pending || confirmDisabled}
           >
             {pending ? "Working…" : confirmLabel}
           </Button>

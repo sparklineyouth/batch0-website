@@ -228,26 +228,41 @@ export default async function AdminStudentDetail(
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs uppercase tracking-wider text-ink-faint">
-            Role
-          </span>
-          {canChangeRoles && !roleLock ? (
-            <RoleSelect
-              userId={profile.id}
-              role={profile.role as Role}
-              options={roleOptions}
-            />
-          ) : (
-            <span
-              title={roleLock ?? undefined}
-              className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider ${roleColorClasses(
-                allRoles.find((r) => r.slug === profile.role)?.color ?? "slate",
-              )}`}
-            >
-              {allRoles.find((r) => r.slug === profile.role)?.label ??
-                profile.role}
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs uppercase tracking-wider text-ink-faint">
+              Role
             </span>
+            {canChangeRoles && !roleLock ? (
+              <RoleSelect
+                userId={profile.id}
+                role={profile.role as Role}
+                options={roleOptions}
+                // What each role holds, for the confirmation's preview of what
+                // this person would gain or lose (lib/role-impact.ts).
+                roles={allRoles.map((r) => ({
+                  slug: r.slug,
+                  label: r.label,
+                  permissions: r.permissions,
+                  home_path: r.home_path,
+                }))}
+                name={profile.full_name || displayEmail(profile.email)}
+              />
+            ) : (
+              <span
+                title={roleLock ?? undefined}
+                className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wider ${roleColorClasses(
+                  allRoles.find((r) => r.slug === profile.role)?.color ?? "slate",
+                )}`}
+              >
+                {allRoles.find((r) => r.slug === profile.role)?.label ??
+                  profile.role}
+              </span>
+            )}
+          </div>
+          {/* Why there's no picker, before anyone tries: the guard's own words. */}
+          {canChangeRoles && roleLock && (
+            <p className="max-w-xs text-right text-[11px] leading-snug text-ink-faint">{roleLock}</p>
           )}
         </div>
       </div>
