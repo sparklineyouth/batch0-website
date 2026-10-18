@@ -14,33 +14,42 @@ type Member = { userId: string; name: string };
  * `board` is null when the team has no cohort or the assignment tables
  * aren't there yet (0093, lib/assignments-server.ts) — the card says so
  * instead of showing a zero.
+ *
+ * `assignments` is whether the viewer may see per-student assignment counts
+ * at all (assignments.manage or people.view — the page itself only needs
+ * teams.manage); without it the card is just the Demo Day line. `matrixLink`
+ * is whether they can open /admin/assignments, which needs assignments.manage.
  */
 export function TeamReadiness({
   cohortId,
+  assignments,
+  matrixLink,
   board,
   members,
   pitch,
 }: {
   cohortId: string | null;
+  assignments: boolean;
+  matrixLink: boolean;
   board: { rows: MatrixRow[] } | null;
   members: Member[];
   pitch: { deck_url?: string | null; video_url: string | null; submitted_at: string | null } | null;
 }) {
-  const completion = board ? teamCompletion(board.rows, members.map((m) => m.userId)) : null;
+  const completion = assignments && board ? teamCompletion(board.rows, members.map((m) => m.userId)) : null;
   const byUser = new Map((board?.rows ?? []).map((r) => [r.userId, r]));
 
   return (
     <Card className="mt-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-faint">Readiness</h2>
-        {cohortId && (
+        {cohortId && assignments && matrixLink && (
           <Link href={`/admin/assignments?cohort=${cohortId}`} prefetch={false} className="text-xs link-ink">
             Completion matrix →
           </Link>
         )}
       </div>
 
-      {!cohortId ? (
+      {!assignments ? null : !cohortId ? (
         <p className="mt-2 text-sm text-ink-soft">This team isn&apos;t in a cohort, so it has no assignments.</p>
       ) : !completion ? (
         <p className="mt-2 text-sm text-ink-soft">Assignments aren&apos;t set up yet.</p>

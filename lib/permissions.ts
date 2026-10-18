@@ -523,6 +523,19 @@ export function canAny(
 }
 
 /**
+ * Who may see per-student assignment progress — who has handed in what, who
+ * is behind. Those counts live on the completion matrix (/admin/assignments,
+ * assignments.manage) and a student's profile (people.view). A page gated on
+ * something else — a team's admin page needs only teams.manage — shows them
+ * only to a viewer holding one of these.
+ */
+export const ASSIGNMENT_PROGRESS_PERMISSIONS: readonly Permission[] = ["assignments.manage", "people.view"];
+
+export function canSeeAssignmentProgress(caps: Capabilities | null): boolean {
+  return canAny(caps, ASSIGNMENT_PROGRESS_PERMISSIONS);
+}
+
+/**
  * What a route or nav row needs: one key, or — for a section landing that
  * forwards to the first tab the viewer holds — any one of several.
  */

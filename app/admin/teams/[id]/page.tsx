@@ -11,7 +11,7 @@ import { GoogleDrivePanel } from "@/components/team/google-drive-panel";
 import { PitchLinkPreview } from "@/components/team/pitch-links";
 import { loadTeamDrive } from "@/lib/team-drive";
 import { getCapabilities } from "@/lib/auth";
-import { can } from "@/lib/permissions";
+import { can, canSeeAssignmentProgress } from "@/lib/permissions";
 import { RecapButton } from "@/app/admin/demo-day/recap-button";
 import { loadCohortBoard } from "@/lib/assignments-server";
 import { TeamReadiness } from "./team-readiness";
@@ -64,7 +64,14 @@ export default async function AdminTeamDetail(
   // The cohort's completion matrix, cut down to this team below. It waits on
   // the team row for its cohort; `ready: false` (0093 not applied) reads as
   // "not set up yet" rather than as a team with nothing handed in.
-  const board = team.cohort_id ? await loadCohortBoard(admin, team.cohort_id) : null;
+  //
+  // Who is behind on what is assignment data, and this page only needs
+  // teams.manage. The same counts elsewhere need assignments.manage (the
+  // matrix) or people.view (a student's profile), so a role with neither gets
+  // the Demo Day line and not the board — which isn't even loaded for it.
+  const seesAssignments = canSeeAssignmentProgress(caps);
+  const board =
+    team.cohort_id && seesAssignments ? await loadCohortBoard(admin, team.cohort_id) : null;
   const memberRows = ((members ?? []) as any[]).map((m) => {
     const u = Array.isArray(m.user) ? m.user[0] : m.user;
     return { userId: m.user_id as string, name: (u?.full_name || u?.email || "Member") as string };
@@ -83,6 +90,8 @@ export default async function AdminTeamDetail(
 
       <TeamReadiness
         cohortId={team.cohort_id ?? null}
+        assignments={seesAssignments}
+        matrixLink={can(caps, "assignments.manage")}
         board={board?.ready ? board : null}
         members={memberRows}
         pitch={p}
