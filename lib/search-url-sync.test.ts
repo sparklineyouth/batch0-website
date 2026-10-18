@@ -63,6 +63,46 @@ test("renders in order, or skipped in between, are all echoes", () => {
   assert.equal(b.value, "de");
 });
 
+test("typing back to a query already in flight: late renders, in ask order, still leave the typing alone", () => {
+  const b = box("");
+  b.type("pi");
+  b.pause();
+  b.type("pitch");
+  b.pause();
+  b.type("pi");
+  b.pause();
+  assert.deepEqual(b.sync.asked, ["pi", "pitch", "pi"]);
+  b.type("pine"); // still typing; not sent yet
+  // The first "pi" lands late. Matched with the newer "pi", it emptied the
+  // list, so the "pitch" render read as the URL moving and overwrote the box
+  // with "pitch", and then the last "pi" with "pi".
+  assert.equal(b.render("pi"), false);
+  assert.deepEqual(b.sync.asked, ["pitch", "pi"], "only the first 'pi' is accounted for");
+  assert.equal(b.render("pitch"), false);
+  assert.equal(b.value, "pine");
+  assert.equal(b.render("pi"), false);
+  assert.equal(b.value, "pine");
+  assert.deepEqual(b.sync.asked, []);
+});
+
+test("typing back to a query in flight, with only the newest rendering: the leftovers clear on the next ask", () => {
+  const b = box("");
+  for (const t of ["pi", "pitch", "pi"]) {
+    b.type(t);
+    b.pause();
+  }
+  // Next drops the superseded navigations and renders only the last "pi".
+  assert.equal(b.render("pi"), false);
+  assert.equal(b.value, "pi");
+  b.type("pin");
+  b.pause();
+  assert.equal(b.render("pin"), false);
+  assert.deepEqual(b.sync, { shown: "pin", asked: [] }, "the skipped asks are gone once a newer one renders");
+  // And the URL moving under the box is followed again.
+  assert.equal(b.render(""), true);
+  assert.equal(b.value, "");
+});
+
 test("Back, or a Clear link, moves the URL under the box: it follows", () => {
   const b = box("deck");
   assert.equal(b.render(""), true);

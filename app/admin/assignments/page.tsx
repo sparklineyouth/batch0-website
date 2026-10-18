@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Download } from "lucide-react";
 import { requirePermission } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { loadCohortBoard, loadFeedbackQueue } from "@/lib/assignments-server";
+import { loadCohortBoard, loadFeedbackQueue, type CohortBoard } from "@/lib/assignments-server";
 import { cohortWeekCount, formatEastern, formatEasternDay } from "@/lib/assignments";
 import { isUuid } from "@/lib/support-access";
 import { buttonClasses } from "@/components/ui/button";
@@ -47,7 +47,14 @@ export default async function AdminAssignmentsPage(props: {
 
   const now = new Date();
   const [board, { data: modules }, waiting] = await Promise.all([
-    loadCohortBoard(admin, cohort.id, now),
+    // A read that fails comes back as `failed`; a throw on the way is caught
+    // into the same state, so it costs the matrix, not the page.
+    loadCohortBoard(admin, cohort.id, now).catch((err: unknown): CohortBoard => {
+      console.error("[assignments] board failed", cohort.id, (err as Error)?.message ?? err);
+      return {
+        ready: false, failed: true, assignments: [], columns: [], students: [], targets: new Map(), submissions: [], rows: [],
+      };
+    }),
     admin
       .from("modules")
       .select("week, position, lessons(id, title, position)")
@@ -89,6 +96,9 @@ export default async function AdminAssignmentsPage(props: {
     <div className="mx-auto max-w-6xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-3xl text-ink">Assignments</h1>
+        {/* Both are the board: the CSV is it, and the editor's "Specific
+            students" picker is its enrollment list, which a failed read
+            would show as "Nobody enrolled yet". */}
         {board.ready && (
           <div className="flex items-center gap-2">
             <a
@@ -118,16 +128,15 @@ export default async function AdminAssignmentsPage(props: {
         </nav>
       )}
 
-      {!board.ready ? (
-        board.failed ? (
-          <p role="status" className="mt-8 border-y border-line py-10 text-center text-sm text-red-600 dark:text-red-400">
-            Couldn&apos;t load this cohort&apos;s assignments just now. Reload to try again.
-          </p>
-        ) : (
-          <p className="mt-8 border-y border-line py-10 text-center text-sm text-ink-soft">
-            Assignments aren&apos;t set up yet.
-          </p>
-        )
+      {/* Not set up (0093 not applied) hides everything: none of it exists
+          yet. A board that failed to load hides only what is the board —
+          the matrix and the assignment list, which say "couldn't load". The
+          waiting list is its own read with its own failed state, and the
+          review drawer (?review=) reads its one cell itself. */}
+      {!board.ready && !board.failed ? (
+        <p className="mt-8 border-y border-line py-10 text-center text-sm text-ink-soft">
+          Assignments aren&apos;t set up yet.
+        </p>
       ) : (
         <>
           {waiting.failed ? (
@@ -193,58 +202,61 @@ export default async function AdminAssignmentsPage(props: {
                 rows={board.rows.map((r) => ({ ...r, name: nameOf.get(r.userId) ?? "Student" }))}
                 missingOnly={searchParams.filter === "missing"}
                 initialCell={initialCell}
+                failed={board.failed}
               />
             </div>
           </section>
 
-          <section className="mt-10">
-            <h2 className="font-mono text-xs uppercase tracking-wider text-ink-faint">
-              All assignments · {board.assignments.length}
-            </h2>
-            {board.assignments.length === 0 ? (
-              <p className="mt-3 border-y border-line py-8 text-center text-sm text-ink-soft">None yet.</p>
-            ) : (
-              <ul className="mt-3 divide-y divide-line border-y border-line">
-                {board.assignments.map((a) => {
-                  const audienceSize = a.audience === "students" ? (board.targets.get(a.id)?.size ?? 0) : students.length;
-                  const notOpen = a.opens_at && Date.parse(a.opens_at) > now.getTime();
-                  const initial: EditorAssignment = {
-                    ...a,
-                    targets: [...(board.targets.get(a.id) ?? [])],
-                    handedIn: handedIn.get(a.id) ?? 0,
-                  };
-                  return (
-                    <li key={a.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[15px] text-ink">
-                          {a.title}
-                          {STATUS_NOTE[a.status] && (
-                            <span className="ml-2 font-mono text-[10px] uppercase tracking-wider text-ink-faint">
-                              {STATUS_NOTE[a.status]}
-                            </span>
-                          )}
-                        </p>
-                        <p className="mt-0.5 text-xs text-ink-faint">
-                          {[
-                            a.week ? `Week ${a.week}` : null,
-                            notOpen ? `Opens ${formatEasternDay(a.opens_at)}` : null,
-                            a.due_at ? `Due ${formatEastern(a.due_at)}` : "No due date",
-                            a.audience === "students" ? `${audienceSize} student${audienceSize === 1 ? "" : "s"}` : null,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </p>
-                      </div>
-                      <span className="font-mono text-xs tabular-nums text-ink-soft">
-                        {handedIn.get(a.id) ?? 0}/{audienceSize} in
-                      </span>
-                      <AssignmentEditor cohort={editorCohort} lessons={lessons} students={students} initial={initial} />
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
+          {!board.failed && (
+            <section className="mt-10">
+              <h2 className="font-mono text-xs uppercase tracking-wider text-ink-faint">
+                All assignments · {board.assignments.length}
+              </h2>
+              {board.assignments.length === 0 ? (
+                <p className="mt-3 border-y border-line py-8 text-center text-sm text-ink-soft">None yet.</p>
+              ) : (
+                <ul className="mt-3 divide-y divide-line border-y border-line">
+                  {board.assignments.map((a) => {
+                    const audienceSize = a.audience === "students" ? (board.targets.get(a.id)?.size ?? 0) : students.length;
+                    const notOpen = a.opens_at && Date.parse(a.opens_at) > now.getTime();
+                    const initial: EditorAssignment = {
+                      ...a,
+                      targets: [...(board.targets.get(a.id) ?? [])],
+                      handedIn: handedIn.get(a.id) ?? 0,
+                    };
+                    return (
+                      <li key={a.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[15px] text-ink">
+                            {a.title}
+                            {STATUS_NOTE[a.status] && (
+                              <span className="ml-2 font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+                                {STATUS_NOTE[a.status]}
+                              </span>
+                            )}
+                          </p>
+                          <p className="mt-0.5 text-xs text-ink-faint">
+                            {[
+                              a.week ? `Week ${a.week}` : null,
+                              notOpen ? `Opens ${formatEasternDay(a.opens_at)}` : null,
+                              a.due_at ? `Due ${formatEastern(a.due_at)}` : "No due date",
+                              a.audience === "students" ? `${audienceSize} student${audienceSize === 1 ? "" : "s"}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        </div>
+                        <span className="font-mono text-xs tabular-nums text-ink-soft">
+                          {handedIn.get(a.id) ?? 0}/{audienceSize} in
+                        </span>
+                        <AssignmentEditor cohort={editorCohort} lessons={lessons} students={students} initial={initial} />
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          )}
         </>
       )}
     </div>

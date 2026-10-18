@@ -17,8 +17,17 @@
  *
  * So the box remembers every query it has asked for that hasn't come back
  * yet. A render of one of those is its own echo: ignored, along with anything
- * asked before it (a render that old can't be the newest any more). Only a
- * query it never asked for is the URL moving, and is followed.
+ * asked before it (renders land in the order they were asked, some skipped,
+ * so a render can't be older than one already in). Only a query it never
+ * asked for is the URL moving, and is followed.
+ *
+ * A query can be in flight twice — "pi", "pitch", then back to "pi". A "pi"
+ * render is then matched with the OLDER "pi": renders land in ask order, so
+ * it's the first that's due. Matched with the newer one, a late first "pi"
+ * cleared "pitch" from the list too, and when that render came in it read as
+ * the URL moving and overwrote the box twice over. Matching the older one can
+ * leave an ask in the list that was skipped (only the newest "pi" rendered);
+ * the next ask that renders clears it.
  */
 
 /** Enough for any burst of typing; older asks than this are long settled. */
@@ -52,7 +61,8 @@ export function askedFor(sync: QuerySync, q: string): QuerySync {
  * whether the box should now show it (`follow`) and what to remember.
  */
 export function pageRendered(sync: QuerySync, pageQuery: string): { sync: QuerySync; follow: boolean } {
-  const i = sync.asked.lastIndexOf(pageQuery);
+  // The oldest occurrence: the one due first (see the note at the top).
+  const i = sync.asked.indexOf(pageQuery);
   // One of ours: the newest landing (nothing left in flight), or an older
   // one arriving late, after the box had already asked for something newer.
   if (i >= 0) return { sync: { shown: sync.shown, asked: sync.asked.slice(i + 1) }, follow: false };

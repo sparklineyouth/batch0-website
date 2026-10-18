@@ -80,19 +80,33 @@ test("a student's calendar: service role, scoped to their enrolled cohorts by th
   assert.deepEqual(op(last(), "range"), [[10, 20]]);
 });
 
-test("a staff preview: the viewer's own session, and no visibility filter of its own — RLS decides", async () => {
+test("a staff preview: the viewer's own session, RLS decides, and staff-only rehearsals are left out", async () => {
   await getPreviewEvents(NOW);
   assert.equal(last().client, "viewer");
   assert.deepEqual(op(last(), "or"), []);
-  assert.deepEqual(op(last(), "eq"), [], "not narrowed to public: the policy shows staff every event");
+  assert.deepEqual(op(last(), "eq"), [], "not narrowed to public: the policy shows staff every cohort's events");
+  // The policy also shows staff their rehearsals (visibility 'staff'). No
+  // student sees one, so a preview listing it — Join button, no label —
+  // said students could.
+  assert.deepEqual(op(last(), "neq"), [["visibility", "staff"]]);
   assert.deepEqual(op(last(), "gte"), [["starts_at", "2026-10-16T16:00:00.000Z"]], "the same day of lookback");
   assert.deepEqual(op(last(), "limit"), [[20]]);
 
   await getPreviewRecordings(NOW, 1);
   assert.equal(last().client, "viewer");
   assert.deepEqual(op(last(), "or"), [[recordingOrFilter([])]], "the recording kinds only");
+  assert.deepEqual(op(last(), "neq"), [["visibility", "staff"]], "no rehearsal recordings either");
   assert.deepEqual(op(last(), "lt"), [["starts_at", NOW]]);
   assert.deepEqual(op(last(), "range"), [[0, 10]]);
+});
+
+test("a student's reads carry no extra filter: their scope already names only public and enrolled", async () => {
+  await getCohortEvents({ cohortIds: [A] }, NOW);
+  assert.deepEqual(op(last(), "neq"), []);
+  await getCohortRecordings({ cohortIds: [A] }, NOW, 1);
+  assert.deepEqual(op(last(), "neq"), []);
+  // The scopes themselves never reach a staff-only row.
+  for (const branch of eventVisibilityScopes([A])) assert.doesNotMatch(branch, /staff/);
 });
 
 test("only staff take the preview path, on both app screens", () => {

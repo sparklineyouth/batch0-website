@@ -21,6 +21,7 @@ import {
   type DraftStatus,
   type SentWork,
   type StartingWork,
+  withUnconfirmed,
 } from "@/lib/assignment-drafts";
 import { loadDraftOverHttp, saveDraftOverHttp, type DraftSaveInput } from "@/lib/assignment-drafts-client";
 
@@ -126,8 +127,12 @@ export function SubmitForm({
   const timerRef = useRef<number | null>(null);
   const dirtySinceRef = useRef<number | null>(null);
   const attemptRef = useRef(0);
-  /** A save that got no answer (it may have landed): what it sent. */
-  const unconfirmedRef = useRef<SentWork | null>(null);
+  /**
+   * Saves since the last confirmed version that got no answer (any one may
+   * have landed): what each sent. Every one, not just the latest — the one
+   * that landed is often the first, before retries that never left.
+   */
+  const unconfirmedRef = useRef<SentWork[]>([]);
   /** A submit that got no answer (it may have gone through): what it sent. */
   const pendingSubmitRef = useRef<SentWork | null>(null);
 
@@ -148,7 +153,7 @@ export function SubmitForm({
     workRef.current = w;
     serverRef.current = sent(w);
     versionRef.current = next.version;
-    unconfirmedRef.current = null;
+    unconfirmedRef.current = [];
     setBody(w.body);
     setLink(w.link);
     setHandedIn(nextHandedIn);
@@ -186,13 +191,14 @@ export function SubmitForm({
         // A save of ours went through after all: build on it.
         versionRef.current = r.version;
         serverRef.current = r.text;
-        unconfirmedRef.current = null;
+        unconfirmedRef.current = [];
         setDirty(isDirty());
         setStatus({ kind: "saved", at: r.savedAt });
         break;
       case "submitted": {
         const handed = pendingSubmitRef.current!;
         pendingSubmitRef.current = null;
+        unconfirmedRef.current = [];
         versionRef.current = r.version;
         serverRef.current = handed;
         setHandedIn(handed);
@@ -246,7 +252,7 @@ export function SubmitForm({
       if (result.ok) {
         versionRef.current = result.version;
         serverRef.current = snapshot;
-        unconfirmedRef.current = null;
+        unconfirmedRef.current = [];
         attemptRef.current = 0;
         failingRef.current = false;
         setStatus({ kind: "saved", at: result.savedAt });
@@ -256,7 +262,9 @@ export function SubmitForm({
       }
       // An error may still have been written (the answer, not the save, was
       // lost); if a later save is refused as stale, this is how it's known.
-      if (result.reason === "error") unconfirmedRef.current = snapshot;
+      // Added to the others since the last confirmed version, never in place
+      // of them: a retry failing after a save that landed must not forget it.
+      if (result.reason === "error") unconfirmedRef.current = withUnconfirmed(unconfirmedRef.current, snapshot);
       // "Stale" can be this tab merely behind — Back showed an old copy, or
       // an earlier save landed without telling us. Only a real conflict stops.
       if (result.reason === "stale") {
@@ -343,13 +351,19 @@ export function SubmitForm({
       if (!live || !remote || remote.state !== "ready") return;
       if (inFlightRef.current || submittingRef.current || stoppedRef.current) return;
       const r = reconcileDraft(
-        { version: versionRef.current, base: serverRef.current, work: sent(workRef.current) },
+        {
+          version: versionRef.current,
+          base: serverRef.current,
+          work: sent(workRef.current),
+          unconfirmed: unconfirmedRef.current,
+        },
         remote,
       );
       if (r.kind === "adopt") adopt(r.start, r.handedIn);
       else if (r.kind === "landed") {
         versionRef.current = r.version;
         serverRef.current = r.text;
+        unconfirmedRef.current = [];
         setDirty(isDirty());
       }
     })();
@@ -471,7 +485,7 @@ export function SubmitForm({
             return;
           }
           pendingSubmitRef.current = null;
-          unconfirmedRef.current = null;
+          unconfirmedRef.current = [];
           if (res.data) versionRef.current = res.data.draftVersion;
           serverRef.current = snapshot;
           dirtySinceRef.current = null;

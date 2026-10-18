@@ -241,6 +241,31 @@ test("a team's Readiness card says 'couldn't load' for a failed board, and the p
   assert.match(card, /Couldn&apos;t load assignment progress/);
 });
 
+test("/admin/assignments: a failed board costs the matrix and the list, not the waiting list or the review drawer", () => {
+  const page = readFileSync(path.join(root, "app/admin/assignments/page.tsx"), "utf8");
+  // "Not set up" (0093 missing) is the only state that hides the page body.
+  assert.match(page, /\{!board\.ready && !board\.failed \? \(\s*<p[^>]*>\s*Assignments aren&apos;t set up yet\./);
+  assert.doesNotMatch(page, /\{!board\.ready \? \(/, "no section is gated on ready alone any more");
+  // The waiting list sits outside any board gate: its own read, its own failed state.
+  const body = page.slice(page.indexOf("{!board.ready && !board.failed ? ("));
+  assert.ok(body.indexOf("waiting.failed ?") < body.indexOf("<CompletionMatrix"), "the waiting list renders before, and apart from, the matrix");
+  // The matrix is rendered whatever happened, told it failed, so its drawer
+  // still opens on ?review=; the assignment list goes.
+  assert.match(page, /initialCell=\{initialCell\}\s*failed=\{board\.failed\}/);
+  assert.match(page, /\{!board\.failed && \(\s*<section className="mt-10">\s*<h2[^>]*>\s*All assignments/);
+  // A throw from the board read becomes the same failed state, not a 500.
+  assert.match(page, /loadCohortBoard\(admin, cohort\.id, now\)\.catch\(/);
+  assert.match(page, /ready: false, failed: true,/);
+
+  const matrix = readFileSync(path.join(root, "app/admin/assignments/completion-matrix.tsx"), "utf8");
+  assert.match(matrix, /failed \? \(\s*<p role="status"[^>]*>\s*Couldn&apos;t load this cohort&apos;s assignments just now\./);
+  assert.match(matrix, /\{failed \? null : columns\.length === 0/, "no table and no 'Nobody enrolled yet' for a failed read");
+  // The drawer is outside both: a deep link still opens it.
+  const drawer = matrix.indexOf("<Drawer open={!!cell}");
+  assert.ok(drawer > matrix.indexOf("{failed ? null : columns.length === 0"));
+  assert.match(matrix, /if \(initialCell\) setCell\(initialCell\);/);
+});
+
 const submission = {
   id: "s1",
   assignment_id: "a1",

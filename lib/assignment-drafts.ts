@@ -275,6 +275,25 @@ export function startingWork(args: {
 /** The form's text as a save sends it: the link is "" on a text-only assignment. */
 export type SentWork = { body: string; link: string };
 
+/** How many unanswered saves a tab remembers before it starts forgetting the middle ones. */
+export const UNCONFIRMED_MAX = 50;
+
+/**
+ * A save got no answer (`error`): remember what it sent, alongside every
+ * other unanswered save since the tab's last confirmed version. All of them
+ * named that same version, so at most one can have landed, but which isn't
+ * known: on a flaky phone the save that landed is often the first (its
+ * answer lost as the connection went), and the retries after it never left.
+ * Keeping only the latest one forgot it, so the stale answer that followed
+ * read the tab's own save as another device's. Kept bounded for a long
+ * offline stretch; the first is kept when the middle goes, for that reason.
+ */
+export function withUnconfirmed(list: readonly SentWork[], sent: SentWork): SentWork[] {
+  if (list.some((w) => w.body === sent.body && w.link === sent.link)) return [...list];
+  const next = [...list, sent];
+  return next.length > UNCONFIRMED_MAX ? [next[0], ...next.slice(-(UNCONFIRMED_MAX - 1))] : next;
+}
+
 export type Reconciled =
   /** The server is where this tab thinks it is. */
   | { kind: "current" }
@@ -304,8 +323,8 @@ export type Reconciled =
  *   - a submit of ours that got no answer, and the submission now says
  *     exactly that → it went through;
  *   - the draft hasn't moved past this tab → nothing to do;
- *   - it moved on to text this tab sent (now, or in a save that got no
- *     answer) → take its version and carry on;
+ *   - it moved on to text this tab sent (now, or in any save since its last
+ *     confirmed version that got no answer) → take its version and carry on;
  *   - this tab hasn't typed anything since it last synced (Back) → show the
  *     newer text;
  *   - otherwise this tab's edits would overwrite newer work → conflict, the
@@ -316,7 +335,8 @@ export function reconcileDraft(
     version: number;
     base: SentWork;
     work: SentWork;
-    unconfirmed?: SentWork | null;
+    /** Every save since `version` that got no answer (withUnconfirmed): any one may have landed. */
+    unconfirmed?: readonly SentWork[];
     pendingSubmit?: SentWork | null;
   },
   remote: { draft: DraftRow | null; submission: SubmissionSnapshot | null },
@@ -335,8 +355,8 @@ export function reconcileDraft(
   if (version <= local.version) return { kind: "current" };
   if (d && !d.cleared_at) {
     const text = { body: d.body ?? "", link: d.link_url ?? "" };
-    for (const mine of [local.work, local.unconfirmed]) {
-      if (mine && mine.body === text.body && mine.link === text.link) {
+    for (const mine of [local.work, ...(local.unconfirmed ?? [])]) {
+      if (mine.body === text.body && mine.link === text.link) {
         return { kind: "landed", version, savedAt: d.updated_at, text };
       }
     }

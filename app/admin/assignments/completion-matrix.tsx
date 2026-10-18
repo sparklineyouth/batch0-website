@@ -22,18 +22,28 @@ export type MatrixStudentRow = {
   due: number;
 };
 
-/** Students × released assignments. Click a cell to review it. */
+/**
+ * Students × released assignments. Click a cell to review it.
+ *
+ * `failed`: the cohort board couldn't be read (loadCohortBoard). The matrix
+ * says so in place of the table, but the review drawer still opens for a
+ * deep link (?review=, the Overview's and the waiting list's "Review"): it
+ * reads that one cell on its own (loadReviewCell), so a failed board is no
+ * reason to lose it.
+ */
 export function CompletionMatrix({
   columns,
   rows,
   missingOnly: initialMissingOnly,
   initialCell = null,
+  failed = false,
 }: {
   columns: MatrixColumn[];
   rows: MatrixStudentRow[];
   missingOnly: boolean;
   /** A cell whose drawer is open on arrival (a deep link from the Overview). */
   initialCell?: { assignmentId: string; userId: string } | null;
+  failed?: boolean;
 }) {
   const [missingOnly, setMissingOnly] = useState(initialMissingOnly);
   const [cell, setCell] = useState<{ assignmentId: string; userId: string } | null>(null);
@@ -49,13 +59,19 @@ export function CompletionMatrix({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-sm text-ink">
-          <input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} />
-          Missing 2+ <span className="text-ink-faint">({flagged})</span>
-        </label>
-      </div>
-      {columns.length === 0 || rows.length === 0 ? (
+      {failed ? (
+        <p role="status" className="border-y border-line py-10 text-center text-sm text-red-600 dark:text-red-400">
+          Couldn&apos;t load this cohort&apos;s assignments just now. Reload to try again.
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} />
+            Missing 2+ <span className="text-ink-faint">({flagged})</span>
+          </label>
+        </div>
+      )}
+      {failed ? null : columns.length === 0 || rows.length === 0 ? (
         <p className="mt-3 border-y border-line py-8 text-center text-sm text-ink-soft">
           {rows.length === 0 ? "Nobody enrolled yet." : "Nothing released yet."}
         </p>

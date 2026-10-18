@@ -155,10 +155,18 @@ function eventScope({ cohortIds }: EventScope) {
 type EventsDb = Pick<ReturnType<typeof createAdminClient>, "from">;
 
 /**
+ * A rehearsal's visibility (lib/event-form.ts): staff only. The policy shows
+ * staff these too, but a staff preview is of what students see, and no
+ * student sees one — listed with a Join button and no label, it read as
+ * "students can see this rehearsal". The viewer-client reads leave them out.
+ */
+const STAFF_ONLY = "staff";
+
+/**
  * Upcoming events, reaching back a day so a session that is running (or that
  * a host started early) still shows. `scopes` are the visibility branches a
  * service-role read must apply itself; null is the viewer's own client, where
- * the `events read` policy does.
+ * the `events read` policy does — less staff-only events (STAFF_ONLY).
  */
 function upcomingEvents(db: EventsDb, scopes: readonly string[] | null, nowIso: string) {
   const since = new Date(new Date(nowIso).getTime() - 24 * 60 * 60_000).toISOString();
@@ -166,6 +174,8 @@ function upcomingEvents(db: EventsDb, scopes: readonly string[] | null, nowIso: 
   if (scopes) {
     const [pub, enrolled] = scopes;
     q = enrolled ? q.or(`${pub},and(${enrolled})`) : q.eq("visibility", "public");
+  } else {
+    q = q.neq("visibility", STAFF_ONLY);
   }
   return q.gte("starts_at", since).order("starts_at", { ascending: true }).limit(20);
 }
@@ -173,20 +183,20 @@ function upcomingEvents(db: EventsDb, scopes: readonly string[] | null, nowIso: 
 /** One page of past events with something to watch, scoped as upcomingEvents is. */
 function recordingEvents(db: EventsDb, scopes: readonly string[] | null, nowIso: string, page: number) {
   const { from, to } = historyRange(page);
-  return (
-    db
-      .from("events")
-      .select(EVENT_COLUMNS)
-      // ONE .or(): visibility AND has-a-recording, spelled out as a flat
-      // `or` of `and`s (recordingOrFilter), so nothing rests on how two
-      // `or=` parameters combine. With no scopes it's the recording kinds
-      // alone, and RLS does the rest.
-      .or(recordingOrFilter(scopes ?? []))
-      .lt("starts_at", nowIso)
-      .order("starts_at", { ascending: false })
-      .order("id", { ascending: true })
-      .range(from, to)
-  );
+  let q = db
+    .from("events")
+    .select(EVENT_COLUMNS)
+    // ONE .or(): visibility AND has-a-recording, spelled out as a flat `or`
+    // of `and`s (recordingOrFilter), so nothing rests on how two `or=`
+    // parameters combine. With no scopes it's the recording kinds alone, and
+    // RLS does the rest — less staff-only rehearsals (STAFF_ONLY).
+    .or(recordingOrFilter(scopes ?? []));
+  if (!scopes) q = q.neq("visibility", STAFF_ONLY);
+  return q
+    .lt("starts_at", nowIso)
+    .order("starts_at", { ascending: false })
+    .order("id", { ascending: true })
+    .range(from, to);
 }
 
 /**
@@ -260,8 +270,10 @@ export function getCohortRecordings(
  * above (enrolledCohortIds) left them public events only: no cohort's
  * sessions, no recordings — not what any student sees, and not what
  * /dashboard/events shows them. These ask with the viewer's session instead,
- * so the `events read` policy itself decides, exactly as /dashboard/events
- * does (staff see every event there; a speaker, their own).
+ * so the `events read` policy itself decides, as on /dashboard/events (staff
+ * see every event there; a speaker, their own) — less staff-only rehearsals,
+ * which the policy shows staff but no student ever sees (STAFF_ONLY). What's
+ * left is every event some student can see, across every cohort.
  *
  * Nothing here can widen what a student sees: a student never takes this
  * path, and if one did, RLS would still show them only their own. Not
