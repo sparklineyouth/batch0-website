@@ -55,6 +55,7 @@ import {
   type Permission,
   type Requirement,
 } from "@/lib/permissions";
+import type { AdminPage } from "@/lib/role-impact";
 
 export type NavItem = {
   href: string;
@@ -405,6 +406,23 @@ const SMS_TAB_LOOK: Record<(typeof SMS_TAB_ROUTES)[number][0], Pick<NavItem, "la
 export const SMS_TABS: (NavItem & { perm: Permission })[] = SMS_TAB_ROUTES.map(
   ([href, perm]) => ({ href, perm, ...SMS_TAB_LOOK[href] }),
 );
+
+/**
+ * The admin pages a role can be given, labelled as the sidebar labels them,
+ * for the role impact previews at /admin/roles and on People
+ * (lib/role-impact.ts decides which of them a permission list opens, with the
+ * route guard's own predicate). Every sidebar row under /admin except the
+ * Overview, which every admin-area role opens and the preview names as "the
+ * admin panel", and the Email and Texting rows, whose landings only forward
+ * to a tab: the tabs are listed instead.
+ */
+export const ADMIN_PAGES: AdminPage[] = [
+  ...ADMIN_NAV.filter(
+    (i) => i.href.startsWith("/admin/") && i.href !== "/admin/email" && i.href !== "/admin/sms",
+  ).map(({ href, label }) => ({ href, label })),
+  ...EMAIL_TABS.map(({ href, label }) => ({ href, label: `Email · ${label}` })),
+  ...SMS_TABS.map(({ href, label }) => ({ href, label: `Texting · ${label}` })),
+];
 
 /**
  * The one visibility predicate for admin nav items. Both the desktop sidebar

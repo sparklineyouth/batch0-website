@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, FieldError } from "@/components/ui/input";
 import { submitAssignment } from "@/app/dashboard/assignments/actions";
 import { getActionError } from "@/lib/action-error";
-import { LIMITS, formatEastern, isGoogleLink, type SubmissionType } from "@/lib/assignments";
+import { LIMITS, formatEastern, isGoogleLink, storableText, type SubmissionType } from "@/lib/assignments";
 import {
   DRAFT_MAX_WAIT_MS,
   DRAFT_SAVE_DELAY_MS,
@@ -14,12 +14,14 @@ import {
   isFinalDraftFailure,
   reconcileDraft,
   sameWork,
+  staleVerdict,
   type DraftFailure,
   type DraftSaveResult,
   type DraftState,
   type DraftStatus,
   type SentWork,
   type StartingWork,
+  withUnconfirmed,
 } from "@/lib/assignment-drafts";
 import { loadDraftOverHttp, saveDraftOverHttp, type DraftSaveInput } from "@/lib/assignment-drafts-client";
 
@@ -34,6 +36,9 @@ export type DraftTransport = {
 
 const STALE_CONFIRM =
   "Newer work was saved or submitted in another tab or on another device. Submit what's in this tab instead?";
+/** The draft moved on and couldn't be read back to say from where. */
+const STALE_UNKNOWN_CONFIRM =
+  "Your saved draft changed since this tab last saved, and it couldn't be checked just now — it may be newer work from another tab or device. Submit what's in this tab anyway?";
 
 const savedTime = (iso: string) =>
   new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -122,8 +127,12 @@ export function SubmitForm({
   const timerRef = useRef<number | null>(null);
   const dirtySinceRef = useRef<number | null>(null);
   const attemptRef = useRef(0);
-  /** A save that got no answer (it may have landed): what it sent. */
-  const unconfirmedRef = useRef<SentWork | null>(null);
+  /**
+   * Saves since the last confirmed version that got no answer (any one may
+   * have landed): what each sent. Every one, not just the latest — the one
+   * that landed is often the first, before retries that never left.
+   */
+  const unconfirmedRef = useRef<SentWork[]>([]);
   /** A submit that got no answer (it may have gone through): what it sent. */
   const pendingSubmitRef = useRef<SentWork | null>(null);
 
@@ -144,7 +153,7 @@ export function SubmitForm({
     workRef.current = w;
     serverRef.current = sent(w);
     versionRef.current = next.version;
-    unconfirmedRef.current = null;
+    unconfirmedRef.current = [];
     setBody(w.body);
     setLink(w.link);
     setHandedIn(nextHandedIn);
@@ -154,15 +163,17 @@ export function SubmitForm({
 
   /**
    * Read the draft again and bring this tab up to date where that's safe.
-   * True when the tab is now in step and may carry on saving; false when the
-   * newer text would be overwritten (or couldn't be read), which is the
-   * student's call. After a submit with no answer (`afterSubmit`) only "it
-   * went through" or "a save of ours landed" apply: replacing the text the
-   * student just tried to hand in with another tab's would be no answer.
+   * "synced" when the tab is now in step and may carry on saving (or send its
+   * submit again); "conflict" when the newer text would be overwritten, which
+   * is the student's call; "unread" when it couldn't be read, which isn't
+   * anyone's call yet (staleVerdict). After a submit with no answer
+   * (`afterSubmit`) only "it went through" or "a save of ours landed" apply:
+   * replacing the text the student just tried to hand in with another tab's
+   * would be no answer.
    */
-  async function catchUp(afterSubmit = false): Promise<boolean> {
+  async function catchUp(afterSubmit = false): Promise<"synced" | "conflict" | "unread"> {
     const remote = await loadDraft(assignmentId).catch(() => null);
-    if (!remote || remote.state !== "ready") return false;
+    if (!remote || remote.state !== "ready") return "unread";
     const r = reconcileDraft(
       {
         version: versionRef.current,
@@ -173,18 +184,21 @@ export function SubmitForm({
       },
       remote,
     );
+    const verdict = staleVerdict(r, afterSubmit);
+    if (verdict !== "synced") return verdict;
     switch (r.kind) {
       case "landed":
         // A save of ours went through after all: build on it.
         versionRef.current = r.version;
         serverRef.current = r.text;
-        unconfirmedRef.current = null;
+        unconfirmedRef.current = [];
         setDirty(isDirty());
         setStatus({ kind: "saved", at: r.savedAt });
-        return true;
+        break;
       case "submitted": {
         const handed = pendingSubmitRef.current!;
         pendingSubmitRef.current = null;
+        unconfirmedRef.current = [];
         versionRef.current = r.version;
         serverRef.current = handed;
         setHandedIn(handed);
@@ -194,15 +208,13 @@ export function SubmitForm({
         if (stoppedRef.current === "stale") stoppedRef.current = null;
         if (!stoppedRef.current) setStatus({ kind: "idle" });
         router.refresh();
-        return true;
+        break;
       }
       case "adopt":
-        if (afterSubmit) return false;
         adopt(r.start, r.handedIn);
-        return true;
-      default:
-        return false;
+        break;
     }
+    return "synced";
   }
 
   async function saveNow(): Promise<void> {
@@ -240,7 +252,7 @@ export function SubmitForm({
       if (result.ok) {
         versionRef.current = result.version;
         serverRef.current = snapshot;
-        unconfirmedRef.current = null;
+        unconfirmedRef.current = [];
         attemptRef.current = 0;
         failingRef.current = false;
         setStatus({ kind: "saved", at: result.savedAt });
@@ -250,14 +262,23 @@ export function SubmitForm({
       }
       // An error may still have been written (the answer, not the save, was
       // lost); if a later save is refused as stale, this is how it's known.
-      if (result.reason === "error") unconfirmedRef.current = snapshot;
+      // Added to the others since the last confirmed version, never in place
+      // of them: a retry failing after a save that landed must not forget it.
+      if (result.reason === "error") unconfirmedRef.current = withUnconfirmed(unconfirmedRef.current, snapshot);
       // "Stale" can be this tab merely behind — Back showed an old copy, or
       // an earlier save landed without telling us. Only a real conflict stops.
-      if (result.reason === "stale" && (await catchUp())) {
-        attemptRef.current = 0;
-        failingRef.current = false;
-        if (isDirty()) schedule();
-        return;
+      if (result.reason === "stale") {
+        const caught = await catchUp();
+        if (caught === "synced") {
+          attemptRef.current = 0;
+          failingRef.current = false;
+          if (isDirty()) schedule();
+          return;
+        }
+        // The draft couldn't be read back to say whose the newer version is.
+        // Not knowing isn't a conflict: retry, rather than stop and tell the
+        // student another tab changed it.
+        if (caught === "unread") result = { ok: false, reason: "error" };
       }
       if (isFinalDraftFailure(result.reason)) {
         // Another try would be refused the same way: stale, closed, signed
@@ -303,7 +324,13 @@ export function SubmitForm({
     }, wait);
   }
 
-  function edit(next: Partial<Work>) {
+  function edit(raw: Partial<Work>) {
+    // Without NUL (storableText): Postgres can't store one, so a pasted one
+    // failed every save. Dropped here as well as on the server, so this tab
+    // holds exactly the text the server saves and the two compare equal.
+    const next: Partial<Work> = {};
+    if (raw.body !== undefined) next.body = storableText(raw.body);
+    if (raw.link !== undefined) next.link = storableText(raw.link);
     workRef.current = { ...workRef.current, ...next };
     if (next.body !== undefined) setBody(next.body);
     if (next.link !== undefined) setLink(next.link);
@@ -324,13 +351,19 @@ export function SubmitForm({
       if (!live || !remote || remote.state !== "ready") return;
       if (inFlightRef.current || submittingRef.current || stoppedRef.current) return;
       const r = reconcileDraft(
-        { version: versionRef.current, base: serverRef.current, work: sent(workRef.current) },
+        {
+          version: versionRef.current,
+          base: serverRef.current,
+          work: sent(workRef.current),
+          unconfirmed: unconfirmedRef.current,
+        },
         remote,
       );
       if (r.kind === "adopt") adopt(r.start, r.handedIn);
       else if (r.kind === "landed") {
         versionRef.current = r.version;
         serverRef.current = r.text;
+        unconfirmedRef.current = [];
         setDirty(isDirty());
       }
     })();
@@ -398,6 +431,8 @@ export function SubmitForm({
     submittingRef.current = true;
     clearTimer();
     startTransition(async () => {
+      /** The draft has been read back once already for this submit. */
+      let rechecked = false;
       try {
         // Let an autosave that's mid-flight land, so the version this sends
         // is the one it left.
@@ -418,7 +453,7 @@ export function SubmitForm({
             // No answer: it may have gone through. Reading the draft back
             // tells (a submit clears it); otherwise say it failed.
             pendingSubmitRef.current = snapshot;
-            if (enabled && (await catchUpRef.current(true)) && !pendingSubmitRef.current) return;
+            if (enabled && (await catchUpRef.current(true)) === "synced" && !pendingSubmitRef.current) return;
             setError(getActionError(e));
             return;
           }
@@ -427,10 +462,20 @@ export function SubmitForm({
             return;
           }
           if (res.data?.outcome === "stale") {
-            // Newer work from elsewhere that this tab never saw. Handing this
-            // in would replace it, so ask; declining leaves both alone, and
-            // this tab stops saving over it too.
-            if (!force && window.confirm(STALE_CONFIRM)) {
+            // The draft has moved past the version this tab sent. That can be
+            // this tab's own save, which landed with its answer lost: read it
+            // back first, and if the newer version is our own text, take its
+            // number and send again — no question. Once per submit.
+            let verdict: "synced" | "conflict" | "unread" = "conflict";
+            if (enabled && !force && !rechecked) {
+              rechecked = true;
+              verdict = await catchUpRef.current(true);
+              if (verdict === "synced") continue;
+            }
+            // Newer work from elsewhere that this tab never saw (or couldn't
+            // be checked). Handing this in would replace it, so ask;
+            // declining leaves both alone, and this tab stops saving over it.
+            if (!force && window.confirm(verdict === "unread" ? STALE_UNKNOWN_CONFIRM : STALE_CONFIRM)) {
               force = true;
               continue;
             }
@@ -440,7 +485,7 @@ export function SubmitForm({
             return;
           }
           pendingSubmitRef.current = null;
-          unconfirmedRef.current = null;
+          unconfirmedRef.current = [];
           if (res.data) versionRef.current = res.data.draftVersion;
           serverRef.current = snapshot;
           dirtySinceRef.current = null;

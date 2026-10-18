@@ -19,7 +19,11 @@ export async function GET(req: Request) {
     loadCohortBoard(admin, cohortId),
   ]);
   if (!cohort) return new Response("Cohort not found", { status: 404 });
-  if (!board.ready) return new Response("Assignments aren't set up yet", { status: 503 });
+  if (!board.ready) {
+    return new Response(board.failed ? "Couldn't load the assignments just now. Try again." : "Assignments aren't set up yet", {
+      status: 503,
+    });
+  }
 
   const byUser = new Map(board.rows.map((r) => [r.userId, r]));
   const rows = board.students.map((s) => {

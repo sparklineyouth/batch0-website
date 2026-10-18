@@ -183,25 +183,65 @@ export async function listDueFollowUps(args: {
 
 export type FollowUpOwner = { id: string; name: string };
 
+/** Supabase's default max-rows: a page this long may have more behind it. */
+const OWNER_PAGE = 1000;
+
 /**
  * Who a follow-up can be given to: people whose role can change follow-ups
  * (followUpOwnerRoleSlugs). Derived from the role table, so a custom role
  * granted the keys at /admin/roles shows up without a deploy.
+ *
+ * Every one of them, a page at a time. It used to stop at 300, A–Z, so a
+ * valid owner past that was missing from the drawer's picker — and, since a
+ * save checked the owner against this same list, refused as someone who
+ * "can't own follow-ups". Saves now check by id (getFollowUpOwner).
  */
 export async function listFollowUpOwners(): Promise<FollowUpOwner[]> {
   const slugs = followUpOwnerRoleSlugs(await getAllRoles());
   if (slugs.length === 0) return [];
+  const admin = createAdminClient();
+  const out: FollowUpOwner[] = [];
+  for (let from = 0; ; from += OWNER_PAGE) {
+    const { data, error } = await admin
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("role", slugs)
+      .order("full_name", { ascending: true })
+      // A tiebreak, so two people with one name can't swap between pages.
+      .order("id", { ascending: true })
+      .range(from, from + OWNER_PAGE - 1);
+    // Throws rather than returning nobody: an empty list would read as "no
+    // one can own follow-ups", and a short one would hide whoever was cut.
+    if (error) {
+      console.error("[followups] listFollowUpOwners", error.message);
+      throw new Error("Couldn't load who can own follow-ups. Try again.");
+    }
+    const page = (data ?? []) as any[];
+    for (const p of page) out.push({ id: p.id as string, name: personName(p) ?? "Unnamed" });
+    if (page.length < OWNER_PAGE) return out;
+  }
+}
+
+/**
+ * One person, if their role can own follow-ups (the same rule as
+ * listFollowUpOwners); null if not, or if there's no such person. What
+ * saveFollowUp checks the chosen owner with: one row by id, so how many
+ * people can own follow-ups never decides whether this one may. Throws when
+ * the read fails, rather than calling a valid owner invalid.
+ */
+export async function getFollowUpOwner(id: string): Promise<FollowUpOwner | null> {
+  const slugs = followUpOwnerRoleSlugs(await getAllRoles());
+  if (slugs.length === 0) return null;
   const { data, error } = await createAdminClient()
     .from("profiles")
-    .select("id, full_name, email")
-    .in("role", slugs)
-    .order("full_name", { ascending: true })
-    .limit(300);
-  // Throws rather than returning nobody: an empty list would read as "no one
-  // can own follow-ups", and a save would be refused for the wrong reason.
+    .select("id, full_name, email, role")
+    .eq("id", id)
+    .maybeSingle();
   if (error) {
-    console.error("[followups] listFollowUpOwners", error.message);
-    throw new Error("Couldn't load who can own follow-ups. Try again.");
+    console.error("[followups] getFollowUpOwner", error.message);
+    throw new Error("Couldn't check who can own follow-ups. Try again.");
   }
-  return ((data ?? []) as any[]).map((p) => ({ id: p.id as string, name: personName(p) ?? "Unnamed" }));
+  const p = data as { id: string; full_name: string | null; email: string | null; role: string | null } | null;
+  if (!p || !p.role || !slugs.includes(p.role)) return null;
+  return { id: p.id, name: personName(p) ?? "Unnamed" };
 }

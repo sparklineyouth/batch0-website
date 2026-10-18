@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as nodeModule from "node:module";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import path from "node:path";
+import { capabilitiesFrom } from "./permissions.ts";
 
 // The real lib/chat.ts and lib/chat-notify.ts against an in-memory database:
 // mention search past the first page of name matches, the sidebar and badge
@@ -70,6 +71,16 @@ function from(table: string) {
       const [, c, t, before] = keyset;
       return (r: Row) => r[c] != null && (String(r[c]) < t || (String(r[c]) === t && String(r.id) < before));
     }
+    // A window around one message: `c.lt."t",and(c.eq."t",id.lte.x)` / `c.gt."t",and(c.eq."t",id.gt.x)`.
+    const around = /^(\w+)\.(lt|gt)\."([^"]*)",and\(\1\.eq\."\3",id\.(lte|gt)\.([0-9a-f-]+)\)$/.exec(expr);
+    if (around) {
+      const [, c, side, t, idOp, at] = around;
+      const before = side === "lt";
+      return (r: Row) =>
+        r[c] != null &&
+        (before ? String(r[c]) < t : String(r[c]) > t) ||
+        (String(r[c]) === t && (idOp === "lte" ? String(r.id) <= at : String(r.id) > at));
+    }
     const parts = expr.split(",").map((p) => p.split("."));
     return (r: Row) => parts.some(([c, o, v]) => o === "eq" && r[c] === v);
   };
@@ -97,6 +108,7 @@ function from(table: string) {
     order: (c: string, o?: { ascending?: boolean }) => (sorts.push([c, o?.ascending !== false]), chain),
     range: (a: number, b: number) => ((window = [a, b]), chain),
     limit: (n: number) => ((cap = n), chain),
+    maybeSingle: () => run().then((r) => ({ ...r, data: Array.isArray(r.data) ? (r.data[0] ?? null) : r.data })),
     then: (ok: any, ko: any) => run().then(ok, ko),
   };
   return chain;
@@ -128,7 +140,7 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
   },
 });
 const chat = await import("./chat.ts");
-const { clearChannelBellsMany, notifyNewMessage, CHAT_BELL_TYPES } = await import("./chat-notify.ts");
+const { clearChannelBellsMany, notifyNewMessage, notifyThreadReply, CHAT_BELL_TYPES } = await import("./chat-notify.ts");
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const ME = id(1);
@@ -456,4 +468,190 @@ test("a message's bells carry its id, so ringing them again rings nobody twice; 
   fresh(null);
   await bell({ postedAt: "2026-10-17T09:01:00.000Z" });
   assert.equal(state.notified.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Threads (0110)
+// ---------------------------------------------------------------------------
+
+const message = (n: number, channel: string, at: string, extra: Row = {}): Row => ({
+  id: id(n), channel_id: channel, sender_id: ME, body: `message ${n}`, kind: "message", reply_to_id: null, mentions: [],
+  mention_everyone: false, attachments: [], reactions: {}, created_at: at, edited_at: null, deleted_at: null, pinned_at: null,
+  client_id: null, thread_root_id: null, ...extra,
+});
+
+test("the feed leaves thread replies out; a message with replies carries its count and question; a link to a reply opens around its root", async () => {
+  const CH = id(800);
+  const ROOT = id(801);
+  const rows = [
+    message(801, CH, "2026-10-17T10:00:00.000Z"),
+    message(802, CH, "2026-10-17T10:01:00.000Z", { thread_root_id: ROOT }),
+    message(803, CH, "2026-10-17T10:02:00.000Z", { thread_root_id: ROOT }),
+    message(804, CH, "2026-10-17T10:03:00.000Z"),
+  ];
+  reset({
+    chat_messages: rows,
+    chat_threads: [{ root_id: ROOT, channel_id: CH, reply_count: 2, last_reply_at: "2026-10-17T10:02:00.000Z", question: "open", answer_id: null, help_ticket_id: null, about_kind: "lesson", about_id: id(900) }],
+  });
+  const page = await chat.listMessages(CH);
+  assert.deepEqual(page.messages.map((m) => m.id), [id(801), id(804)], "replies don't flood the feed");
+  assert.deepEqual(page.messages[0].thread, { replyCount: 2, lastReplyAt: "2026-10-17T10:02:00.000Z", question: "open", answerId: null });
+  assert.equal(page.messages[1].thread, undefined, "nothing for a message without a thread");
+  assert.ok(!("about" in page.messages[0].thread!), "the course item is per viewer (lib/chat-about.ts), never on the shared read");
+  // A bell or search hit names a reply: the feed opens around its root, and says which thread to open at it.
+  const around = await chat.listMessages(CH, { around: id(803) });
+  assert.deepEqual(around.thread, { rootId: ROOT, focusId: id(803) });
+  assert.ok(around.messages.some((m) => m.id === ROOT));
+  assert.ok(!around.messages.some((m) => m.threadRootId), "still no replies in the feed");
+});
+
+test("a message whose only thread state is an 'Ask about this' link still gets a summary, so its chip can be resolved per viewer", async () => {
+  const CH = id(820);
+  // A staff post (never a question), a quote-reply (never a question), and a
+  // question someone unmarked before anyone replied: each kept its link.
+  const rows = [message(821, CH, "2026-10-17T10:00:00.000Z"), message(822, CH, "2026-10-17T10:01:00.000Z")];
+  reset({
+    chat_messages: rows,
+    chat_threads: [{ root_id: id(821), channel_id: CH, reply_count: 0, last_reply_at: null, question: null, answer_id: null, help_ticket_id: null, about_kind: "assignment", about_id: id(901) }],
+  });
+  const page = await chat.listMessages(CH);
+  assert.deepEqual(page.messages[0].thread, { replyCount: 0, lastReplyAt: null, question: null, answerId: null });
+  assert.ok(!("about" in page.messages[0].thread!), "the summary says nothing of the link itself");
+  assert.equal(page.messages[1].thread, undefined);
+});
+
+test("a thread's replies page on (created_at, id): replies sharing a timestamp across the edge are neither skipped nor repeated", async () => {
+  const CH = id(810);
+  const ROOT = id(811);
+  const at = "2026-10-17T11:00:00.000Z";
+  // 60 replies; the 10 oldest share one timestamp, across the page edge.
+  const replies = Array.from({ length: 60 }, (_, i) =>
+    message(1000 + i, CH, i < 10 ? at : `2026-10-17T11:${String(i).padStart(2, "0")}:30.000Z`, { thread_root_id: ROOT }),
+  );
+  reset({ chat_messages: [message(811, CH, "2026-10-17T10:00:00.000Z"), ...replies, message(812, CH, at)], chat_threads: [] });
+  const first = await chat.listThreadReplies(CH, ROOT, { limit: 55 });
+  assert.equal(first.replies.length, 55);
+  assert.equal(first.hasMoreBefore, true);
+  const oldest = first.replies[0];
+  const second = await chat.listThreadReplies(CH, ROOT, { before: oldest.createdAt, beforeId: oldest.id, limit: 55 });
+  assert.equal(second.hasMoreBefore, false);
+  const all = [...second.replies, ...first.replies].map((m) => m.id);
+  assert.equal(new Set(all).size, 60, "every reply exactly once");
+  assert.deepEqual(all, replies.map((r) => r.id), "in posting order");
+  assert.ok(first.replies.every((m) => m.threadRootId === ROOT), "only this thread's, never the feed's");
+  // A deleted reply isn't read back, and another thread's replies never are.
+  replies[59].deleted_at = "2026-10-17T12:00:00.000Z";
+  state.tables.chat_messages.push(message(1999, CH, "2026-10-17T11:59:59.000Z", { thread_root_id: id(812) }));
+  const again = await chat.listThreadReplies(CH, ROOT, { limit: 55 });
+  assert.ok(!again.replies.some((m) => m.id === replies[59].id || m.id === id(1999)));
+});
+
+test("a thread reply bells its followers and mentions — still readers, unblocked, unmuted, once per burst — never the channel's 'All messages' list", async () => {
+  const CH = channelRow(830, "channel", { name: "team-acme", audience: "members" });
+  const ROOT = id(831);
+  const REPLY = id(832);
+  const who = (n: number) => id(4000 + n);
+  const [FOLLOWER, MENTIONED, LEFT, BLOCKER, MUTER, PENDING, LOOKING, UNFOLLOWED, ALL] = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(who);
+  const now = Date.parse("2026-10-17T16:00:00.000Z");
+  const fresh = () =>
+    reset({
+      // Who reads the private channel now: everyone but LEFT, who was removed from it.
+      chat_members: [ME, FOLLOWER, MENTIONED, BLOCKER, MUTER, PENDING, LOOKING, UNFOLLOWED, ALL].map((u) => ({ channel_id: CH.id, user_id: u })),
+      chat_thread_follows: [
+        ...[FOLLOWER, LEFT, BLOCKER, MUTER, PENDING].map((u) => ({ root_id: ROOT, user_id: u, state: "following", seen_at: null })),
+        { root_id: ROOT, user_id: LOOKING, state: "following", seen_at: new Date(now - 30_000).toISOString() },
+        { root_id: ROOT, user_id: UNFOLLOWED, state: "muted", seen_at: null },
+        { root_id: ROOT, user_id: ME, state: "following", seen_at: null },
+      ],
+      chat_reads: [
+        { channel_id: CH.id, user_id: MUTER, notify: "none" },
+        // "All messages" on the channel is no subscription to every thread in it.
+        { channel_id: CH.id, user_id: ALL, notify: "all" },
+      ],
+      notifications: [{ id: id(5000), user_id: PENDING, link: `/chat?c=${CH.id}&thread=${ROOT}`, type: "chat_thread", read_at: null }],
+      chat_blocks: [{ blocker_id: BLOCKER, blocked_id: ME }],
+      profiles: [ME, FOLLOWER, MENTIONED, LEFT, BLOCKER, MUTER, PENDING, LOOKING, UNFOLLOWED, ALL].map((u, i) => ({
+        id: u, full_name: u === ME ? "Maya Chen" : `Person ${i}`, role: "student",
+      })),
+    });
+  const ring = (extra: Record<string, unknown> = {}) =>
+    notifyThreadReply({
+      channel: chat.toChannel(CH), rootId: ROOT, messageId: REPLY, senderId: ME, mentions: [MENTIONED, UNFOLLOWED],
+      createdAt: new Date(now - 60_000).toISOString(), now, ...extra,
+    });
+
+  fresh();
+  await ring();
+  assert.deepEqual(
+    state.notified.map((n) => [n.userId, n.type]).sort(),
+    [[FOLLOWER, "chat_thread"], [MENTIONED, "chat_mention"], [UNFOLLOWED, "chat_mention"]].sort(),
+    "an unfollow still lets a mention through; nobody else",
+  );
+  for (const n of state.notified) {
+    assert.equal(n.link, `/chat?c=${CH.id}&thread=${ROOT}`);
+    assert.equal(n.dedupeKey, `chat-message:${REPLY}`, "one bell per message, however often it's rung");
+    assert.equal(n.body, undefined, "never the words");
+    assert.match(n.title, /^Maya Chen (replied in|mentioned you in) a thread in #team-acme$/);
+  }
+  // History carried in later (not fresh) rings nobody.
+  fresh();
+  await ring({ createdAt: new Date(now - 2 * 3_600_000).toISOString() });
+  assert.equal(state.notified.length, 0);
+  // A replay: whoever has opened the thread since it was posted is skipped.
+  fresh();
+  state.tables.chat_thread_follows.find((f) => f.user_id === FOLLOWER)!.seen_at = new Date(now - 10 * 60_000).toISOString();
+  await ring({ postedAt: new Date(now - 20 * 60_000).toISOString(), createdAt: new Date(now - 20 * 60_000).toISOString() });
+  assert.ok(!state.notified.some((n) => n.userId === FOLLOWER));
+});
+
+test("the Overview's report queue reads the moderator's membership of the reported channels only — and agrees with listReports", async () => {
+  const DM_IN = channelRow(800, "dm"); // the moderator is in it, so its report isn't theirs to see
+  const DM_OUT = channelRow(801, "dm");
+  const TEXT = channelRow(802, "channel", { name: "general", audience: "everyone" });
+  const report = (n: number, channel: Row, minutes: number, extra: Row = {}): Row => ({
+    id: id(n), channel_id: channel.id, message_id: null, reporter_id: id(3), reason: "Not okay", status: "open",
+    reviewed_by: null, reviewed_at: null, party_ids: [id(2)],
+    created_at: new Date(Date.parse("2026-10-17T12:00:00.000Z") - minutes * 60_000).toISOString(), ...extra,
+  });
+  const tables = (): Record<string, Row[]> => ({
+    chat_channels: [DM_IN, DM_OUT, TEXT],
+    chat_members: [
+      { channel_id: DM_IN.id, user_id: ME },
+      { channel_id: DM_OUT.id, user_id: id(2) },
+      // Staff collect a DM with every applicant who writes in.
+      ...Array.from({ length: 2500 }, (_, i) => ({ channel_id: id(10_000 + i), user_id: ME })),
+    ],
+    chat_reports: [
+      report(900, DM_IN, 1),
+      report(901, DM_OUT, 2),
+      report(902, TEXT, 3),
+      report(903, TEXT, 4, { party_ids: [ME] }), // about the moderator
+      report(904, TEXT, 5, { status: "dismissed" }),
+    ],
+    profiles: [
+      { id: ME, full_name: "Mo Moderator", role: "admin" },
+      { id: id(3), full_name: "Ray Reporter", role: "student" },
+    ],
+  });
+  const mod = capabilitiesFrom("admin", ["*"]);
+
+  reset(tables());
+  const full = await chat.listReports(await chat.getChatViewer(ME, mod), "open");
+  assert.ok(state.log.filter((l) => l.startsWith("select chat_members")).length >= 3, "getChatViewer pages every membership");
+
+  reset(tables());
+  const narrow = await chat.listOpenReportsFor(ME, mod);
+  assert.deepEqual(narrow, full, "the same queue");
+  assert.deepEqual(narrow.map((r) => r.id), [id(901), id(902)]);
+  assert.deepEqual(
+    state.log.filter((l) => l.startsWith("select chat_members")),
+    [`select chat_members user_id=${ME} channel_id:3`],
+    "one read, of the three reported channels",
+  );
+  assert.ok(!state.log.some((l) => /enrollments|team_members|mentor_assignments|applications/.test(l)), state.log.join("\n"));
+
+  // No chat.manage: no queue, and nothing read for it.
+  reset(tables());
+  assert.deepEqual(await chat.listOpenReportsFor(ME, capabilitiesFrom("custom", ["people.view"])), []);
+  assert.deepEqual(state.log, []);
 });

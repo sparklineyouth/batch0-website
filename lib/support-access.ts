@@ -693,6 +693,21 @@ export function statusChangeFields(
 }
 
 /**
+ * A Chat thread's help request going back to the team (lib/support.ts
+ * reopenChatHelpTicket, migration 0110): someone in the thread asked again
+ * while it was waiting on them or resolved. What a requester's follow-up
+ * does (statusAfterRequesterReply → open): back in "Needs reply", and the
+ * reply clock — which runs from requester_activity_at (0090) — starts from
+ * this ask, not from when they first wrote.
+ */
+export function chatHelpReopenFields(
+  from: "waiting_on_requester" | "resolved",
+  nowIso: string,
+): TicketStatusFields & { requester_activity_at: string } {
+  return { ...statusChangeFields(from, "open", nowIso), requester_activity_at: nowIso };
+}
+
+/**
  * Whether the category asks for a receipt reference and offers the "which
  * payment?" picker. Only the two money categories do; asking an account
  * lockout for a Stripe id is noise.
@@ -958,6 +973,14 @@ export type SupportContext = {
   chargeId?: string;
   /** A Demo Day ticket (demo_day_tickets) this is about, ownership-verified. */
   demoDayTicketId?: string;
+  /**
+   * The Chat thread a help request came from ("Ask the team", migration
+   * 0110): its channel and the message that started it. Set only by the
+   * server (lib/support.ts createChatHelpTicket), never read from a form.
+   * The admin ticket page links to it; the thread itself is only readable
+   * by whoever reads its channel.
+   */
+  chatThread?: { channelId: string; rootId: string };
 };
 
 export const CONTEXT_PAGE_MAX = 300;
@@ -1047,7 +1070,21 @@ export function readStoredContext(stored: unknown): SupportContext {
   const out = sanitizeContext(s);
   if (isUuid(s.chargeId)) out.chargeId = s.chargeId;
   if (isUuid(s.demoDayTicketId)) out.demoDayTicketId = s.demoDayTicketId;
+  const thread = s.chatThread as Record<string, unknown> | null | undefined;
+  if (thread && typeof thread === "object" && isUuid(thread.channelId) && isUuid(thread.rootId)) {
+    out.chatThread = { channelId: thread.channelId, rootId: thread.rootId };
+  }
   return out;
+}
+
+/** The requester's own page for a ticket: on the website, or in the app. */
+export function requesterThreadPath(reference: string, surface: SupportSurface = "web"): string {
+  return surface === "app" ? `/app/support/${reference}` : `/dashboard/support/${reference}`;
+}
+
+/** Where a help request's Chat thread opens (the same link as a thread bell). */
+export function chatThreadPath(t: { channelId: string; rootId: string }): string {
+  return `/chat?c=${t.channelId}&thread=${t.rootId}`;
 }
 
 // ---------------------------------------------------------------------------

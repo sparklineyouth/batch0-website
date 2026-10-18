@@ -25,6 +25,7 @@ import {
   fetchBlockedPeople,
   fetchDeletedMessages,
   flagForTeam,
+  type FlagResult,
   renameGroup,
   reportConversation,
   reportMessage,
@@ -857,20 +858,28 @@ export function AddPeopleDialog({
 }
 
 /**
- * "Ask the team for help" about a message in a channel: every chat moderator
- * gets a bell that opens it. Not a report — nobody is in trouble — so it
- * hands over nothing but the link and the note.
+ * "Ask the team for help" on a message: every chat moderator gets a bell
+ * that opens it. Not a report — nobody is in trouble — so it hands over
+ * nothing but the link and the note. With threads (0110) it also files, or
+ * joins, the thread's one help request in Support: `onDone` gets its
+ * reference (for its requester and the team only), and whether this made a
+ * new one, joined the one already open or put it back with the team.
+ * Educational help only — the copy points safety worries at Report, which
+ * is its own confidential queue.
  */
 export function FlagDialog({
   message,
   people,
+  threads = false,
   onClose,
   onDone,
 }: {
   message: UiMessage;
   people: Record<string, ChatPerson>;
+  /** The channel has threads: the request is the thread's, and is tracked in Support. */
+  threads?: boolean;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (result: FlagResult | null) => void;
 }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -882,7 +891,7 @@ export function FlagDialog({
     const res = await attempt(() => flagForTeam(message.id, note));
     setBusy(false);
     if (!res.ok) setError(resultError(res, "Couldn't reach the team. Try again."));
-    else onDone();
+    else onDone(res.data ?? null);
   };
   return (
     <Modal open title="Ask the team for help" onClose={onClose} busy={busy}>
@@ -891,8 +900,10 @@ export function FlagDialog({
         {plainText(message.body || "[attachment]", (id) => people[id]?.name, () => null, 200)}
       </blockquote>
       <p className="mb-3 text-xs leading-relaxed text-ink-soft">
-        The batch0 team gets a notification that opens this message. Use it when someone&apos;s stuck or something needs a
-        staff eye. To flag something wrong, report it instead.
+        {threads
+          ? "Someone on the batch0 team picks it up as a help request for this thread, and the thread shows when it's handled. If the thread already has one, the team is told you asked too. Use it when someone's stuck or something needs a staff eye."
+          : "The batch0 team gets a notification that opens this message. Use it when someone's stuck or something needs a staff eye."}{" "}
+        If something here is unsafe or upsetting, use Report instead: it goes to the team privately.
       </p>
       <form
         onSubmit={(e) => {

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   EVENT_HISTORY_MAX_PAGE,
   EVENT_HISTORY_PAGE_SIZE,
+  currentSessions,
   emptyHistoryMessage,
   eventCohortIds,
   eventVisibilityScopes,
@@ -252,6 +253,28 @@ test("both app screens scope events by enrollments, not access.cohortId", () => 
 });
 
 // ---- /dashboard/events' past list, composed ----
+
+test("live now and upcoming lead page one only; a later page of history shows neither", () => {
+  const rows = [
+    { id: "live", s: "live" },
+    { id: "open", s: "open" },
+    { id: "soon", s: "upcoming" },
+    { id: "done", s: "ended" },
+    { id: "old", s: "past" },
+  ];
+  const first = currentSessions(1, rows)!;
+  assert.deepEqual(first.live.map((x) => x.id), ["live"]);
+  assert.deepEqual(first.upcoming.map((x) => x.id), ["open", "soon"]);
+  for (const page of [2, 3, EVENT_HISTORY_MAX_PAGE]) assert.equal(currentSessions(page, rows), null, `page ${page}`);
+  // Page one with nothing on: the Upcoming section still says so.
+  assert.deepEqual(currentSessions(1, []), { live: [], upcoming: [] });
+
+  // The page renders both sections from it, never from the raw rows.
+  const src = readFileSync(new URL("../app/dashboard/events/page.tsx", import.meta.url), "utf8");
+  assert.match(src, /currentSessions\(page, withStatus\)/);
+  assert.match(src, /\{current && current\.live\.length > 0 && \(/);
+  assert.doesNotMatch(src, /\{liveNow\.length > 0 && \(/);
+});
 
 test("past rows: the last day's ended sessions lead page one only", () => {
   const lastDay = [ev("y2", 20), ev("y1", 19)];

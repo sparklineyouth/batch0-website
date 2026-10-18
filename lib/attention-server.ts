@@ -7,8 +7,9 @@ import { loadFeedbackQueue } from "@/lib/assignments-server";
 import { mentorScope } from "@/lib/mentor-scope";
 import { countTicketsForStaff, listTicketsForStaff } from "@/lib/support";
 import { supportScopeFor } from "@/lib/support-access";
-import { getChannelRow, getChatViewer, listReports } from "@/lib/chat";
+import { getChannelRow, listOpenReportsFor } from "@/lib/chat";
 import { listDueFollowUps } from "@/lib/student-followups-server";
+import { loadUnansweredQuestions } from "@/lib/chat-questions";
 import { displayEmail } from "@/lib/placeholder-email";
 import {
   ATTENTION_LIMIT,
@@ -17,6 +18,8 @@ import {
   collectAttention,
   feedbackItems,
   followUpItems,
+  questionItems,
+  questionLeftToSupport,
   supportItems,
   type AttentionProvider,
   type AttentionResult,
@@ -166,9 +169,8 @@ const chatReports: AttentionProvider<AttentionContext> = {
     logged("chat_reports", async () => {
       try {
         // Most days there is no open report at all. Say so from one count,
-        // before resolving the moderator's chat membership (thousands of DM
-        // rows for staff) that judging a report's visibility needs. A GET,
-        // not a HEAD: a HEAD's error has no body to say "does not exist".
+        // before reading anything about the reports. A GET, not a HEAD: a
+        // HEAD's error has no body to say "does not exist".
         const { count, error } = await createAdminClient()
           .from("chat_reports")
           .select("id", { count: "exact" })
@@ -176,10 +178,12 @@ const chatReports: AttentionProvider<AttentionContext> = {
           .limit(1);
         if (error) throw Object.assign(new Error(error.message || "Couldn't count chat reports"), { code: error.code });
         if (count === 0) return { key: "chat_reports", label: "Chat reports", total: 0, href: "/admin/chat", items: [] };
-        const viewer = await getChatViewer(userId, caps);
         // The queue /admin/chat shows, with every report naming this
-        // moderator already left out (lib/chat.ts listReports).
-        const open = await listReports(viewer, "open");
+        // moderator already left out. listOpenReportsFor (lib/chat.ts) is
+        // listReports without resolving the moderator's whole chat
+        // membership (thousands of DM rows for staff) on every Overview
+        // render: it reads their membership of the reported channels only.
+        const open = await listOpenReportsFor(userId, caps);
         // A report this moderator filed is counted (it's in their queue) but
         // isn't theirs to judge, so it isn't a row; the note says so.
         const theirs = open.filter((r) => r.reporterId !== userId);
@@ -204,6 +208,46 @@ const chatReports: AttentionProvider<AttentionContext> = {
               ? {
                   text: `${filed === 1 ? "A report you filed is" : `${filed} reports you filed are`} left for another moderator.`,
                   href: "/admin/chat",
+                }
+              : null,
+        };
+      } catch (err) {
+        if (isMissingSchemaError(err)) return null;
+        throw err;
+      }
+    }),
+};
+
+/**
+ * #help's open questions (Chat threads, 0110): the count its Unanswered list
+ * shows, and the oldest few as rows that open their thread. A question whose
+ * help request is in Support's "Needs reply" queue is counted but left to
+ * its Support row — for a viewer who sees Support's rows — and the note says
+ * how many (questionLeftToSupport). One the team has answered in Support
+ * (waiting on the asker) is in no queue, so it stays a row here.
+ */
+const chatQuestions: AttentionProvider<AttentionContext> = {
+  key: "chat_questions",
+  permitted: ATTENTION_PERMITTED.chat_questions,
+  load: ({ caps, now }) =>
+    logged("chat_questions", async () => {
+      try {
+        const q = await loadUnansweredQuestions({ limit: ATTENTION_LIMIT });
+        if (!q.ready || !q.help) return null;
+        const supportListed = ATTENTION_PERMITTED.support(caps);
+        const items = questionItems(q.rows, now, { supportListed }).slice(0, ATTENTION_LIMIT);
+        const withHelp = q.rows.filter((r) => questionLeftToSupport(r, supportListed)).length;
+        return {
+          key: "chat_questions",
+          label: "Unanswered questions",
+          total: q.total,
+          href: `/chat?c=${q.help.id}`,
+          items,
+          note:
+            withHelp > 0
+              ? {
+                  text: `${withHelp === 1 ? "1 question has" : `${withHelp} questions have`} a help request open: listed under Support.`,
+                  href: "/admin/support",
                 }
               : null,
         };
@@ -240,6 +284,7 @@ export const ATTENTION_PROVIDERS: readonly AttentionProvider<AttentionContext>[]
   support,
   feedback,
   chatReports,
+  chatQuestions,
   followUps,
 ];
 

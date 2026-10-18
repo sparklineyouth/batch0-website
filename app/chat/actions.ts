@@ -72,7 +72,33 @@ import {
 } from "@/lib/chat";
 import { findSentMessage, insertMessageOnce, type SentRow } from "@/lib/chat-send";
 import { buildChannelPayload, peopleIn, personalLocks, type ChannelPayload, type ChannelTarget } from "@/lib/chat-payload";
-import { chatLink, clearChannelBells, clearChannelBellsMany, notifyNewMessage } from "@/lib/chat-notify";
+import { chatLink, clearChannelBells, clearChannelBellsMany, notifyNewMessage, notifyThreadReply } from "@/lib/chat-notify";
+import {
+  changeQuestion,
+  describeThread,
+  ensureThreadRow,
+  getThreadRow,
+  setFollowState,
+  setThreadAbout,
+  stampThreadSeen,
+  threadsReady,
+  type ThreadInfo,
+} from "@/lib/chat-threads";
+import { requestThreadHelp, type HelpRequestOutcome } from "@/lib/chat-help";
+import { aboutFor, withAbout } from "@/lib/chat-about";
+import { openQuestionCount } from "@/lib/chat-questions";
+import { supportScopeFor } from "@/lib/support-access";
+import {
+  canDecideQuestion,
+  isQuestionChannel,
+  parseAbout,
+  questionTransition,
+  quoteVerdict,
+  threadRootVerdict,
+  type QuestionAction,
+  type QuestionState,
+  type ThreadableMessage,
+} from "@/lib/chat-threads-rules";
 import { mintChatUploads, removeChannelFiles, verifyChatUploads, type MintedChatUpload } from "@/lib/chat-files";
 import {
   currentReader,
@@ -128,6 +154,16 @@ async function readerNow(): Promise<Reader> {
 }
 
 const NOT_AVAILABLE = "That channel isn't available.";
+
+/** Before migration 0110 runs: threads, questions and their pane aren't there yet. */
+const THREADS_OFF = "Threads aren't switched on yet. Reply in the channel for now.";
+
+/** A message row (lib/chat.ts getMessageRow) as the thread rules see it. */
+function threadable(row: any): ThreadableMessage | null {
+  return row
+    ? { id: row.id, channelId: row.channel_id, threadRootId: row.thread_root_id ?? null, kind: row.kind, deletedAt: row.deleted_at ?? null }
+    : null;
+}
 
 /**
  * A message body, normalized: CRLF to LF, leading blank lines and trailing
@@ -445,6 +481,16 @@ export type SendInput = {
    * through gets the original back (0104, lib/chat-send.ts).
    */
   clientId?: string | null;
+  /**
+   * A reply in a thread (0110): the message that starts it, a feed message
+   * in this channel. Its bells go to the thread's followers and mentions.
+   */
+  threadRootId?: string | null;
+  /**
+   * "Ask about this": `lesson:<id>` or `assignment:<id>`, for a new top-level
+   * message. Kept only when the sender can open that item (lib/chat-about.ts).
+   */
+  about?: string | null;
 };
 
 /** Bells go out after the response: the sender shouldn't wait on them. */
@@ -454,6 +500,17 @@ function ringAfter(bell: Parameters<typeof notifyNewMessage>[0]): void {
       await notifyNewMessage(bell);
     } catch (err) {
       console.error("[chat] notify failed", err);
+    }
+  });
+}
+
+/** A thread reply's bells (0110), after the response, the same way. */
+function ringThreadAfter(bell: Parameters<typeof notifyThreadReply>[0]): void {
+  after(async () => {
+    try {
+      await notifyThreadReply(bell);
+    } catch (err) {
+      console.error("[chat] thread notify failed", err);
     }
   });
 }
@@ -485,15 +542,31 @@ async function replaySent(viewer: ChatViewer, sent: SentRow, input: SendInput): 
   if (sent.deleted_at) refuse("That message was sent, and has been deleted since.");
   const [message] = await getMessages([sent.id]);
   if (!message) throw new Error("Sent, but couldn't load it back. Refresh to see it.");
-  ringAfter({
-    channelId: channel.id,
-    messageId: message.id,
-    senderId: viewer.userId,
-    mentions: message.mentions,
-    mentionEveryone: message.mentionEveryone,
-    channel,
-    postedAt: message.createdAt,
-  });
+  // The same thread, or the feed, as the first send said (0110).
+  if ((asUuid(input.threadRootId) ?? null) !== (message.threadRootId ?? null)) {
+    refuse("That message was already sent in another conversation.");
+  }
+  if (message.threadRootId) {
+    ringThreadAfter({
+      channel,
+      rootId: message.threadRootId,
+      messageId: message.id,
+      senderId: viewer.userId,
+      mentions: message.mentions,
+      createdAt: message.createdAt,
+      postedAt: message.createdAt,
+    });
+  } else {
+    ringAfter({
+      channelId: channel.id,
+      messageId: message.id,
+      senderId: viewer.userId,
+      mentions: message.mentions,
+      mentionEveryone: message.mentionEveryone,
+      channel,
+      postedAt: message.createdAt,
+    });
+  }
   return { channelId: channel.id, message };
 }
 
@@ -565,17 +638,40 @@ async function postNewMessage(
   const files = await verifyChatUploads(input.attachments, channel.id, viewer.userId);
   if (!files.ok) refuse(files.error);
 
+  // A reply in a thread (0110): its root is a live feed message here. The
+  // database says the same (0110's guard and same-channel key), whoever writes.
+  let threadRoot: string | null = null;
+  if (input.threadRootId) {
+    const wanted = asUuid(input.threadRootId);
+    if (!wanted) refuse("The message that started this thread is gone.");
+    if (!(await threadsReady())) refuse(THREADS_OFF);
+    const verdict = threadRootVerdict(channel, threadable(await getMessageRow(wanted)));
+    if (!verdict.ok) refuse(verdict.reason);
+    threadRoot = wanted;
+  }
+
   let replyTo: { id: string; senderId: string | null; kind: string } | null = null;
   if (input.replyToId) {
     const target = await getMessageRow(input.replyToId);
-    if (!target || target.channel_id !== channel.id || target.deleted_at) {
-      refuse("The message you're replying to is gone.");
-    }
+    // Inside a thread, a quote of the thread; in the feed, of the feed.
+    const verdict = quoteVerdict(channel.id, threadRoot, threadable(target));
+    if (!verdict.ok) refuse(verdict.reason);
     replyTo = { id: target.id, senderId: target.sender_id ?? null, kind: target.kind };
   }
 
+  // "Ask about this": only an item the sender can open themselves, on a new
+  // top-level message in a text channel. Before 0110 the link is dropped and
+  // the message still goes.
+  let about: { kind: "lesson" | "assignment"; id: string } | null = null;
+  if (input.about && !threadRoot && channel.kind === "channel" && (await threadsReady())) {
+    const ref = parseAbout(input.about);
+    if (!ref || !(await aboutFor(ref))) refuse("You can only link a lesson or assignment you can open.");
+    about = ref;
+  }
+
   const mentions = await pingsFor(channel, viewer, body, replyTo);
-  const everyone = canMentionEveryone(channel, viewer) && mentionsEveryone(body);
+  // A thread reply never pings everyone: it would ring a cohort per reply.
+  const everyone = !threadRoot && canMentionEveryone(channel, viewer) && mentionsEveryone(body);
 
   const written = await insertMessageOnce(
     {
@@ -586,6 +682,7 @@ async function postNewMessage(
       mentions,
       mention_everyone: everyone,
       attachments: files.attachments,
+      ...(threadRoot ? { thread_root_id: threadRoot } : {}),
     },
     clientId,
   );
@@ -597,30 +694,47 @@ async function postNewMessage(
   // The bells are asked for the moment the row exists, before anything else
   // is awaited: after() still runs if this request fails from here on, so a
   // message that went in is never one nobody was told about.
-  ringAfter({
-    channelId: channel.id,
-    messageId: row.id,
-    senderId: viewer.userId,
-    mentions,
-    mentionEveryone: everyone,
-    channel,
-  });
+  if (threadRoot) {
+    ringThreadAfter({
+      channel,
+      rootId: threadRoot,
+      messageId: row.id,
+      senderId: viewer.userId,
+      mentions,
+      createdAt: row.created_at,
+    });
+  } else {
+    ringAfter({
+      channelId: channel.id,
+      messageId: row.id,
+      senderId: viewer.userId,
+      mentions,
+      mentionEveryone: everyone,
+      channel,
+    });
+    // The sender has read their own message; a closed conversation reopens.
+    // (A thread reply isn't in the feed, so it moves no channel cursor.)
+    await createAdminClient().from("chat_reads").upsert(
+      {
+        channel_id: channel.id,
+        user_id: viewer.userId,
+        last_read_at: row.created_at,
+        seen_at: new Date().toISOString(),
+        hidden_at: null,
+      },
+      { onConflict: "channel_id,user_id" },
+    );
+  }
 
-  // The sender has read their own message; a closed conversation reopens.
-  await createAdminClient().from("chat_reads").upsert(
-    {
-      channel_id: channel.id,
-      user_id: viewer.userId,
-      last_read_at: row.created_at,
-      seen_at: new Date().toISOString(),
-      hidden_at: null,
-    },
-    { onConflict: "channel_id,user_id" },
-  );
+  if (about) {
+    // The message is sent either way; a lost link is the smaller failure.
+    await setThreadAbout(row.id, channel.id, about).catch((err) => console.error("[chat] linking the course item failed", err));
+  }
 
   const [message] = await getMessages([row.id]);
   if (!message) throw new Error("Sent, but couldn't load it back. Refresh to see it.");
-  return { channelId: channel.id, message };
+  const [shown] = about ? await withAbout([message]) : [message];
+  return { channelId: channel.id, message: shown };
 }
 
 export async function editMessage(messageId: string, rawBody: string): Promise<ActionResult<{ message: ChatMessage }>> {
@@ -651,7 +765,8 @@ export async function editMessage(messageId: string, rawBody: string): Promise<A
       body,
       replied && !replied.deleted_at ? { senderId: replied.sender_id ?? null, kind: replied.kind } : null,
     );
-    const everyone = row.mention_everyone || (canMentionEveryone(found.channel, viewer) && mentionsEveryone(body));
+    const everyone =
+      !row.thread_root_id && (row.mention_everyone || (canMentionEveryone(found.channel, viewer) && mentionsEveryone(body)));
     const { error } = await createAdminClient()
       .from("chat_messages")
       .update({ body, mentions, mention_everyone: everyone, edited_at: new Date().toISOString() })
@@ -758,6 +873,8 @@ export async function togglePin(messageId: string): Promise<ActionResult<{ pinne
     const viewer = await viewerNow();
     const row = await getMessageRow(messageId);
     if (!row || row.deleted_at || row.kind !== "message") refuse("That message is gone.");
+    // Pins open in the feed; a thread reply isn't in it (0110).
+    if (row.thread_root_id) refuse("Pin the message that started the thread instead.");
     const found = await getChannelForViewer(row.channel_id, viewer);
     if (!found) refuse(NOT_AVAILABLE);
     if (!canPin(found.channel, viewer)) refuse("Only the batch0 team pins messages here.");
@@ -1172,15 +1289,36 @@ export async function reportConversation(input: { channelId: string; reason: str
 
 const FLAG_NOTE_MAX = 300;
 
+export type FlagResult = {
+  /**
+   * The thread's help request in Support (0110): its reference — only for
+   * the person who filed it and the team (helpReferenceFor) — and whether
+   * this made, linked or reopened it.
+   */
+  reference: string | null;
+  outcome: HelpRequestOutcome | null;
+  /** The asker filed this request themselves (it's their Support request). */
+  yours?: boolean;
+};
+
 /**
  * Point the team at a message: someone is stuck, or something needs a staff
- * eye that isn't a report. Every chat.manage holder gets a bell that opens
- * the message. Text channels only — staff can read those; in a DM or group
- * the way to bring the team in is a report, which says what it hands over.
+ * eye that isn't a report. Text channels only — staff can read those; in a
+ * DM or group the way to bring the team in is a report, which says what it
+ * hands over.
+ *
+ * The thread it's in (the message's own, when it isn't a reply) gets ONE help
+ * request in Support (lib/chat-help.ts): a new ticket, or the thread's
+ * existing one with a note that someone asked again — so the team has a
+ * record with an owner and a state, not just a bell. Every other chat.manage
+ * holder still gets the bell, which opens the message. Before 0110, only the
+ * bell (as it was). A failed ticket is logged and the bell still goes: the
+ * team hears either way.
  */
-export async function flagForTeam(messageId: string, note: string): Promise<ActionResult> {
+export async function flagForTeam(messageId: string, note: string): Promise<ActionResult<FlagResult>> {
   return runAction({ name: "chat.flag" }, async () => {
-    const viewer = await viewerNow();
+    const actor = await requireActor();
+    const viewer = await getChatViewer(actor.userId, actor.caps);
     const row = await getMessageRow(messageId);
     if (!row || row.deleted_at) refuse("That message is gone.");
     const found = await getChannelForViewer(row.channel_id, viewer);
@@ -1191,20 +1329,142 @@ export async function flagForTeam(messageId: string, note: string): Promise<Acti
     if (row.kind !== "message") refuse("Pick a message to ask about.");
     const text = String(note ?? "").replace(/\s+/g, " ").trim().slice(0, FLAG_NOTE_MAX);
     await rateLimit("chat-flag", viewer.userId, 5, 3600, "You've asked the team a few times just now. They'll see it — try again later.");
+
+    let request: Awaited<ReturnType<typeof requestThreadHelp>> | null = null;
+    if (await threadsReady()) {
+      try {
+        request = await requestThreadHelp({
+          channel: found.channel,
+          rootId: row.thread_root_id ?? row.id,
+          messageId: row.id,
+          askerId: viewer.userId,
+          askerIsTeam: supportScopeFor(actor.userId, actor.caps).canView,
+          note: text,
+        });
+      } catch (err) {
+        console.error("[chat] help request not filed", err);
+      }
+    }
+
     const moderators = (await listModeratorIds()).filter((id) => id !== viewer.userId);
-    if (moderators.length === 0) return;
-    const me = (await getPerson(viewer.userId))?.name ?? "Someone";
-    await notifyMany(
-      moderators.map((id) => ({
-        userId: id,
-        type: "chat_flagged",
-        // The title names who and where, never the message's words; the
-        // flagger's own note rides in the body (only its recipient reads it).
-        title: `${me} asked the team for help in #${found.channel.name ?? "a channel"}`,
-        body: text || null,
-        link: `${chatLink(found.channel.id)}&m=${row.id}`,
-      })),
-    );
+    if (moderators.length > 0) {
+      const me = (await getPerson(viewer.userId))?.name ?? "Someone";
+      await notifyMany(
+        moderators.map((id) => ({
+          userId: id,
+          type: "chat_flagged",
+          // The title names who and where, never the message's words; the
+          // flagger's own note rides in the body (only its recipient reads it).
+          title: `${me} asked the team for help in #${found.channel.name ?? "a channel"}`,
+          body: text || null,
+          // A reply opens in its thread (lib/chat.ts listMessages, `around`).
+          link: `${chatLink(found.channel.id)}&m=${row.id}`,
+        })),
+      );
+    }
+    return { reference: request?.reference ?? null, outcome: request?.outcome ?? null, yours: request?.yours ?? false };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Threads and #help's questions (migration 0110)
+// ---------------------------------------------------------------------------
+
+/**
+ * A thread's root, for a write: a live person's feed message in a text
+ * channel this viewer reads now. The same "not available" for anything else.
+ */
+async function threadRootFor(viewer: ChatViewer, rootId: string): Promise<{ root: any; channel: ChannelRow }> {
+  if (!(await threadsReady())) refuse(THREADS_OFF);
+  const root = await getMessageRow(String(rootId ?? ""));
+  if (!root || root.deleted_at || root.thread_root_id || root.kind !== "message") refuse("That message is gone.");
+  const found = await getChannelForViewer(root.channel_id, viewer);
+  if (!found || found.channel.kind !== "channel") refuse(NOT_AVAILABLE);
+  return { root, channel: found.channel };
+}
+
+/**
+ * Settle a #help question: accept a reply as its answer, mark it answered,
+ * reopen it, or say it isn't a question (or that it is). The asker or chat
+ * staff only (canDecideQuestion). `expect` is the state the screen showed:
+ * if someone changed it meanwhile, nothing moves and the screen is told to
+ * look again. The accepted answer must be a live reply in this thread — the
+ * check here, and 0110's in the same statement as the write, which also
+ * logs the transition (chat_thread_events).
+ */
+export async function setQuestion(input: {
+  rootId: string;
+  action: QuestionAction;
+  answerId?: string | null;
+  expect?: { question: QuestionState | null; answerId: string | null } | null;
+}): Promise<ActionResult<{ info: ThreadInfo; unanswered: number | null }>> {
+  return runAction({ name: "chat.question" }, async () => {
+    const actor = await requireActor();
+    const viewer = await getChatViewer(actor.userId, actor.caps);
+    const { root, channel } = await threadRootFor(viewer, input.rootId);
+    if (!isQuestionChannel(channel.systemKey)) refuse("Questions live in #help.");
+    if (channel.archivedAt) refuse("This channel is archived. It's read-only now.");
+    if (!canDecideQuestion(viewer, { senderId: root.sender_id ?? null })) {
+      refuse("Only the person who asked, or the batch0 team, can do that.");
+    }
+    await assertNotLocked(viewer);
+    await rateLimit("chat-question", viewer.userId, 30, 600, "That's a lot of changes to questions. Try again in a few minutes.");
+
+    let answerId: string | null = null;
+    if (input.action === "accept") {
+      const answer = await getMessageRow(String(input.answerId ?? ""));
+      if (!answer || answer.thread_root_id !== root.id || answer.deleted_at || answer.kind !== "message") {
+        refuse("That reply is gone.");
+      }
+      answerId = answer.id;
+    }
+    await ensureThreadRow(root.id, channel.id);
+    const row = await getThreadRow(root.id);
+    const now = { question: row?.question ?? null, answerId: row?.answerId ?? null };
+    const changed = "Someone changed this question just now. Have a look and try again.";
+    if (input.expect && (input.expect.question !== now.question || (input.expect.answerId ?? null) !== now.answerId)) refuse(changed);
+    const step = questionTransition(now, input.action, answerId);
+    if (!step.ok) refuse(step.reason);
+    if (!(await changeQuestion(root.id, now, step.next, viewer.userId))) refuse(changed);
+    // #help's header counts its open questions: the screen updates it from
+    // here (null if it couldn't be counted: the screen keeps what it shows).
+    const [info, unanswered] = await Promise.all([
+      describeThread(viewer, actor.caps, channel, root, await getThreadRow(root.id)),
+      openQuestionCount(channel.id),
+    ]);
+    return { info, unanswered };
+  });
+}
+
+/**
+ * Follow a thread, or unfollow it. Unfollowing sticks: replying again
+ * doesn't bring the bells back (0110), Follow does. A mention still rings.
+ */
+export async function followThread(rootId: string, following: boolean): Promise<ActionResult<{ following: boolean }>> {
+  return runAction({ name: "chat.thread_follow" }, async () => {
+    const viewer = await viewerNow();
+    const { root, channel } = await threadRootFor(viewer, rootId);
+    await ensureThreadRow(root.id, channel.id);
+    await setFollowState(root.id, viewer.userId, following ? "following" : "muted");
+    return { following: !!following };
+  });
+}
+
+/**
+ * "I have this thread open": holds its next bell back and takes this
+ * person's bells for it down. Sent when the pane opens and once a minute
+ * while it stays open, like the channel's "still here". The cheap read-path
+ * viewer, as for markRead: it only ever writes the caller's own state.
+ */
+export async function markThreadSeen(channelId: string, rootId: string): Promise<ActionResult<{ cleared: number }>> {
+  return runAction({ name: "chat.thread_seen" }, async () => {
+    const r = await readerNow();
+    if (!(await threadsReady())) return { cleared: 0 };
+    const found = await openChannelFor(String(channelId ?? ""), r.userId, r.caps);
+    if (!found || found.channel.kind !== "channel") refuse(NOT_AVAILABLE);
+    const root = await getMessageRow(String(rootId ?? ""));
+    if (!root || root.channel_id !== found.channel.id || root.thread_root_id) refuse(NOT_AVAILABLE);
+    return { cleared: await stampThreadSeen(found.channel.id, root.id, r.userId) };
   });
 }
 

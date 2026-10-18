@@ -1,4 +1,4 @@
-import type { MessagesByIdPayload, MessagesPayload } from "@/app/chat/api/reads";
+import type { MessagesByIdPayload, MessagesPayload, ThreadPayload, UnansweredPayload } from "@/app/chat/api/reads";
 import type { ChatPerson, SidebarData } from "./types";
 
 /**
@@ -15,6 +15,8 @@ import type { ChatPerson, SidebarData } from "./types";
 export type MessagesPage = MessagesPayload;
 export type MessagesById = MessagesByIdPayload;
 export type PinsPage = MessagesByIdPayload;
+export type ThreadPage = ThreadPayload;
+export type UnansweredPage = UnansweredPayload;
 export type Attention = { n: number; userId: string | null };
 
 /** What a failed read says, whatever went wrong underneath. */
@@ -72,6 +74,11 @@ export const chatApi = {
     get<MessagesById>("messages-by-id", { c: channelId, ids: ids.slice(0, 50).join(",") }),
   members: (channelId: string) => get<ChatPerson[]>("members", { c: channelId }),
   pins: (channelId: string) => get<PinsPage>("pins", { c: channelId }),
+  /** One thread (0110): its root and newest replies, or the replies before (createdAt, id). */
+  thread: (channelId: string, rootId: string, opts: { before?: { createdAt: string; id: string } } = {}) =>
+    get<ThreadPage>("thread", { c: channelId, root: rootId, before: opts.before?.createdAt, beforeId: opts.before?.id }),
+  /** #help's open questions (0110). */
+  unanswered: (channelId: string) => get<UnansweredPage>("unanswered", { c: channelId }),
   attention: () => get<Attention>("attention"),
 };
 

@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { isAfter, toggleReaction as applyToggle } from "@/lib/chat-access";
+import { isAfter, isUuid, toggleReaction as applyToggle } from "@/lib/chat-access";
+import { bumpThread, dropThreadReply, isAutoQuestion } from "@/lib/chat-threads-rules";
 import { plainText } from "@/lib/chat-format";
 import { mergeMessages, reconcilePage, settledBy } from "@/lib/chat-view";
 import type { ChannelTarget } from "@/lib/chat-payload";
@@ -23,7 +24,10 @@ import { useMessageFeed, usePing, usePresence, useTyping, pingDelay, type LiveRo
 import { ChatReadError, NOT_AVAILABLE, READ_FAILED, chatApi, dropQueuedPush, holdChatUrl, serverSaidNo, tracked, writeChatUrl } from "./api";
 import type { ChatPerson, ChannelPayload, ChatViewerInfo, Panel, SidebarData, SidebarItem, UiMessage } from "./types";
 import { OFFLINE, newClientId, resultError } from "./util";
-import { applyUpdate, bumpSidebarRow, has, localOnly, pendingTwin, sameMessage, toQuote, toUiMessage, withoutMessage } from "./live-rows";
+import { applyUpdate, bumpSidebarRow, has, isThreadReply, localOnly, pendingTwin, sameMessage, toQuote, toUiMessage, withoutMessage } from "./live-rows";
+import { createThreadBus } from "./thread-bus";
+import { createThreadOutbox } from "./thread-outbox";
+import type { RootPatch } from "./thread-panel";
 
 /**
  * batch0 Chat, the client. Owns the sidebar, the open channel, a small cache
@@ -80,11 +84,33 @@ export function ChatApp({
   /** While an uncached conversation loads: its name, for the header. */
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialError);
-  const [panel, setPanel] = useState<Panel>(null);
+  // A link to a thread (a thread bell) opens it in the side pane (0110).
+  const [panel, setPanel] = useState<Panel>(() => (initialPayload?.channel && initialPayload.openThread ? "thread" : null));
+  /** The open thread: its channel, the message it hangs off, and a reply to show. */
+  const [thread, setThreadState] = useState<{ channelId: string; rootId: string; focusId: string | null } | null>(() =>
+    initialPayload?.channel && initialPayload.openThread
+      ? { channelId: initialPayload.channel.id, rootId: initialPayload.openThread.rootId, focusId: initialPayload.openThread.focusId }
+      : null,
+  );
+  const threadRef = useRef(thread);
+  const setThread = useCallback((next: typeof thread) => {
+    threadRef.current = next;
+    setThreadState(next);
+  }, []);
+  /** Did this tab push a history entry for the thread pane (a phone)? Back then closes it. */
+  const pushedThread = useRef(false);
+  const threadBus = useMemo(() => createThreadBus(), []);
+  /** Thread replies still sending or failed, by root: they outlive the pane (closing it mid-send loses nothing). */
+  const threadOutbox = useMemo(() => createThreadOutbox(), []);
+  /** Roots with a thread reply that failed to send: the feed says so under each. */
+  const [unsentThreads, setUnsentThreads] = useState<ReadonlySet<string>>(() => threadOutbox.failedRoots());
+  useEffect(() => threadOutbox.subscribe(() => setUnsentThreads(threadOutbox.failedRoots())), [threadOutbox]);
+  /** #help questions this tab has counted live, so an echo and a send's own answer count one once. */
+  const countedQuestions = useRef(new Set<string>());
   // A phone shows one pane. It opens on the list unless the link named a
   // conversation (or one that failed, so its error is what shows).
   const [mobilePane, setMobilePane] = useState<"list" | "channel">(() =>
-    initialError || (initialPayload && (params?.get("c") || params?.get("to") || params?.get("team"))) ? "channel" : "list",
+    initialError || (initialPayload && (params?.get("c") || params?.get("to") || params?.get("team") || params?.get("ask"))) ? "channel" : "list",
   );
   const [wide, setWide] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
@@ -368,7 +394,8 @@ export function ChatApp({
 
   const urlFor = (p: ChannelPayload) =>
     (p.channel ? `/chat?c=${p.channel.id}` : p.draftTo ? `/chat?to=${p.draftTo.id}` : "/chat") +
-    (p.channel && p.focusId ? `&m=${p.focusId}` : "");
+    (p.channel && p.focusId ? `&m=${p.focusId}` : "") +
+    (p.channel && threadRef.current?.channelId === p.channel.id ? `&thread=${threadRef.current.rootId}` : "");
 
   /**
    * Show a fresh payload. Unsent and failed bubbles that belong to it ride
@@ -403,17 +430,23 @@ export function ChatApp({
       const oldestOfPage = page[0]?.createdAt ?? null;
       const continuous =
         onScreenNow.length > 0 && (!p.hasMoreBefore || !oldestOfPage || !newestLoaded || !isAfter(oldestOfPage, newestLoaded));
-      setPayload(p);
+      // A refetch of the channel on screen keeps the composer's "Ask about this" link.
+      setPayload(same && cur?.ask && !p.ask ? { ...p, ask: cur.ask } : p);
       const guard = { deleted: deleted.current };
       setMessages(mergeMessages(local, continuous ? mergeMessages(onScreenNow, page, guard) : page, guard));
       setHasMoreBefore(continuous ? hasMoreBeforeRef.current : p.hasMoreBefore);
       addPeople(p.people);
       setJumpTo(p.focusId);
       if (id) cache.current.delete(id);
+      // A thread link (a bell, a reply's search hit) opens its thread (0110).
+      if (id && p.openThread) {
+        setThread({ channelId: id, rootId: p.openThread.rootId, focusId: p.openThread.focusId });
+        setPanel("thread");
+      }
       writeChatUrl(urlFor(p));
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [addPeople, freshen, setMessages, setPayload],
+    [addPeople, freshen, setMessages, setPayload, setThread],
   );
 
   /** A cached copy, brought up to date with what this tab knows happened since. */
@@ -496,6 +529,12 @@ export function ChatApp({
       }
       const sameChannel = !!id && id === channelIdRef.current;
       if (!sameChannel) stash();
+      // A thread belongs to its channel: leaving the channel leaves it.
+      if (!sameChannel && threadRef.current) {
+        setThread(null);
+        pushedThread.current = false;
+        setPanel((cur) => (cur === "thread" ? null : cur));
+      }
       const cached = id && !around ? cache.current.get(id) : undefined;
       if (cached) {
         showCached(id!, cached);
@@ -514,7 +553,7 @@ export function ChatApp({
       if (!how.fromHistory) {
         const url =
           "channelId" in target
-            ? `/chat?c=${target.channelId}${around ? `&m=${around}` : ""}`
+            ? `/chat?c=${target.channelId}${around ? `&m=${around}` : ""}${target.thread ? `&thread=${target.thread}` : ""}`
             : "withUserId" in target
               ? `/chat?to=${target.withUserId}`
               : null;
@@ -555,14 +594,25 @@ export function ChatApp({
   /** Narrower than this, the side panel covers the conversation. */
   const panelCovers = () => !window.matchMedia("(min-width: 1024px)").matches;
 
+  /** A panel other than the thread takes the side: the thread is closed, and leaves the address bar. */
+  const dropThread = useCallback(() => {
+    if (!threadRef.current) return;
+    pushedThread.current = false;
+    setThread(null);
+  }, [setThread]);
+
   const openChannel = useCallback(
     (channelId: string, around?: string | null) => {
       // The panel covers the thread below lg: get it out of the way, or the
-      // jump (and its highlight) happens out of sight.
-      if (panelCovers()) setPanel(null);
+      // jump (and its highlight) happens out of sight. (A jump to a thread
+      // reply opens that thread again, once the channel answers.)
+      if (panelCovers()) {
+        setPanel(null);
+        dropThread();
+      }
       void openTarget({ channelId, around: around ?? null });
     },
-    [openTarget],
+    [dropThread, openTarget],
   );
 
   const goToConversationWith = useCallback(
@@ -586,11 +636,21 @@ export function ChatApp({
         setMobilePane("list");
         return;
       }
+      const t = sp.get("thread");
       if (c && c === channelIdRef.current) {
         setMobilePane("channel");
+        // Back from a thread (a phone's pane) closes it; Forward opens it again.
+        if (isUuid(t)) {
+          if (threadRef.current?.rootId !== t) setThread({ channelId: c, rootId: t, focusId: null });
+          setPanel("thread");
+        } else if (threadRef.current) {
+          pushedThread.current = false;
+          setThread(null);
+          setPanel((cur) => (cur === "thread" ? null : cur));
+        }
         return;
       }
-      if (c) void openTarget({ channelId: c, around: sp.get("m") }, { fromHistory: true });
+      if (c) void openTarget({ channelId: c, around: sp.get("m"), thread: isUuid(t) ? t : null }, { fromHistory: true });
       else if (to) void openTarget({ withUserId: to }, { fromHistory: true });
     };
     window.addEventListener("popstate", onPop);
@@ -627,6 +687,29 @@ export function ChatApp({
   // ---------------------------------------------------------------------------
 
   /** Reconcile the open channel with the server's newest page (deletes Realtime couldn't deliver, missed inserts). */
+  /**
+   * #help's open-question count (0110), on its header button: set from what
+   * the server just counted (a resync, a settled question, the Unanswered
+   * list) or moved by one (a question arriving live). The channel on screen,
+   * or its cached copy.
+   */
+  const setUnanswered = useCallback(
+    (cid: string, n: number | ((cur: number) => number)) => {
+      const next = (cur: number) => Math.max(0, typeof n === "function" ? n(cur) : n);
+      if (channelIdRef.current === cid) {
+        setPayload((p) =>
+          p?.channel && p.channel.id === cid && next(p.channel.unanswered) !== p.channel.unanswered
+            ? { ...p, channel: { ...p.channel, unanswered: next(p.channel.unanswered) } }
+            : p,
+        );
+      } else {
+        const c = cache.current.get(cid);
+        if (c?.payload.channel) c.payload = { ...c.payload, channel: { ...c.payload.channel, unanswered: next(c.payload.channel.unanswered) } };
+      }
+    },
+    [setPayload],
+  );
+
   const resync = useCallback(async () => {
     const id = channelIdRef.current;
     if (!id || hasMoreAfterRef.current) return;
@@ -635,6 +718,8 @@ export function ChatApp({
       const page = await chatApi.messages(id);
       if (channelIdRef.current !== id || hasMoreAfterRef.current) return;
       addPeople(page.people);
+      // #help: its Unanswered count catches up too (others' questions, answers, deletes).
+      if (typeof page.unanswered === "number") setUnanswered(id, page.unanswered);
       setMessages((prev) => {
         const fresh = freshen(page.messages as UiMessage[], since, prev);
         const next = reconcilePage(prev, fresh, { asOf: page.asOf, complete: !page.hasMoreBefore, deleted: deleted.current });
@@ -647,7 +732,7 @@ export function ChatApp({
     } catch {
       /* the next tick retries */
     }
-  }, [addPeople, freshen, setMessages]);
+  }, [addPeople, freshen, setMessages, setUnanswered]);
 
   const refreshOpenRef = useRef<(id: string, opts?: { quiet?: boolean }) => Promise<void>>(async () => undefined);
   const refreshOpen = (id: string, opts?: { quiet?: boolean }) => refreshOpenRef.current(id, opts);
@@ -759,8 +844,10 @@ export function ChatApp({
       try {
         const res = await chatApi.messagesById(cid, ids);
         addPeople(res.people);
-        if (channelIdRef.current === cid) {
-          setMessages((prev) => mergeMessages(prev, freshen(res.messages as UiMessage[], since, prev), { deleted: deleted.current }));
+        // Thread replies (0110) are the thread pane's to hydrate, never the feed's.
+        const feed = (res.messages as UiMessage[]).filter((m) => !m.threadRootId);
+        if (channelIdRef.current === cid && feed.length) {
+          setMessages((prev) => mergeMessages(prev, freshen(feed, since, prev), { deleted: deleted.current }));
         }
       } catch {
         /* resync will catch it */
@@ -786,16 +873,72 @@ export function ChatApp({
     [setSidebar, viewer.id],
   );
 
+  /** Change a thread's root wherever it is (the feed, or a cached channel): its "N replies" and question. */
+  const patchRoot = useCallback(
+    (rootId: string, fn: (summary: UiMessage["thread"]) => UiMessage["thread"]) => {
+      touch(rootId);
+      applyWhereItIs(rootId, (list) => {
+        let changed = false;
+        const next = list.map((m) => {
+          if (m.id !== rootId) return m;
+          const summary = fn(m.thread);
+          if (summary === m.thread) return m;
+          changed = true;
+          return { ...m, thread: summary };
+        });
+        return changed ? next : list;
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [touch],
+  );
+
+  /** A thread reply was deleted (here, or live): one off its root's count, once. */
+  const replyGone = useCallback(
+    (rootId: string, replyId: string) => {
+      if (deleted.current.has(replyId)) return;
+      deleted.current.add(replyId);
+      patchRoot(rootId, (t) => dropThreadReply(t, replyId));
+    },
+    [patchRoot],
+  );
+
   const onInsert = useCallback(
     (row: LiveRow) => {
       if (!row?.id || deleted.current.has(row.id)) return;
+      // A thread reply (0110): its root's count goes up, and the thread pane
+      // takes it. It isn't the feed's, the sidebar's or the unread count's.
+      if (isThreadReply(row)) {
+        patchRoot(row.thread_root_id!, (t) => bumpThread(t, { createdAt: row.created_at }));
+        threadBus.emit({ kind: "insert", row });
+        return;
+      }
       const isOpen = row.channel_id === channelIdRef.current;
       const fromOther = row.sender_id !== viewer.id;
       if (isOpen && hasMoreAfterRef.current) {
         // Reading old messages: the newest page will bring this in.
         skippedLive.current = true;
       } else if (isOpen) {
-        const msg = toUiMessage(row, messagesRef.current);
+        const base = toUiMessage(row, messagesRef.current);
+        // #help: a post from outside the team is an open question the moment
+        // it's in (0110's trigger); say so now rather than at the next resync.
+        const sender = row.sender_id ? peopleRef.current[row.sender_id] : undefined;
+        const asked =
+          payloadRef.current?.channel?.threads &&
+          isAutoQuestion({
+            systemKey: payloadRef.current.channel.systemKey,
+            threadRootId: null,
+            replyToId: row.reply_to_id,
+            kind: row.kind ?? "message",
+            senderId: row.sender_id,
+            senderStaff: !!sender?.isStaff,
+          });
+        const msg: UiMessage = asked ? { ...base, thread: { replyCount: 0, lastReplyAt: null, question: "open", answerId: null } } : base;
+        // One more in Unanswered, once per question (the next resync reads the real count).
+        if (asked && !countedQuestions.current.has(row.id)) {
+          countedQuestions.current.add(row.id);
+          setUnanswered(row.channel_id, (n) => n + 1);
+        }
         setMessages((prev) => {
           if (prev.some((m) => m.id === row.id)) return prev;
           // Our own echo can beat the send's reply, or come after it failed.
@@ -832,7 +975,7 @@ export function ChatApp({
       if (bumpSidebar(row, reading)) void refreshSidebar();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [bumpSidebar, hydrate, markSeen, refreshSidebar, setMessages, viewer.id],
+    [bumpSidebar, hydrate, markSeen, patchRoot, refreshSidebar, setMessages, setUnanswered, threadBus, viewer.id],
   );
 
   /** A message's pin changed (live, or our own toggle): its flag, and the channel's pin count. */
@@ -855,6 +998,15 @@ export function ChatApp({
     (row: LiveRow) => {
       if (!row?.id) return;
       touch(row.id);
+      // A thread reply's edit, reaction or delete is the pane's; a delete
+      // also takes one off its root's count (0110).
+      if (isThreadReply(row)) {
+        if (row.deleted_at) replyGone(row.thread_root_id!, row.id);
+        threadBus.emit({ kind: "update", row });
+        return;
+      }
+      // The root itself changed: the pane shows it too.
+      if (threadRef.current?.rootId === row.id) threadBus.emit({ kind: "update", row });
       if (row.deleted_at) deleted.current.add(row.id);
       const pinChange = has(row, "pinned_at") || !!row.deleted_at;
       if (row.channel_id === channelIdRef.current) {
@@ -883,7 +1035,7 @@ export function ChatApp({
         }
       }
     },
-    [refreshSidebar, setMessages, setPinned, setSidebar, touch],
+    [refreshSidebar, replyGone, setMessages, setPinned, setSidebar, threadBus, touch],
   );
 
   const connectedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -897,6 +1049,7 @@ export function ChatApp({
       connectedTimer.current = setTimeout(() => {
         connectedTimer.current = null;
         void resync();
+        threadBus.emit({ kind: "resync" });
       }, 250);
     },
   });
@@ -963,6 +1116,8 @@ export function ChatApp({
     attachments: { path: string; name: string; size: number; type: string }[];
     /** Made once when the message is written; every Retry sends it again (0104). */
     clientId: string;
+    /** "Ask about this" (0110): the lesson or assignment it links to. */
+    about?: string | null;
   };
 
   const sendWith = useCallback(
@@ -977,6 +1132,7 @@ export function ChatApp({
         replyToId: input.reply?.id ?? null,
         attachments: input.attachments.map((a) => ({ path: a.path, name: a.name })),
         clientId: input.clientId,
+        about: input.about ?? null,
       };
       const optimistic: UiMessage = {
         id: tempId,
@@ -1011,6 +1167,7 @@ export function ChatApp({
           replyToId: retry.replyToId,
           attachments: retry.attachments,
           clientId: input.clientId,
+          about: retry.about,
         }),
       ).catch(() => ({ ok: false as const, error: OFFLINE }));
       // The answer belongs to the bubble wherever it is now: on screen, or
@@ -1026,6 +1183,12 @@ export function ChatApp({
       }
       const { message, channelId: cid } = res.data;
       lastSentAt.current.set(cid, Date.now());
+      // The link went with it: the composer's "Asking about" chip is done, and
+      // a reload mustn't bring it back (`?ask=` leaves the address bar).
+      if (retry.about) {
+        setPayload((cur) => (cur?.channel?.id === cid && cur.ask ? { ...cur, ask: null } : cur));
+        if (channelIdRef.current === cid) writeChatUrl(`/chat?c=${cid}`);
+      }
       applyWhereItIs(tempId, (prev) => mergeMessages(prev.filter((m) => m.id !== tempId), [message as UiMessage]));
       // It names someone this tab has no name for (picked some other way than
       // the "@" menu): fetch the message with its people, or it says "@unknown".
@@ -1057,12 +1220,13 @@ export function ChatApp({
 
   // A new message from the composer gets its own client id here, once.
   const send = useCallback(
-    (input: { body: string; replyTo: UiMessage | null; attachments: SendInput["attachments"] }) =>
+    (input: { body: string; replyTo: UiMessage | null; attachments: SendInput["attachments"]; about?: string | null }) =>
       void sendWith({
         body: input.body,
         reply: input.replyTo ? toQuote(input.replyTo) : null,
         attachments: input.attachments,
         clientId: newClientId(),
+        about: input.about ?? null,
       }),
     [sendWith],
   );
@@ -1082,6 +1246,7 @@ export function ChatApp({
         // The same message, so the same id: if the first try went in after
         // all, the server hands that one back rather than posting it again.
         clientId: retry.clientId,
+        about: retry.about ?? null,
       });
     },
     [sendWith, setMessages],
@@ -1227,8 +1392,79 @@ export function ChatApp({
 
   const wasDeleted = useCallback((id: string) => deleted.current.has(id), []);
 
-  // The members panel is for channels and groups.
-  const shownPanel: Panel = panel === "members" && payload?.channel?.kind === "dm" ? null : panel;
+  /**
+   * Open a thread (0110) in the side pane: beside the channel from lg up,
+   * over it below that. On a phone it's a pane of its own with a history
+   * entry, so Back (and Android's back gesture) closes it and the channel is
+   * where it was.
+   */
+  const openThread = useCallback(
+    (rootId: string, focusId: string | null = null) => {
+      const cid = channelIdRef.current;
+      if (!cid) return;
+      const narrow = !window.matchMedia("(min-width: 768px)").matches;
+      const already = threadRef.current?.rootId === rootId;
+      setThread({ channelId: cid, rootId, focusId });
+      setPanel("thread");
+      if (!already) {
+        const push = narrow && !pushedThread.current;
+        if (push) pushedThread.current = true;
+        writeChatUrl(`/chat?c=${cid}&thread=${rootId}`, { push });
+      }
+    },
+    [setThread],
+  );
+
+  const closeThread = useCallback(() => {
+    if (!threadRef.current) {
+      setPanel((cur) => (cur === "thread" ? null : cur));
+      return;
+    }
+    if (dropQueuedPush()) pushedThread.current = false;
+    if (pushedThread.current) {
+      // Undo our own entry: the popstate handler closes the pane.
+      pushedThread.current = false;
+      window.history.back();
+      return;
+    }
+    const cid = threadRef.current.channelId;
+    setThread(null);
+    setPanel((cur) => (cur === "thread" ? null : cur));
+    if (cid === channelIdRef.current) writeChatUrl(`/chat?c=${cid}`);
+  }, [setThread]);
+
+  const onRootPatch = useCallback(
+    (rootId: string, patch: RootPatch) =>
+      patchRoot(rootId, (t) => {
+        const cur = t ?? { replyCount: 0, lastReplyAt: null, question: null, answerId: null };
+        const next = { ...cur, ...patch };
+        return (Object.keys(patch) as (keyof RootPatch)[]).every((k) => cur[k] === next[k]) && t ? t : next;
+      }),
+    [patchRoot],
+  );
+
+  const onReplySent = useCallback(
+    (rootId: string, reply: UiMessage) => patchRoot(rootId, (t) => bumpThread(t, reply)),
+    [patchRoot],
+  );
+
+  // The members panel is for channels and groups; a thread is its own channel's; Unanswered is #help's.
+  const shownPanel: Panel =
+    (panel === "members" && payload?.channel?.kind === "dm") ||
+    (panel === "thread" && (!thread || thread.channelId !== payload?.channel?.id)) ||
+    (panel === "unanswered" && !payload?.channel?.questionChannel)
+      ? null
+      : panel;
+
+  // The feed's "A reply didn't send" is for threads that aren't open: the
+  // open one shows its failed reply, with Retry, right there in the pane.
+  const openRoot = shownPanel === "thread" ? (thread?.rootId ?? null) : null;
+  const feedUnsent = useMemo(() => {
+    if (!openRoot || !unsentThreads.has(openRoot)) return unsentThreads;
+    const rest = new Set(unsentThreads);
+    rest.delete(openRoot);
+    return rest;
+  }, [openRoot, unsentThreads]);
 
   return (
     <div className="flex h-full min-h-0 w-full">
@@ -1275,7 +1511,14 @@ export function ChatApp({
           onJumped={() => setJumpTo(null)}
           onBack={backToList}
           panel={shownPanel}
-          onPanel={(p) => setPanel((cur) => (cur === p ? null : p))}
+          onPanel={(p) => {
+            if (threadRef.current) {
+              dropThread();
+              const cid = channelIdRef.current;
+              if (cid) writeChatUrl(`/chat?c=${cid}`);
+            }
+            setPanel((cur) => (cur === p ? null : p));
+          }}
           onSend={send}
           onRetry={retrySend}
           onDiscard={discard}
@@ -1296,6 +1539,14 @@ export function ChatApp({
           onLeft={onLeft}
           wasDeleted={wasDeleted}
           onPeople={addPeople}
+          // openThread is stable: an inline arrow here would rebuild ChannelView's
+          // message actions on every render, and redraw every message with them.
+          onOpenThread={openThread}
+          unsentThreads={feedUnsent}
+          onClearAsk={() => {
+            setPayload((cur) => (cur ? { ...cur, ask: null } : cur));
+            if (channelIdRef.current) writeChatUrl(`/chat?c=${channelIdRef.current}`);
+          }}
         />
       </div>
 
@@ -1307,10 +1558,30 @@ export function ChatApp({
           people={people}
           online={online}
           channelNames={channelNames}
-          onClose={() => setPanel(null)}
+          onClose={() => (shownPanel === "thread" ? closeThread() : setPanel(null))}
+          // A thread reply opens around its root, with its thread open (lib/chat.ts listMessages).
           onJump={(cid, mid) => openChannel(cid, mid)}
           onMessagePerson={goToConversationWith}
           addPeople={addPeople}
+          onOpenThread={openThread}
+          blocked={sidebar.blocked}
+          onUnanswered={setUnanswered}
+          thread={
+            shownPanel === "thread" && thread
+              ? {
+                  rootId: thread.rootId,
+                  focusId: thread.focusId,
+                  bus: threadBus,
+                  outbox: threadOutbox,
+                  deleted: deleted.current,
+                  onReplyDeleted: replyGone,
+                  onRootPatch,
+                  onReplySent,
+                  onOpenChannel: openChannel,
+                  onBlocksChanged: refreshSidebar,
+                }
+              : null
+          }
         />
       ) : null}
 

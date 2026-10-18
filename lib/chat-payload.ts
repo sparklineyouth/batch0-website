@@ -40,11 +40,16 @@ import {
   listMessages,
   membershipAllowed,
   DELETED_NAME,
+  getMessageRow,
   type ChannelRow,
   type ChatMessage,
   type ChatPerson,
   type ReadRow,
 } from "@/lib/chat";
+import { aboutFor, withAbout } from "@/lib/chat-about";
+import { threadsReady } from "@/lib/chat-threads";
+import { countOpenQuestions } from "@/lib/chat-questions";
+import { isQuestionChannel, parseAbout, type AboutChip } from "@/lib/chat-threads-rules";
 
 /**
  * One channel's on-screen state, built in one place.
@@ -93,6 +98,12 @@ export type ChannelInfo = {
   /** Seconds left before slow mode lets the viewer post again. */
   slowmodeWait: number;
   messageCount: number;
+  /** A text channel, with migration 0110 in: its messages take thread replies. */
+  threads: boolean;
+  /** #help (0110): its posts are questions, and it has the Unanswered list. */
+  questionChannel: boolean;
+  /** #help: how many questions are open right now. */
+  unanswered: number;
 };
 
 export type ChannelPayload = {
@@ -110,13 +121,23 @@ export type ChannelPayload = {
   pins: number;
   /** The message to scroll to and flash, when opened around one. */
   focusId: string | null;
+  /**
+   * The thread to open on arrival (0110): a thread bell's link, or a link to
+   * a reply (the feed opens around its root). `focusId` is the reply to show.
+   */
+  openThread: { rootId: string; focusId: string | null } | null;
+  /**
+   * "Ask about this": the lesson or assignment a new message here will link
+   * to — only one the viewer can open (lib/chat-about.ts).
+   */
+  ask: AboutChip | null;
 };
 
 export type ChannelTarget =
-  | { channelId: string; around?: string | null }
+  | { channelId: string; around?: string | null; thread?: string | null }
   | { withUserId: string }
   | { teamId: string }
-  | { systemKey: string };
+  | { systemKey: string; ask?: string | null };
 
 const EPOCH = new Date(0).toISOString();
 
@@ -178,6 +199,8 @@ export async function buildChannelPayload(viewer: ChatViewer, target: ChannelTar
       people: { [person.id]: person },
       pins: 0,
       focusId: null,
+      openThread: null,
+      ask: null,
     };
   }
   if ("teamId" in target) {
@@ -188,26 +211,44 @@ export async function buildChannelPayload(viewer: ChatViewer, target: ChannelTar
   }
   if ("systemKey" in target) {
     const row = await getChannelBySystemKey(target.systemKey);
-    return row ? byChannel(viewer, row.id, null) : null;
+    const payload = row ? await byChannel(viewer, row.id, null) : null;
+    // "Ask about this" (a lesson or assignment page): the item, if this
+    // viewer can open it, for the composer to link. Otherwise #help opens
+    // as it always does, and says nothing about the item.
+    const ref = target.ask ? parseAbout(target.ask) : null;
+    if (payload?.channel && ref && payload.channel.threads && payload.channel.compose.ok) payload.ask = await aboutFor(ref);
+    return payload;
   }
-  return byChannel(viewer, target.channelId, target.around ?? null);
+  return byChannel(viewer, target.channelId, target.around ?? null, target.thread ?? null);
 }
 
-async function byChannel(viewer: ChatViewer, id: string, around: string | null): Promise<ChannelPayload | null> {
+async function byChannel(
+  viewer: ChatViewer,
+  id: string,
+  around: string | null,
+  thread: string | null = null,
+): Promise<ChannelPayload | null> {
   const found = await getChannelForViewer(id, viewer);
   if (!found) return null;
   const { channel, reported } = found;
-  const [{ info, read }, page, pins] = await Promise.all([
+  const [{ info, read }, page, pins, root] = await Promise.all([
     describe(viewer, channel, reported),
     listMessages(channel.id, around ? { around } : {}),
     countPins(channel.id),
+    // A thread link (a thread bell): the thread's root must be a feed message here.
+    thread && channel.kind === "channel" ? getMessageRow(thread) : Promise.resolve(null),
   ]);
-  const people = await getPeople([...peopleIn(page.messages), ...info.memberIds, info.otherId]);
+  const messages = await withAbout(page.messages);
+  const people = await getPeople([...peopleIn(messages), ...info.memberIds, info.otherId]);
+  const openThread =
+    page.thread ??
+    (root && root.channel_id === channel.id && !root.thread_root_id && root.kind === "message" ? { rootId: root.id, focusId: null } : null);
+  const focus = page.thread?.rootId ?? around;
   return {
     channel: info,
     draftTo: null,
     draftCompose: null,
-    messages: page.messages,
+    messages,
     hasMoreBefore: page.hasMoreBefore,
     hasMoreAfter: page.hasMoreAfter,
     // A text channel never opened starts its "new" line where its badge
@@ -215,7 +256,9 @@ async function byChannel(viewer: ChatViewer, id: string, around: string | null):
     cursor: info.moderatorView ? new Date().toISOString() : (read?.last_read_at ?? defaultReadCursor(channel.kind, Date.now())),
     people: Object.fromEntries(people),
     pins,
-    focusId: around && page.messages.some((m) => m.id === around) ? around : null,
+    focusId: focus && messages.some((m) => m.id === focus) ? focus : null,
+    openThread: info.threads ? openThread : null,
+    ask: null,
   };
 }
 
@@ -248,7 +291,7 @@ async function describe(
   const otherId = channel.kind === "dm" ? otherInDmKey(channel.dmKey, viewer.userId) : null;
   // A moderator reading a reported DM is neither side of it: name both.
   const named = channel.kind === "group" || (channel.kind === "dm" && !participant) ? members : otherId ? [otherId] : [];
-  const [people, reads, blocked, frozen, last, allowed] = await Promise.all([
+  const [people, reads, blocked, frozen, last, allowed, threaded] = await Promise.all([
     getPeople(named),
     participant || channel.kind === "channel" ? getReads(viewer.userId, [channel.id]) : Promise.resolve(new Map<string, ReadRow>()),
     channel.kind === "dm" && participant ? listBlockedIds(viewer.userId) : Promise.resolve([] as string[]),
@@ -257,7 +300,10 @@ async function describe(
       ? lastSentAt(channel.id, viewer.userId)
       : Promise.resolve(null),
     channel.kind !== "channel" && participant ? membershipAllowed(members) : Promise.resolve(true),
+    channel.kind === "channel" ? threadsReady() : Promise.resolve(false),
   ]);
+  const questionChannel = threaded && isQuestionChannel(channel.systemKey);
+  const unanswered = questionChannel ? await countOpenQuestions(channel.id) : 0;
   const otherPresent = channel.kind === "dm" ? !!otherId && people.has(otherId) && members.includes(otherId) : true;
   // Only someone who could otherwise post pays for the mute and fine lookups.
   const locks =
@@ -323,6 +369,9 @@ async function describe(
       notifyIsDefault: pref === null,
       slowmodeWait: slowModeWait(channel, viewer, last, Date.now()),
       messageCount: channel.messageCount,
+      threads: threaded,
+      questionChannel,
+      unanswered,
     },
   };
 }

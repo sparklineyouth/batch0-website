@@ -15,7 +15,7 @@
  * browser finishes after the page is gone, and a signed-out session is a 401
  * the form can name rather than a redirect it can't tell from an outage.
  */
-import { LIMITS, normalizeLink } from "./assignments.ts";
+import { LIMITS, normalizeLink, storableText } from "./assignments.ts";
 
 /** Quiet time after the last keystroke before a save. */
 export const DRAFT_SAVE_DELAY_MS = 2000;
@@ -98,13 +98,15 @@ export function draftRetryDelay(attempt: number, reason: DraftFailure = "error")
 /**
  * Lengths only: a draft is whatever has been typed so far, valid or not (a
  * half-typed link is normal). Kept as typed, untrimmed; empty becomes null.
+ * Less any NUL character (storableText), which Postgres can't store: one
+ * used to fail every save, and the form retried it forever.
  */
 export function checkDraft(input: {
   body?: string | null;
   link?: string | null;
 }): { ok: true; body: string | null; link: string | null } | { ok: false; error: string } {
-  const body = typeof input.body === "string" ? input.body : "";
-  const link = typeof input.link === "string" ? input.link : "";
+  const body = storableText(typeof input.body === "string" ? input.body : "");
+  const link = storableText(typeof input.link === "string" ? input.link : "");
   if (body.length > LIMITS.body) return { ok: false, error: `Keep it under ${LIMITS.body} characters.` };
   if (link.length > LIMITS.link) return { ok: false, error: "That link is too long." };
   return { ok: true, body: body || null, link: link || null };
@@ -273,6 +275,25 @@ export function startingWork(args: {
 /** The form's text as a save sends it: the link is "" on a text-only assignment. */
 export type SentWork = { body: string; link: string };
 
+/** How many unanswered saves a tab remembers before it starts forgetting the middle ones. */
+export const UNCONFIRMED_MAX = 50;
+
+/**
+ * A save got no answer (`error`): remember what it sent, alongside every
+ * other unanswered save since the tab's last confirmed version. All of them
+ * named that same version, so at most one can have landed, but which isn't
+ * known: on a flaky phone the save that landed is often the first (its
+ * answer lost as the connection went), and the retries after it never left.
+ * Keeping only the latest one forgot it, so the stale answer that followed
+ * read the tab's own save as another device's. Kept bounded for a long
+ * offline stretch; the first is kept when the middle goes, for that reason.
+ */
+export function withUnconfirmed(list: readonly SentWork[], sent: SentWork): SentWork[] {
+  if (list.some((w) => w.body === sent.body && w.link === sent.link)) return [...list];
+  const next = [...list, sent];
+  return next.length > UNCONFIRMED_MAX ? [next[0], ...next.slice(-(UNCONFIRMED_MAX - 1))] : next;
+}
+
 export type Reconciled =
   /** The server is where this tab thinks it is. */
   | { kind: "current" }
@@ -302,8 +323,8 @@ export type Reconciled =
  *   - a submit of ours that got no answer, and the submission now says
  *     exactly that → it went through;
  *   - the draft hasn't moved past this tab → nothing to do;
- *   - it moved on to text this tab sent (now, or in a save that got no
- *     answer) → take its version and carry on;
+ *   - it moved on to text this tab sent (now, or in any save since its last
+ *     confirmed version that got no answer) → take its version and carry on;
  *   - this tab hasn't typed anything since it last synced (Back) → show the
  *     newer text;
  *   - otherwise this tab's edits would overwrite newer work → conflict, the
@@ -314,7 +335,8 @@ export function reconcileDraft(
     version: number;
     base: SentWork;
     work: SentWork;
-    unconfirmed?: SentWork | null;
+    /** Every save since `version` that got no answer (withUnconfirmed): any one may have landed. */
+    unconfirmed?: readonly SentWork[];
     pendingSubmit?: SentWork | null;
   },
   remote: { draft: DraftRow | null; submission: SubmissionSnapshot | null },
@@ -333,8 +355,8 @@ export function reconcileDraft(
   if (version <= local.version) return { kind: "current" };
   if (d && !d.cleared_at) {
     const text = { body: d.body ?? "", link: d.link_url ?? "" };
-    for (const mine of [local.work, local.unconfirmed]) {
-      if (mine && mine.body === text.body && mine.link === text.link) {
+    for (const mine of [local.work, ...(local.unconfirmed ?? [])]) {
+      if (mine.body === text.body && mine.link === text.link) {
         return { kind: "landed", version, savedAt: d.updated_at, text };
       }
     }
@@ -347,6 +369,38 @@ export function reconcileDraft(
     };
   }
   return { kind: "conflict", version };
+}
+
+/**
+ * What a tab told "stale" learns from reading the draft back (reconcileDraft,
+ * or null when the read failed):
+ *
+ *   - "synced": the newer version was this tab's own (a save, or a submit,
+ *     whose answer was lost), or the tab had nothing to lose and took the
+ *     newer text. It now holds the current version: carry on, or send the
+ *     submit again — no question to ask.
+ *   - "conflict": newer work from somewhere else that this tab's edits would
+ *     replace. Only this is worth "changed in another tab or on another
+ *     device".
+ *   - "unread": the read failed, or the server and the read disagree about
+ *     whether anything moved. Nothing is known: retry, never accuse.
+ *
+ * `afterSubmit` is a submit asking: replacing the text the student just
+ * tried to hand in with another tab's is no answer, so "adopt" is a conflict.
+ */
+export function staleVerdict(r: Reconciled | null, afterSubmit = false): "synced" | "conflict" | "unread" {
+  if (!r) return "unread";
+  switch (r.kind) {
+    case "landed":
+    case "submitted":
+      return "synced";
+    case "adopt":
+      return afterSubmit ? "conflict" : "synced";
+    case "current":
+      return "unread";
+    case "conflict":
+      return "conflict";
+  }
 }
 
 /** submitAssignment's answer when it ran (the ActionResult's data). */

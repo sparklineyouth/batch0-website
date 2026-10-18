@@ -25,6 +25,7 @@ import {
   STAFF_STATUS_LABELS,
   canStaffManageTicket,
   canStaffSeeTicket,
+  chatThreadPath,
   parseCategory,
   refundWindow,
   supportScopeFor,
@@ -226,6 +227,10 @@ export default async function AdminSupportTicketPage(props: {
     ticket.context.page && `on ${ticket.context.page}`,
     ticket.context.source && `via ${ticket.context.source.replace(/_/g, " ")}`,
   ].filter(Boolean);
+  // "Ask the team" in a Chat thread (0110): the thread is the conversation;
+  // this ticket is its help request. The link opens only for whoever reads
+  // that channel (chat checks again), and nothing of the thread is copied here.
+  const chatThread = ticket.context.chatThread ?? null;
 
   return (
     <div className="mx-auto max-w-3xl pb-16">
@@ -377,6 +382,22 @@ export default async function AdminSupportTicketPage(props: {
                 {ticket.context.userAgent && (
                   <span className="block break-all text-ink-faint">{ticket.context.userAgent}</span>
                 )}
+              </dd>
+            </div>
+          )}
+          {chatThread && (
+            <div className="sm:col-span-2">
+              <dt className="font-mono text-[11px] uppercase tracking-wider text-ink-faint">
+                Chat thread
+              </dt>
+              <dd className="mt-0.5 text-xs text-ink-soft">
+                <Link href={chatThreadPath(chatThread)} prefetch={false} className="inline-flex items-center gap-1 text-ink hover:underline">
+                  Open the thread in Chat
+                  <ExternalLink className="h-3 w-3" aria-hidden />
+                </Link>
+                <span className="mt-0.5 block text-ink-faint">
+                  Asked from a thread. Answer there; set this request&apos;s owner and status here. The thread shows them.
+                </span>
               </dd>
             </div>
           )}

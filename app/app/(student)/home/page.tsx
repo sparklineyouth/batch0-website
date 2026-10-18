@@ -22,7 +22,7 @@ import {
   ActionLink,
 } from "@/components/app/frame";
 import type { Role } from "@/lib/types";
-import { getCohortEvents, type AppEvent } from "@/lib/app-cache";
+import { getCohortEvents, getPreviewEvents, type AppEvent } from "@/lib/app-cache";
 import { listInvitesForInvitee } from "@/lib/calls";
 import type { CallInvite } from "@/lib/live";
 import { homeNeeds, moreDueLabel, type NextUpItem } from "@/lib/needs-you";
@@ -166,10 +166,14 @@ export default async function StudentAppHome() {
     { data: weekLessons },
     { data: challengeEntry },
   ] = await Promise.all([
-    // The same cached calendar /app/events reads (visibility as the
-    // `events read` policy draws it).
+    // The same calendar /app/events reads (visibility as the `events read`
+    // policy draws it): cached by enrolled cohorts for students, and through
+    // their own session for staff previewing, who have no enrollments and
+    // would otherwise see public events only.
     access.enrolled
-      ? getCohortEvents({ cohortIds: eventCohorts }, nowIso)
+      ? access.staff
+        ? getPreviewEvents(nowIso)
+        : getCohortEvents({ cohortIds: eventCohorts }, nowIso)
       : Promise.resolve(null),
     cohortId && access.enrolled
       ? admin

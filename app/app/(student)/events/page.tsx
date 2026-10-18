@@ -3,7 +3,12 @@ import { Video, MapPin } from "lucide-react";
 import { requireViewer } from "@/lib/auth";
 import { enrolledCohortIds, getStudentAccess } from "@/lib/access";
 import { AppLockedAlert } from "@/components/app/locked-alert";
-import { getCohortEvents, getCohortRecordings } from "@/lib/app-cache";
+import {
+  getCohortEvents,
+  getCohortRecordings,
+  getPreviewEvents,
+  getPreviewRecordings,
+} from "@/lib/app-cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordedEventIds } from "@/lib/event-recordings";
 import { LocalTime } from "@/components/ui/local-time";
@@ -91,10 +96,19 @@ export default async function StudentAppEvents(props: {
   // policy is, and not to access.cohortId: that is one cohort, possibly one
   // they are only accepted into, so a returning student (or one accepted into
   // the next cohort) saw another cohort's recordings and lost their own.
-  const scope = { cohortIds: await enrolledCohortIds() };
+  //
+  // Staff previewing hold no enrollments, so that scope showed them public
+  // events only. They read through their own session instead (uncached), so
+  // the policy itself decides — what /dashboard/events shows them
+  // (getPreviewEvents in lib/app-cache.ts). Students never take that path.
+  const scope = access.staff ? null : { cohortIds: await enrolledCohortIds() };
   const [{ upcoming }, recordingPage] = await Promise.all([
-    page === 1 ? getCohortEvents(scope, nowIso) : Promise.resolve({ upcoming: [] }),
-    getCohortRecordings(scope, nowIso, page),
+    page === 1
+      ? scope
+        ? getCohortEvents(scope, nowIso)
+        : getPreviewEvents(nowIso)
+      : Promise.resolve({ upcoming: [] }),
+    scope ? getCohortRecordings(scope, nowIso, page) : getPreviewRecordings(nowIso, page),
   ]);
   const now = new Date(nowIso);
   const statusOf = (e: (typeof upcoming)[number]) =>

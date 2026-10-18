@@ -27,6 +27,9 @@ const state: {
   feedbackTotal: number;
   dueFollowUps: any[];
   dueTotal: number;
+  /** #help's open questions (0110), as lib/chat-questions.ts would load them. */
+  questions: any[];
+  questionTotal: number;
 } = {
   calls: [],
   missing: new Set(),
@@ -40,6 +43,8 @@ const state: {
   feedbackTotal: 0,
   dueFollowUps: [],
   dueTotal: 0,
+  questions: [],
+  questionTotal: 0,
 };
 const MISSING = { code: "PGRST205", message: "Could not find the table in the schema cache" };
 const TIMEOUT = { code: "57014", message: "canceling statement due to statement timeout" };
@@ -96,10 +101,11 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
            return t.state.countsAvailable?{needs_reply:t.state.needsReply,available:true}:{needs_reply:0,available:false};};`,
       "@/lib/chat":
         g +
-        `export const getChatViewer=async(u,c)=>{t.record('getChatViewer',[u]);
-           if(t.state.missing.has('chat')){const e=new Error("Couldn't load channels: relation does not exist");e.code='42P01';throw e;}
-           return{userId:u,staff:true,vetted:true,cohortIds:[],teamIds:[],memberOf:[]};};
-         export const listReports=async(v,status)=>{t.record('listReports',[status]);return t.state.reports;};
+        `export const getChatViewer=async(u)=>{t.record('getChatViewer',[u]);throw new Error('the whole membership was resolved');};
+         export const listReports=async()=>{t.record('listReports',[]);throw new Error('listReports needs a full viewer');};
+         export const listOpenReportsFor=async(u,c)=>{t.record('listOpenReportsFor',[u]);
+           if(t.state.missing.has('chat')){const e=new Error("Couldn't load reports: relation does not exist");e.code='42P01';throw e;}
+           return t.state.reports;};
          export const getChannelRow=async(id)=>{t.record('getChannelRow',[id]);return{id,kind:'channel',name:'help'};};`,
       "@/lib/assignments-server":
         g +
@@ -109,6 +115,12 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
            return{ready:true,failed:false,total:t.state.feedbackTotal,items:t.state.feedback};};`,
       "@/lib/mentor-scope":
         g + "export const mentorScope=async(a,id)=>{t.record('mentorScope',[id]);return{cohortIds:['c1'],studentIds:[]};};",
+      "@/lib/chat-questions":
+        g +
+        `export const loadUnansweredQuestions=async(o)=>{t.record('loadUnansweredQuestions',[o]);
+           if(t.state.broken.has('questions'))throw new Error('statement timeout');
+           if(t.state.missing.has('questions'))return{ready:false,total:0,help:null,rows:[]};
+           return{ready:true,total:t.state.questionTotal,help:{id:'help-id',name:'help'},rows:t.state.questions};};`,
       "@/lib/student-followups-server":
         g +
         `export const listDueFollowUps=async(a)=>{t.record('listDueFollowUps',[a]);
@@ -142,6 +154,8 @@ function reset() {
   state.feedbackTotal = 0;
   state.dueFollowUps = [];
   state.dueTotal = 0;
+  state.questions = [];
+  state.questionTotal = 0;
 }
 
 const ticket = (id: string) => ({
@@ -216,7 +230,11 @@ test("chat reports: the open queue's own count, its oldest rows", async () => {
     createdAt: new Date(NOW - (10 - i) * 3_600_000).toISOString(),
   })).reverse();
   const r = await loadAttention({ userId: ME, caps: caps("chat.manage"), now: NOW });
-  assert.deepEqual(call("listReports")!.args, ["open"]);
+  assert.deepEqual(call("listOpenReportsFor")!.args, [ME]);
+  // Not the moderator's whole chat membership (thousands of DMs for staff)
+  // on every Overview render: lib/chat-server.test.ts pins what it reads.
+  assert.equal(call("getChatViewer"), undefined);
+  assert.equal(call("listReports"), undefined);
   const chat = r.sources.find((s) => s.key === "chat_reports")!;
   assert.equal(chat.total, 10);
   assert.equal(chat.items.length, 8);
@@ -227,8 +245,8 @@ test("chat reports: with none open, the moderator's chat membership isn't even r
   reset();
   const r = await loadAttention({ userId: ME, caps: caps("chat.manage"), now: NOW });
   assert.equal(call("getChatViewer"), undefined);
-  assert.equal(call("listReports"), undefined);
-  assert.deepEqual(r.sources.map((s) => [s.key, s.total]), [["chat_reports", 0]]);
+  assert.equal(call("listOpenReportsFor"), undefined);
+  assert.deepEqual(r.sources.map((s) => [s.key, s.total]), [["chat_reports", 0], ["chat_questions", 0]]);
 });
 
 test("feedback: program-wide for assignments.manage, the mentor's own scope otherwise", async () => {
@@ -313,13 +331,20 @@ test("chat reports: one the moderator filed is counted with the queue but left f
 
 test("a source whose migration hasn't run is left out, not reported as failing", async () => {
   reset();
-  state.missing = new Set(["support", "chat", "feedback", "followups"]);
+  state.missing = new Set(["support", "chat", "feedback", "followups", "questions"]);
   const r = await loadAttention({ userId: ME, caps: caps("*"), now: NOW });
   assert.deepEqual(r, { sources: [], rows: [], failed: [] });
 });
 
 test("opening the attention list sends nothing: no notification, email, SMS or chat module is reachable", () => {
-  const files = ["lib/attention.ts", "lib/attention-server.ts", "components/admin/attention-list.tsx", "lib/student-followups-server.ts", "app/admin/progress/actions.ts"];
+  const files = [
+    "lib/attention.ts",
+    "lib/attention-server.ts",
+    "components/admin/attention-list.tsx",
+    "lib/student-followups-server.ts",
+    "app/admin/progress/actions.ts",
+    "lib/chat-questions.ts",
+  ];
   for (const f of files) {
     const src = readFileSync(path.join(root, f), "utf8");
     const imports = [...src.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]);
@@ -333,4 +358,49 @@ test("opening the attention list sends nothing: no notification, email, SMS or c
     }
     assert.doesNotMatch(src, /\bnotify(Many)?\(|sendTemplated\(|sendEmail\(|\.insert\(\s*\{[^}]*notifications/, f);
   }
+});
+
+test("unanswered questions (0110): chat staff only; #help's count; rows open their thread, and one with an open help request is Support's", async () => {
+  reset();
+  const q = (id: string, over: object = {}) => ({
+    rootId: id, channelId: "help-id", channelName: "help", askerName: "Maya", askedAt: "2026-10-16T10:00:00.000Z", replyCount: 0, help: null, ...over,
+  });
+  state.questions = [
+    q("q1"),
+    q("q2", { replyCount: 2 }),
+    q("q3", { help: { status: "open", assigneeName: "Rish" } }),
+    // The team replied in Support (waiting on the asker): in no queue, so a row here.
+    q("q4", { replyCount: 1, help: { status: "waiting_on_requester", assigneeName: "Rish" } }),
+  ];
+  state.questionTotal = 4;
+  // Nobody without chat.manage reads it at all.
+  await loadAttention({ userId: ME, caps: caps("support.view", "people.view"), now: NOW });
+  assert.equal(call("loadUnansweredQuestions"), undefined);
+  const r = await loadAttention({ userId: ME, caps: caps("chat.manage", "support.view"), now: NOW });
+  assert.deepEqual(call("loadUnansweredQuestions")!.args, [{ limit: 8 }]);
+  const src = r.sources.find((s) => s.key === "chat_questions")!;
+  assert.equal(src.total, 4, "the number #help's Unanswered list shows");
+  assert.equal(src.href, "/chat?c=help-id");
+  assert.deepEqual(src.items.map((x) => x.key), ["chat_questions:q1", "chat_questions:q2", "chat_questions:q4"]);
+  assert.equal(src.items[0].action.href, "/chat?c=help-id&thread=q1");
+  assert.equal(src.note?.text, "1 question has a help request open: listed under Support.");
+  assert.equal(src.note?.href, "/admin/support");
+  // chat.manage without Support: no Support rows to leave anything to, and no note pointing at a page they can't open.
+  const chatOnly = (await loadAttention({ userId: ME, caps: caps("chat.manage"), now: NOW })).sources.find((s) => s.key === "chat_questions")!;
+  assert.deepEqual(chatOnly.items.map((x) => x.key), ["chat_questions:q1", "chat_questions:q2", "chat_questions:q3", "chat_questions:q4"]);
+  assert.equal(chatOnly.note, null);
+  // Answered questions aren't loaded, so marking one answered is what takes its row off.
+  reset();
+  state.questions = [];
+  const none = await loadAttention({ userId: ME, caps: caps("chat.manage"), now: NOW });
+  assert.equal(none.sources.find((s) => s.key === "chat_questions")!.total, 0);
+  // A failed read is said, not shown as "nothing waiting"; before 0110, the source is just absent.
+  reset();
+  state.broken = new Set(["questions"]);
+  assert.deepEqual((await loadAttention({ userId: ME, caps: caps("chat.manage"), now: NOW })).failed, ["chat_questions"]);
+  reset();
+  state.missing = new Set(["questions"]);
+  const before = await loadAttention({ userId: ME, caps: caps("chat.manage"), now: NOW });
+  assert.ok(!before.sources.some((s) => s.key === "chat_questions"));
+  assert.deepEqual(before.failed, []);
 });

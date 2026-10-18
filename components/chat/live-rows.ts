@@ -51,8 +51,12 @@ export function toUiMessage(row: LiveRow, known: readonly UiMessage[]): UiMessag
     editedAt: row.edited_at ?? null,
     pinnedAt: row.pinned_at ?? null,
     ...(typeof row.client_id === "string" ? { clientId: row.client_id } : {}),
+    ...(typeof row.thread_root_id === "string" ? { threadRootId: row.thread_root_id } : {}),
   };
 }
+
+/** A Realtime row that is a thread reply (0110): it belongs to its thread's pane, never the feed. */
+export const isThreadReply = (row: Pick<LiveRow, "thread_root_id">) => typeof row.thread_root_id === "string" && !!row.thread_root_id;
 
 /**
  * The unsent bubble a live INSERT of our own is, when the row can't say by
@@ -134,7 +138,9 @@ export function sameMessage(a: UiMessage, b: UiMessage): boolean {
     sameJson(a.mentions, b.mentions) &&
     sameJson(a.reactions, b.reactions) &&
     sameJson(a.attachments, b.attachments) &&
-    sameJson(a.replyTo, b.replyTo)
+    sameJson(a.replyTo, b.replyTo) &&
+    (a.threadRootId ?? null) === (b.threadRootId ?? null) &&
+    sameJson(a.thread ?? null, b.thread ?? null)
   );
 }
 
@@ -160,6 +166,8 @@ export function bumpSidebarRow(
   const known = (i: SidebarItem) => i.id === row.channel_id;
   const item = s.channels.find(known) ?? s.conversations.find(known);
   if (!item) return { sidebar: s, missing: true };
+  // A thread reply (0110) is the thread's: no recency, preview or unread on the channel.
+  if (isThreadReply(row)) return { sidebar: s, missing: false };
   const message = countsAsMessage(row.kind ?? "message", item.systemKey);
   const fromOther = row.sender_id !== opts.viewerId;
   const fromBlocked = !!row.sender_id && s.blocked.includes(row.sender_id);

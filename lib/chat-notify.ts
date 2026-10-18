@@ -3,6 +3,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyMany } from "@/lib/notifications";
 import { bellTitle, isAfter, shouldBell, wantsBell, type NotifyPref } from "@/lib/chat-access";
 import {
+  THREAD_BELL_TYPE,
+  THREAD_BELL_TYPES,
+  bellFresh,
+  threadBellRecipients,
+  threadBellTitle,
+  threadLink,
+} from "@/lib/chat-threads-rules";
+import {
   getChannelRow,
   getPerson,
   listChannelAudienceIds,
@@ -38,6 +46,8 @@ import {
  */
 
 export const CHAT_BELL_TYPES = ["chat_dm", "chat_mention", "chat_message"] as const;
+
+export { THREAD_BELL_TYPE };
 
 export function chatLink(channelId: string): string {
   return `/chat?c=${channelId}`;
@@ -217,4 +227,105 @@ export async function clearChannelBellsMany(userId: string, channelIds: readonly
     cleared += data?.length ?? 0;
   }
   return cleared;
+}
+
+/**
+ * Who hears about a thread reply (migration 0110), and how. Only the
+ * thread's followers (its author and its repliers by default, minus anyone
+ * who unfollowed) and the people the reply @mentions — never a channel's
+ * "All messages" list and never @everyone, so a busy thread rings a handful
+ * of people, not a cohort. Then the channel's rules, per person
+ * (threadBellRecipients): still a reader of the channel right now (a follow
+ * grants nothing), no block of the sender, the channel not muted, and one
+ * bell per burst — none while an unread one for the thread is up, none while
+ * they had it open a moment ago. One bell per message, however often this
+ * runs (the same dedupe key as a channel bell), and none at all for a reply
+ * that isn't fresh: history carried in later rings nobody (bellFresh).
+ */
+export async function notifyThreadReply(input: {
+  channel: ChannelRow;
+  rootId: string;
+  messageId: string;
+  senderId: string;
+  /** The reply's vetted mentions (pingsFor in app/chat/actions.ts). */
+  mentions: readonly string[];
+  /** When the reply went in. */
+  createdAt: string;
+  /** Asked for again by a replayed send: skip whoever has opened the thread since. */
+  postedAt?: string;
+  now?: number;
+}): Promise<void> {
+  const now = input.now ?? Date.now();
+  const { channel } = input;
+  if (channel.kind !== "channel" || !bellFresh(input.createdAt, now)) return;
+  const admin = createAdminClient();
+
+  const followRows: { user_id: string; state: string | null; seen_at: string | null }[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await admin
+      .from("chat_thread_follows")
+      .select("user_id, state, seen_at")
+      .eq("root_id", input.rootId)
+      .order("user_id")
+      .range(from, from + 999);
+    if (error) throw new Error(`Couldn't check thread bells: ${error.message}`);
+    followRows.push(...((data ?? []) as typeof followRows));
+    if ((data ?? []).length < 1000) break;
+  }
+  const follows = new Map(followRows.map((r) => [r.user_id, r]));
+  const mentioned = new Set(input.mentions);
+  const ids = Array.from(
+    new Set([...followRows.filter((r) => r.state === "following").map((r) => r.user_id), ...input.mentions]),
+  ).filter((id) => id && id !== input.senderId);
+  if (ids.length === 0) return;
+
+  const link = threadLink(channel.id, input.rootId);
+  const [readers, reads, bells, blocks] = await Promise.all([
+    readersAmong(channel, ids),
+    lookupAll<{ user_id: string; notify: NotifyPref | null }>(ids, (part) =>
+      admin.from("chat_reads").select("user_id, notify").eq("channel_id", channel.id).in("user_id", part),
+    ),
+    lookupAll<{ user_id: string }>(ids, (part) =>
+      admin
+        .from("notifications")
+        .select("user_id")
+        .in("user_id", part)
+        .eq("link", link)
+        .in("type", THREAD_BELL_TYPES as unknown as string[])
+        .is("read_at", null),
+    ),
+    lookupAll<{ blocker_id: string }>(ids, (part) =>
+      admin.from("chat_blocks").select("blocker_id").eq("blocked_id", input.senderId).in("blocker_id", part),
+    ),
+  ]);
+  const readerSet = new Set(readers);
+  const prefs = new Map(reads.map((r) => [r.user_id, r.notify]));
+  const pending = new Set(bells.map((r) => r.user_id));
+  const blockedBy = new Set(blocks.map((r) => r.blocker_id));
+
+  const recipients = threadBellRecipients(
+    ids.map((userId) => ({
+      userId,
+      following: follows.get(userId)?.state === "following",
+      mentioned: mentioned.has(userId),
+      reader: readerSet.has(userId),
+      blockedSender: blockedBy.has(userId),
+      channelPref: prefs.get(userId) ?? null,
+      seenAt: follows.get(userId)?.seen_at ?? null,
+      hasUnreadBell: pending.has(userId),
+    })),
+    { senderId: input.senderId, nowMs: now, postedAt: input.postedAt },
+  );
+  if (recipients.length === 0) return;
+
+  const sender = (await getPerson(input.senderId))?.name ?? "Someone";
+  await notifyMany(
+    recipients.map((r) => ({
+      userId: r.userId,
+      type: r.mentioned ? "chat_mention" : THREAD_BELL_TYPE,
+      title: threadBellTitle({ sender, channelName: channel.name, mentioned: r.mentioned }),
+      link,
+      dedupeKey: `chat-message:${input.messageId}`,
+    })),
+  );
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CircleHelp } from "lucide-react";
+import { askAboutHref } from "@/lib/chat-threads-rules";
 import { requireUser, getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getStudentAccess } from "@/lib/access";
@@ -41,6 +42,16 @@ export default async function AssignmentPage(props: { params: Promise<{ id: stri
       <div className="mt-4">
         <AssignmentDetail item={item} draft={draft} lesson={lesson} lessonHref={(l) => `/dashboard/course/${l}`} />
       </div>
+      {/* "Ask about this" (Chat threads, 0110): #help, with this assignment
+          linked by id only — never the draft or the submission. Chat shows
+          its title only to people who can open it. */}
+      <Link
+        href={askAboutHref("assignment", item.assignment.id)}
+        prefetch={false}
+        className="mt-6 inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink"
+      >
+        <CircleHelp className="h-4 w-4" aria-hidden /> Ask about this assignment in #help
+      </Link>
     </div>
   );
 }

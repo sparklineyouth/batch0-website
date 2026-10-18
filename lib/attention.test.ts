@@ -13,14 +13,19 @@ import {
   followUpItems,
   ownerLabel,
   pickAttention,
+  questionItems,
+  questionLeftToSupport,
+  QUESTION_STALE_MS,
   supportItems,
   type AttentionItem,
   type AttentionProvider,
   type AttentionSource,
   type AttentionSourceKey,
   type FollowUpLike,
+  type QuestionLike,
   type SupportLike,
 } from "./attention.ts";
+import { canReadChannel } from "./chat-access.ts";
 
 const ME = "00000000-0000-4000-8000-000000000001";
 const OTHER = "00000000-0000-4000-8000-000000000002";
@@ -41,10 +46,11 @@ test("each source opens only to the permission of the page its rows open", () =>
   assert.deepEqual(sees(caps("support.sensitive")), []);
   assert.deepEqual(sees(caps("assignments.manage")), ["feedback"]);
   assert.deepEqual(sees(caps("mentor.panel")), ["feedback"]);
-  assert.deepEqual(sees(caps("chat.manage")), ["chat_reports"]);
+  // Chat staff read every text channel, so #help's questions open to them too (0110).
+  assert.deepEqual(sees(caps("chat.manage")), ["chat_questions", "chat_reports"]);
   assert.deepEqual(sees(caps("people.view")), ["followups"]);
   assert.deepEqual(sees(caps("payments.view", "applications.view", "student.dashboard")), []);
-  assert.deepEqual(sees(caps("*")), ["chat_reports", "feedback", "followups", "support"]);
+  assert.deepEqual(sees(caps("*")), ["chat_questions", "chat_reports", "feedback", "followups", "support"]);
 });
 
 test("whoever sees a source can open every row's action — checked for every role of up to two keys", () => {
@@ -57,16 +63,29 @@ test("whoever sees a source can open every row's action — checked for every ro
   const sub = { id: ID, assignmentId: ID, userId: OTHER, submittedAt: hoursAgo(1), assignment: { title: "a", week: 1, cohortId: ID }, studentName: "s" };
   const reports = chatReportItems([{ id: ID, channelId: ID, partyIds: [], messageId: null, status: "open", createdAt: hoursAgo(1) }], new Map(), ME, NOW);
   const follow = followUpItems([{ id: ID, studentId: OTHER, studentName: "s", ownerId: null, ownerName: null, nextCheckOn: TODAY, status: "open" }], ME, TODAY);
+  const questions = questionItems(
+    [{ rootId: ID, channelId: ID, channelName: "help", askerName: "s", askedAt: hoursAgo(1), replyCount: 0, help: null }],
+    NOW,
+    { supportListed: false },
+  );
   // Where a row's one action goes, given who's looking (the feedback link
   // depends on whether they review program-wide).
   const hrefs: Record<AttentionSourceKey, (c: ReturnType<typeof caps>) => string[]> = {
     support: () => [...support.map((r) => r.action.href), "/admin/support"],
     feedback: (c) => feedbackItems([sub], { userId: ME, manager: can(c, "assignments.manage") }, new Map(), NOW).map((r) => r.action.href),
     chat_reports: () => [...reports.map((r) => r.action.href), "/admin/chat"],
+    chat_questions: () => [...questions.map((r) => r.action.href), `/chat?c=${ID}`],
     followups: () => [...follow.map((r) => r.action.href), "/admin/progress"],
   };
+  // A #help thread opens to whoever reads #help; chat.manage reads every text
+  // channel (lib/chat-access.ts canReadChannel), whatever the audience.
   const opens = (c: ReturnType<typeof caps>, href: string) => {
     const path = href.split(/[?#]/)[0];
+    if (path === "/chat") return canReadChannel(
+      { id: ID, kind: "channel", audience: "staff", cohortId: null, teamId: null, posting: "everyone", archivedAt: null, slowmodeSeconds: 0 },
+      { userId: ME, staff: can(c, "chat.manage"), vetted: false, cohortIds: [], teamIds: [], memberOf: [] },
+      false,
+    );
     return path.startsWith("/admin") ? canViewAdminPath(c, path) : path.startsWith("/mentor") ? can(c, "mentor.panel") : false;
   };
   const roles: string[][] = [];
@@ -399,4 +418,54 @@ test("ages never read as zero", () => {
   assert.equal(ageSince(new Date(NOW).toISOString(), NOW), "1m");
   assert.equal(ageSince(hoursAgo(80), NOW), "3d 8h");
   assert.equal(ageSince("not a date", NOW), "1m");
+});
+
+test("unanswered questions: oldest-waiting rows naming the channel and the asker, never the words; a help request still open is Support's row", () => {
+  const q = (over: Partial<QuestionLike>): QuestionLike => ({
+    rootId: "q", channelId: "help-id", channelName: "help", askerName: "Maya Chen", askedAt: hoursAgo(2), replyCount: 0, help: null, ...over,
+  });
+  const rows = questionItems(
+    [
+      q({ rootId: "stale", askedAt: new Date(NOW - QUESTION_STALE_MS - 60_000).toISOString() }),
+      q({ rootId: "fresh", askedAt: hoursAgo(2) }),
+      q({ rootId: "replied", replyCount: 3, askedAt: hoursAgo(30) }),
+      // Someone asked the team about this one and it's in Support's Needs
+      // reply queue: the open request is the row (Support), not the question.
+      q({ rootId: "helped", help: { status: "open", assigneeName: "Rish" } }),
+      // The team answered in Support and is waiting on the asker: in nobody's
+      // queue, so the still-open question stays a row here.
+      q({ rootId: "waiting", help: { status: "waiting_on_requester", assigneeName: null } }),
+      // A handled request with the question still open: the question is back on the list.
+      q({ rootId: "handled", help: { status: "resolved", assigneeName: "Rish" } }),
+    ],
+    NOW,
+    { supportListed: true },
+  );
+  assert.deepEqual(rows.map((r) => r.key), [
+    "chat_questions:stale",
+    "chat_questions:fresh",
+    "chat_questions:replied",
+    "chat_questions:waiting",
+    "chat_questions:handled",
+  ]);
+  const [stale, fresh, replied] = rows;
+  assert.deepEqual([stale.reason, stale.urgency], ["No reply in 24 hours", "overdue"]);
+  assert.deepEqual([fresh.reason, fresh.urgency], ["No reply yet", "waiting"]);
+  assert.deepEqual([replied.reason, replied.urgency, replied.action.label], ["Not marked answered", "waiting", "Open"]);
+  assert.equal(stale.context, "#help · Maya Chen", "where and who asked, nothing of what they wrote");
+  assert.deepEqual(stale.action, { label: "Answer", href: "/chat?c=help-id&thread=stale" });
+  assert.deepEqual(stale.owner, { kind: "team", label: "Anyone on the team" });
+  // Someone with chat.manage who can't open Support sees no Support rows, so
+  // nothing is left to them: every open question is a row.
+  const noSupport = questionItems([q({ rootId: "helped", help: { status: "open", assigneeName: null } })], NOW, { supportListed: false });
+  assert.deepEqual(noSupport.map((r) => r.key), ["chat_questions:helped"]);
+  assert.equal(questionLeftToSupport({ help: { status: "open", assigneeName: null } }, true), true);
+  for (const status of ["waiting_on_requester", "resolved", "closed"] as const) {
+    assert.equal(questionLeftToSupport({ help: { status, assigneeName: null } }, true), false, status);
+  }
+  assert.equal(questionLeftToSupport({ help: null }, true), false);
+  // Answered (or no longer a question) means it isn't loaded at all; the provider reads open questions only.
+  assert.deepEqual(questionItems([], NOW, { supportListed: true }), []);
+  // An overdue question outranks the queue's waiting rows.
+  assert.equal(pickAttention([...rows], 2)[0].key, "chat_questions:stale");
 });

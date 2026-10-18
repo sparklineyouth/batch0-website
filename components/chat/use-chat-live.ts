@@ -74,6 +74,11 @@ export type LiveRow = {
    * echo. Missing before 0104 runs (the column isn't there, or isn't granted).
    */
   client_id?: string | null;
+  /**
+   * A thread reply's root (0110): the reply belongs to that thread, not the
+   * feed. Missing before 0110 runs.
+   */
+  thread_root_id?: string | null;
 };
 
 /**

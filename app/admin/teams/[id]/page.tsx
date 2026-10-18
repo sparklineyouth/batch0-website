@@ -69,9 +69,19 @@ export default async function AdminTeamDetail(
   // teams.manage. The same counts elsewhere need assignments.manage (the
   // matrix) or people.view (a student's profile), so a role with neither gets
   // the Demo Day line and not the board — which isn't even loaded for it.
+  //
+  // The card's own failure stays in the card. A read that fails comes back as
+  // `failed` (loadCohortBoard); anything that throws on the way is caught
+  // here too, so the members, cap table and everything else on the page
+  // still render under a Readiness card that says it couldn't load.
   const seesAssignments = canSeeAssignmentProgress(caps);
   const board =
-    team.cohort_id && seesAssignments ? await loadCohortBoard(admin, team.cohort_id) : null;
+    team.cohort_id && seesAssignments
+      ? await loadCohortBoard(admin, team.cohort_id).catch((err: unknown) => {
+          console.error("[teams] readiness board failed", team.id, (err as Error)?.message ?? err);
+          return { ready: false, failed: true, rows: [] };
+        })
+      : null;
   const memberRows = ((members ?? []) as any[]).map((m) => {
     const u = Array.isArray(m.user) ? m.user[0] : m.user;
     return { userId: m.user_id as string, name: (u?.full_name || u?.email || "Member") as string };
@@ -93,6 +103,7 @@ export default async function AdminTeamDetail(
         assignments={seesAssignments}
         matrixLink={can(caps, "assignments.manage")}
         board={board?.ready ? board : null}
+        boardFailed={!!board?.failed}
         members={memberRows}
         pitch={p}
       />

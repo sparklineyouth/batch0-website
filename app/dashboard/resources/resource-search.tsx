@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Search, X, Loader2 } from "lucide-react";
 import { Input, Select } from "@/components/ui/input";
 import { RESOURCE_QUERY_MAX, parseResourceQuery, resourcesHref } from "@/lib/resource-search";
+import { askedFor, pageRendered, startQuerySync } from "@/lib/search-url-sync";
 
 /**
  * The resources page's search row: a search-as-you-type box and a shelf
@@ -42,36 +43,40 @@ export function ResourceSearch({
     shelfRef.current = picked;
   }, [picked]);
 
-  // The query the URL holds as far as this box knows. Typing navigates only
-  // when it would change that, which is also what stops landing on the page
-  // from re-navigating.
+  // The query the URL holds as far as this box knows (`shown`), and the
+  // searches it has asked for that haven't rendered yet (lib/search-url-sync.ts).
+  // Typing navigates only when it would change `shown`, which is also what
+  // stops landing on the page from re-navigating.
   //
   // Always in the page's own form (parseResourceQuery: trimmed, inner spaces
   // collapsed). Kept as a bare trim, "pitch  deck" here met "pitch deck" from
   // the page, read as the URL moving under the box, and overwrote whatever
   // had been typed while that navigation was in flight.
-  const shown = useRef(initialQuery);
+  const sync = useRef(startQuerySync(initialQuery));
 
-  // The URL can change without the box (Back, or the "Clear" link): follow it.
+  // The URL can change without the box (Back, or the "Clear" link): follow
+  // it. A render of one of the box's own searches is not that, even one that
+  // arrives after a newer search was sent: following it put "pi" back over
+  // "pitch" while the person was still typing.
   useEffect(() => {
-    if (initialQuery === shown.current) return;
-    shown.current = initialQuery;
-    setValue(initialQuery);
+    const next = pageRendered(sync.current, initialQuery);
+    sync.current = next.sync;
+    if (next.follow) setValue(initialQuery);
   }, [initialQuery]);
   useEffect(() => {
     setPicked(shelf ?? "");
   }, [shelf]);
 
   const go = (q: string, nextShelf: string) => {
-    shown.current = q;
+    sync.current = askedFor(sync.current, q);
     start(() => router.replace(resourcesHref({ q, shelf: nextShelf || null }), { scroll: false }));
   };
 
   useEffect(() => {
     const q = parseResourceQuery(value);
-    if (q === shown.current) return;
+    if (q === sync.current.shown) return;
     const t = setTimeout(() => {
-      shown.current = q;
+      sync.current = askedFor(sync.current, q);
       start(() =>
         router.replace(resourcesHref({ q, shelf: shelfRef.current || null }), { scroll: false }),
       );
