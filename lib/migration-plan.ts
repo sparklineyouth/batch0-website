@@ -105,6 +105,11 @@ where permissions @> array['ai_usage.view']::text[];`,
                where ix.indrelid = to_regclass('public.email_outbox')
                  and ix.indisunique and ix.indpred is null and ix.indnkeyatts = 1
                  and a.attname = 'dedupe_key') as ok;`,
+  "0103": `select to_regprocedure('public.admin_move_student_cohort(uuid, uuid, uuid)') is not null
+   and exists (select 1 from pg_trigger
+               where tgrelid = to_regclass('public.profiles') and tgname = 'keep_a_full_admin')
+   and exists (select 1 from pg_trigger
+               where tgrelid = to_regclass('public.app_roles') and tgname = 'keep_a_full_admin_role') as ok;`,
 };
 
 /**
