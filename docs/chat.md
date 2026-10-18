@@ -140,9 +140,20 @@ each other, and staff, privately, and only a report opens those
 conversations to anyone else: they are not monitored, and the copy says so.
 `chat.manage` is what makes someone staff, so its description at
 `/admin/roles` says it can message any student privately. The directory
-doesn't offer people a viewer can't DM, and the admin people pages show
-*Message* only where it would work (chat staff, or a non-student, never
-yourself). An old DM carried over by 0101 that breaks the rule stays readable
+doesn't offer people the rule would refuse: for a DM it asks about the pair;
+for a group (*New message* once someone is picked, or *Add people* in a
+group) about the whole group with each candidate in it (`directoryOffers()`,
+`searchDirectory(…, group)`), so with someone from the team in it a student
+also finds the mentor it may hold. `createGroup` and `addToGroup` ask the
+same question of the whole group again before anything is written, and the
+dialog says why a pick leaves a group or DM it would refuse, in the words the
+server would use (`pickRefusal()`: one pick is a DM). When the rule alone
+left someone matching out, the search says so (`withheld`), and only then
+does the picker add "To add a mentor, pick someone from the batch0 team
+first" (`withheldHint()`), never under a search that found nobody for another
+reason. The admin people
+pages show *Message* only where it would work (chat staff, or a non-student,
+never yourself). An old DM carried over by 0101 that breaks the rule stays readable
 but read-only, and says why.
 
 ## Posting
@@ -150,6 +161,20 @@ but read-only, and says why.
 These are enforced in `app/chat/actions.ts`. No browser write path exists:
 signed-in users get read policies only.
 
+- **Once, however often it's retried:** the composer gives every message an
+  id of its own (`client_id`, migration 0104) and every Retry sends it again.
+  A send whose answer was lost after the row committed gets the original
+  back (`sendMessage` asks `findSentMessage` before slow mode or the rate
+  limit could refuse it, and once more when one of them does, for a Retry
+  racing the first send; `unique (sender_id, client_id)` settles two at
+  once). A replay asks for the message's bells again, which reaches only
+  someone the first request didn't bell (see Bells), so a first request
+  that died before ringing them doesn't cost the message its bells. The
+  sending screen drops its bubble when the server's copy
+  arrives by that id, through the answer, the Realtime echo or a resync
+  (`settledBy()` in `lib/chat-view.ts`). Two messages meant twice, word for
+  word, have two ids. Before 0104 runs, sends work as before and nothing is
+  replayed (`lib/chat-send.ts` checks for the column once a minute).
 - **Blocks:** in a DM, neither side can send once either has blocked the
   other, and both keep the history. In channels and groups, a blocked
   person's messages collapse for the blocker. The blocked person is never told.
@@ -188,6 +213,24 @@ signed-in users get read policies only.
   Realtime carries it to every screen. What it said, and every version before
   an edit, goes to `chat_message_revisions`. No policy lets anyone but the
   service role read that table, and the report page shows it.
+- **Reporting what was deleted:** history and search leave deleted messages
+  out, and only a DM or group can be reported whole, so a text channel's
+  menu has *Report a deleted message* (and a reply's "Original message was
+  deleted" quote has *Report it*). It lists what was deleted there in the
+  last two weeks, however long ago it was posted, most recently deleted
+  first, as stubs: who and when, never a word or a file, never your own, and
+  not whether the sender or a moderator removed it (`listDeletedForReport`,
+  `fetchDeletedMessages`). It pages on `(deleted_at, id)` with *Show older*,
+  so fifty junk messages deleted after the one that matters only push it to
+  the next page (0104 indexes deleted rows for this). The one picked is
+  reported like any message: about its sender, with its earlier versions on
+  the report page for the moderators that leaves out, so a moderator who
+  posted and deleted it never sees the report. A reporter who isn't a
+  moderator never sees the words again. A moderator who files one reviews it
+  on the report page like any report they file, and the dialog says so; the
+  report names them as its reporter to the rest of the team, which is the
+  record of who looked. (No audit row names a reporter: a moderator the
+  report is about may read the audit log.)
 
 ## Bells
 
@@ -203,6 +246,11 @@ notifications policy no longer lets admins read anyone else's chat bells.
 - One bell per burst: none while an unread chat bell for that channel exists,
   and none while the person had it open in the last two minutes. Catching up
   clears the bells.
+- One bell per message, however often it's asked for: each carries
+  `chat-message:<message id>` as its dedupe key, so the notifications index
+  drops a second one for the same person. A replayed send asks again with
+  the message's `postedAt`, which also skips anyone whose read cursor is
+  already past it.
 - An announcement cross-posted to chat bells nobody its own `announcement`
   bell already reached (`excludeBells`), with or without @everyone. One too
   long for a single message is posted whole, as consecutive messages split
@@ -338,6 +386,7 @@ opens More.
 | `lib/chat-access.ts` | Every rule, pure |
 | `lib/chat-format.ts` / `lib/chat-view.ts` | Markup, mentions, previews; message layout and merge helpers, pure |
 | `lib/chat.ts` | Service-role reads |
+| `lib/chat-send.ts` | Inserting a message once per client id, and finding the one a retry already sent (0104) |
 | `lib/chat-payload.ts` | One channel's on-screen state, shared by the page and the actions |
 | `lib/chat-notify.ts` / `lib/chat-post.ts` / `lib/chat-files.ts` | Bells; posting from elsewhere (announcements, the staff feed); attachments |
 | `lib/staff-feed.ts` | The #staff feed's lines: a name and an admin link, nothing else |
@@ -356,10 +405,18 @@ Tests:
   rows on the client), `lib/chat-post-split.test.ts` and `lib/chat-post.test.ts`
   (long posts split whole, mutes, rollback), `lib/chat-purge.test.ts` (what
   an account deletion removes and keeps), `lib/chat-server.test.ts` (bulk
-  bell clearing, mention search ranking, the sidebar's mention counts)
+  bell clearing, mention search ranking, the sidebar's mention counts, the
+  directory for a group against a DM's and its `withheld`, deleted-message
+  stubs and their paging, one bell per message),
+  `lib/chat-actions.test.ts` (a retry after a lost answer, the race on the
+  key and into slow mode or the rate limit, a replay's bells, two identical
+  messages, before 0104; the group directory's membership),
+  `lib/chat-view.test.ts` and `components/chat/live-rows.test.ts` (a bubble
+  settled by its client id, whichever way the server's copy arrives)
 - `lib/chat-migration-db.test.ts`: real Postgres via PGlite, with policies
   run as a signed-in user, then triggers, carry-over, the Discord teardown
-  and idempotency.
+  and idempotency; and 0104 on top: one message per sender and client id,
+  the column readable for the echo, and a deleted message reported.
 - `lib/staff-feed.test.ts`, `lib/stripe-staff-feed.test.ts`,
   `lib/announcement-chat.test.ts`, `lib/account-deletion.test.ts`,
   `lib/app-host.test.ts`: what the feed says and that every payment path
@@ -378,6 +435,11 @@ couldn't post. Nothing returns a 500. 0101 drops the Discord tables and
 columns, and **that can't be undone**, so take a backup first if you want the
 old Discord ids. If 0099 ever runs after 0101, run 0101 again: 0099 rewrites
 lesson copy back to Discord.
+
+Then **0104**, any time after 0101. Until it runs, chat works as before, and
+a Retry of a send whose answer was lost can still post it twice. If 0101 is
+ever run again, run 0104 after it: 0101's re-grant of the message columns
+takes `client_id`'s away.
 
 When the deploy goes live, **lock the Discord server**. The code no longer
 manages it: nobody is kicked or loses a role there when they leave the

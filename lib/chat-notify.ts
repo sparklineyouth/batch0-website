@@ -1,7 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyMany } from "@/lib/notifications";
-import { bellTitle, shouldBell, wantsBell, type NotifyPref } from "@/lib/chat-access";
+import { bellTitle, isAfter, shouldBell, wantsBell, type NotifyPref } from "@/lib/chat-access";
 import {
   getChannelRow,
   getPerson,
@@ -22,6 +22,13 @@ import {
  * means nothing), whether they've blocked the sender (then nothing — a block
  * is silence), and one bell per burst: none while an unread chat bell for the
  * channel already points at it, none while they're looking at it right now.
+ *
+ * And one bell per message, however often this runs for it: each carries
+ * `chat-message:<id>` as its dedupe key, so the notifications index turns a
+ * second one for the same person into nothing. A replayed send (a Retry of a
+ * message that already went in, app/chat/actions.ts) asks for its bells again
+ * on that strength, with `postedAt`, in case the first request died before
+ * ringing them.
  *
  * In-app bells only. No email: a chat is a conversation, and mailing every
  * line would make it unusable. And no body, ever — admins can read every
@@ -64,6 +71,12 @@ export async function notifyNewMessage(input: {
   channel?: ChannelRow;
   /** People who get no chat bell for this one (an announcement's own recipients already have theirs). */
   excludeBells?: readonly string[];
+  /**
+   * When the message went in, for bells asked for again after it did (a
+   * replayed send): nobody whose read cursor is already there is belled. A
+   * new message never needs it — nobody has read past something just posted.
+   */
+  postedAt?: string;
 }): Promise<void> {
   const channel = input.channel ?? (await getChannelRow(input.channelId));
   if (!channel) return;
@@ -104,8 +117,8 @@ export async function notifyNewMessage(input: {
 
   const link = chatLink(channel.id);
   const [reads, bells, blocks] = await Promise.all([
-    lookupAll<{ user_id: string; seen_at: string | null; notify: NotifyPref | null }>(candidates, (part) =>
-      admin.from("chat_reads").select("user_id, seen_at, notify").eq("channel_id", channel.id).in("user_id", part),
+    lookupAll<{ user_id: string; seen_at: string | null; notify: NotifyPref | null; last_read_at: string | null }>(candidates, (part) =>
+      admin.from("chat_reads").select("user_id, seen_at, notify, last_read_at").eq("channel_id", channel.id).in("user_id", part),
     ),
     lookupAll<{ user_id: string }>(candidates, (part) =>
       admin
@@ -128,6 +141,7 @@ export async function notifyNewMessage(input: {
   const recipients = candidates.filter((id) => {
     if (blockedBy.has(id)) return false;
     const read = readBy.get(id);
+    if (input.postedAt && read?.last_read_at && !isAfter(input.postedAt, read.last_read_at)) return false;
     if (!wantsBell(channel.kind, read?.notify ?? null, mentioned.has(id))) return false;
     return shouldBell({ recipientSeenAt: read?.seen_at ?? null, hasUnreadBell: pending.has(id) }, now);
   });
@@ -147,6 +161,7 @@ export async function notifyNewMessage(input: {
           everyone: isMention && input.mentionEveryone && !input.mentions.includes(userId),
         }),
         link,
+        dedupeKey: `chat-message:${input.messageId}`,
       };
     }),
   );

@@ -4,6 +4,7 @@ import { getAllRoles } from "@/lib/roles";
 import { ACCEPTED_STATUSES } from "@/lib/pre-cohort";
 import { can, type Capabilities } from "@/lib/permissions";
 import { isMissingSchemaError } from "@/lib/schema-ready";
+import { clientIdsReady } from "@/lib/chat-send";
 import {
   attentionFor,
   canReadChannel,
@@ -16,6 +17,7 @@ import {
   muteActive,
   otherInDmKey,
   PEOPLE_SEARCH_MAX,
+  REPORTABLE_DELETED_MS,
   reportVisibleTo,
   sidebarMentions,
   type Audience,
@@ -27,6 +29,7 @@ import {
   type ReactionMap,
   type Party,
   conversationAllowed,
+  directoryOffers,
   dmVerdict,
   reachVerdict,
 } from "@/lib/chat-access";
@@ -108,7 +111,23 @@ export type ChatMessage = {
   createdAt: string;
   editedAt: string | null;
   pinnedAt: string | null;
+  /**
+   * The id the sender's composer gave it (0104), the same on every retry:
+   * how the sending screen knows the server's copy for the bubble it already
+   * shows. Absent on rows from before 0104, system lines and posts made
+   * elsewhere, and on every read before 0104 runs.
+   */
+  clientId?: string;
 };
+
+/**
+ * A text channel's deleted message as a report target: who sent it and
+ * when (posted, and deleted — Realtime already tells every reader when), never
+ * what it said or who deleted it. Its words and files stay in
+ * chat_message_revisions, which only a moderator the report leaves out reads
+ * (the report page).
+ */
+export type DeletedMessageStub = { id: string; senderId: string; createdAt: string; deletedAt: string };
 
 export type SidebarItem = {
   id: string;
@@ -232,7 +251,16 @@ function toMessage(r: any, reply: ReplyPreview | null): ChatMessage {
     createdAt: r.created_at,
     editedAt: r.edited_at ?? null,
     pinnedAt: r.pinned_at ?? null,
+    ...(typeof r.client_id === "string" ? { clientId: r.client_id } : {}),
   };
+}
+
+/**
+ * The columns a page of messages for the screen reads: MESSAGE_COLS, plus
+ * 0104's client_id once the database has it (lib/chat-send.ts).
+ */
+async function screenMessageCols(): Promise<string> {
+  return (await clientIdsReady()) ? `${MESSAGE_COLS}, client_id` : MESSAGE_COLS;
 }
 
 // ---------------------------------------------------------------------------
@@ -1063,7 +1091,8 @@ export async function listMessages(
 ): Promise<{ messages: ChatMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean }> {
   const admin = createAdminClient();
   const limit = Math.min(Math.max(opts.limit ?? PAGE_SIZE, 1), 100);
-  const base = () => admin.from("chat_messages").select(MESSAGE_COLS).eq("channel_id", channelId).is("deleted_at", null);
+  const cols = await screenMessageCols();
+  const base = () => admin.from("chat_messages").select(cols).eq("channel_id", channelId).is("deleted_at", null);
 
   if (opts.around && isUuid(opts.around)) {
     const target = must(
@@ -1118,10 +1147,13 @@ export async function getMessageRow(id: string): Promise<any | null> {
 
 export async function getMessages(ids: readonly string[]): Promise<ChatMessage[]> {
   const admin = createAdminClient();
+  const wanted = uniq(ids.filter(isUuid).map((id) => id.toLowerCase()));
+  if (wanted.length === 0) return [];
+  const cols = await screenMessageCols();
   const rows = (
     await Promise.all(
-      chunks(uniq(ids.filter(isUuid).map((id) => id.toLowerCase()))).map(
-        async (part) => (must(await admin.from("chat_messages").select(MESSAGE_COLS).in("id", part), "messages") ?? []) as any[],
+      chunks(wanted).map(
+        async (part) => (must(await admin.from("chat_messages").select(cols).in("id", part), "messages") ?? []) as any[],
       ),
     )
   ).flat();
@@ -1202,6 +1234,68 @@ export async function searchMessages(
   return attachReplies(rows.slice(0, 40));
 }
 
+/** Where the next page of "report a deleted message" starts: the last stub shown. */
+export type DeletedCursor = { deletedAt: string; id: string };
+
+/**
+ * The report targets for something posted in a text channel and then
+ * deleted: its messages deleted in the last REPORTABLE_DELETED_MS, most
+ * recently deleted first, a page at a time, as stubs — who and when, never a
+ * word or a file (the select names neither). History and search leave
+ * deleted messages out, so without these a message deleted before anyone
+ * reported it couldn't be reported at all. Never the viewer's own, never a
+ * system line, never a deleted account's (account deletion takes their
+ * earlier versions too, so there is nothing left to review). Whether the
+ * sender deleted it or a moderator removed it isn't said: deleted_by stays
+ * with the team.
+ *
+ * The window counts from the delete, not the post: a message posted a month
+ * ago, edited into something abusive yesterday and deleted, is as fresh a
+ * report as one posted yesterday. And it pages on (deleted_at, id) with
+ * nothing skipped, so a burst of deletes — fifty junk messages posted and
+ * deleted to bury one, or a moderator clearing out a spam run — only pushes
+ * the one that matters onto the next page, never out of reach. 0104's
+ * partial (channel_id, deleted_at desc, id desc) index is the read; before
+ * it, the channel's own index still bounds it.
+ *
+ * DMs and groups have none: reporting the conversation hands it all over,
+ * deleted messages included. Only call after the channel's read check.
+ */
+export async function listDeletedForReport(
+  channel: ChannelRow,
+  viewerId: string,
+  opts: { before?: DeletedCursor | null; limit?: number } = {},
+): Promise<{ messages: DeletedMessageStub[]; hasMore: boolean }> {
+  if (channel.kind !== "channel") return { messages: [], hasMore: false };
+  const limit = Math.min(Math.max(opts.limit ?? DELETED_PAGE_SIZE, 1), 100);
+  const since = new Date(Date.now() - REPORTABLE_DELETED_MS).toISOString();
+  let q = createAdminClient()
+    .from("chat_messages")
+    .select("id, sender_id, created_at, deleted_at")
+    .eq("channel_id", channel.id)
+    .eq("kind", "message")
+    .not("sender_id", "is", null)
+    .neq("sender_id", viewerId)
+    .not("deleted_at", "is", null)
+    .gte("deleted_at", since);
+  const before = opts.before;
+  if (before && Number.isFinite(Date.parse(before.deletedAt)) && isUuid(before.id)) {
+    const t = quoted(before.deletedAt);
+    q = q.or(`deleted_at.lt.${t},and(deleted_at.eq.${t},id.lt.${before.id.toLowerCase()})`);
+  }
+  const rows = (must(
+    await q.order("deleted_at", { ascending: false }).order("id", { ascending: false }).limit(limit + 1),
+    "deleted messages",
+  ) ?? []) as { id: string; sender_id: string; created_at: string; deleted_at: string }[];
+  return {
+    messages: rows.slice(0, limit).map((r) => ({ id: r.id, senderId: r.sender_id, createdAt: r.created_at, deletedAt: r.deleted_at })),
+    hasMore: rows.length > limit,
+  };
+}
+
+/** One page of "report a deleted message". */
+export const DELETED_PAGE_SIZE = 50;
+
 /** When this person last posted in this channel — slow mode's clock. */
 export async function lastSentAt(channelId: string, userId: string): Promise<string | null> {
   const row = must(
@@ -1266,13 +1360,33 @@ export async function canStartConversation(
  * someone who blocked you and then failing would announce it), and matches
  * email only for staff (a student typing a guessed address must not get a
  * confirming hit).
+ *
+ * `group` is who else a GROUP being put together holds (its members, or the
+ * people picked for it so far). Without it the list is for a DM, and the
+ * safeguarding rule is asked about the pair; with it, about the whole group
+ * with each candidate in it (directoryOffers) — the question createGroup and
+ * addToGroup ask before anything is written, which stay the final word. So
+ * a student adding to a group a staff member is in sees the mentor they may
+ * add, and still never sees one for a DM.
+ *
+ * `withheld` says the safeguarding rule, and only it, left someone matching
+ * the search out — so the picker can say what would let them in ("pick
+ * someone from the batch0 team first") exactly when that's the reason, and
+ * not under every typo. It never counts a block (those are gone before the
+ * rule is asked) or anyone the viewer can't reach, and it names nobody: a
+ * person's role is on their name everywhere in Chat already.
  */
-export async function searchDirectory(query: string, viewer: ChatViewer, limit = 20): Promise<ChatPerson[]> {
+export async function searchDirectory(
+  query: string,
+  viewer: ChatViewer,
+  limit = 20,
+  group: readonly string[] | null = null,
+): Promise<{ people: ChatPerson[]; withheld: boolean }> {
   const q = query.trim();
   const admin = createAdminClient();
   const hidden = new Set<string>([viewer.userId, ...(await listBlockRelatedIds(viewer.userId))]);
   const escaped = q.replace(/[%,()"\\*]/g, " ").trim();
-  if (q && !escaped) return [];
+  if (q && !escaped) return { people: [], withheld: false };
 
   const byName = (req: any) => {
     if (!escaped) return req;
@@ -1316,12 +1430,16 @@ export async function searchDirectory(query: string, viewer: ChatViewer, limit =
       return true;
     }),
   );
-  // Nobody the safeguarding rule wouldn't let the viewer DM: offering them
-  // and then refusing would only confuse.
+  // Nobody the safeguarding rule wouldn't let into the conversation: offering
+  // them and then refusing would only confuse. A deleted account in the group
+  // counts as nobody, as it does for membershipAllowed.
   const me = viewer.staff ? null : await getPerson(viewer.userId);
-  return candidates
-    .filter((p) => !me || conversationAllowed([asParty(me), asParty(p)]))
-    .slice(0, limit);
+  const others =
+    me && group?.length
+      ? Array.from((await getPeople(group.filter((id) => id !== viewer.userId))).values()).map(asParty)
+      : [];
+  const offered = candidates.filter((p) => !me || directoryOffers(asParty(me), asParty(p), group ? others : null));
+  return { people: offered.slice(0, limit), withheld: offered.length < candidates.length };
 }
 
 /** The DM between two people, if there is one. */

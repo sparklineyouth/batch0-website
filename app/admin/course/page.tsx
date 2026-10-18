@@ -4,7 +4,12 @@ import { CourseManager } from "./course-manager";
 
 export const metadata = { title: "Course · Admin" };
 
-export default async function AdminCoursePage() {
+export default async function AdminCoursePage(props: {
+  searchParams: Promise<{ module?: string }>;
+}) {
+  // ?module=<id> opens that module: the cohort readiness checklist links a
+  // missing file or an empty lesson straight to the module that holds it.
+  const { module: openModule } = await props.searchParams;
   const admin = createAdminClient();
   const [{ data: cohorts }, { data: modules }, { data: lessons }] =
     await Promise.all([
@@ -23,6 +28,7 @@ export default async function AdminCoursePage() {
           cohorts={cohorts ?? []}
           modules={modules ?? []}
           lessons={lessons ?? []}
+          initialOpenModuleId={typeof openModule === "string" ? openModule : null}
         />
       </Card>
     </div>

@@ -130,9 +130,9 @@ export function isLockTimeout(err: unknown): boolean {
  * statement. Either way a failure can leave part of it applied, and the
  * error says so.
  *
- * `record` is false for a file whose version another file still to run in
- * this pass shares (0071): recording the version early would make the
- * second file look done.
+ * `record: false` runs it without recording it: a file that isn't on main
+ * yet (versionsNotOnMain in lib/migration-plan.ts). Supabase's integration
+ * runs it again and records it once it lands there.
  *
  * The lock wait is short on purpose: while a migration waits for a lock on a
  * busy table (profiles), every request that needs that table queues behind

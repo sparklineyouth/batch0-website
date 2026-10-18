@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { requireViewer } from "@/lib/auth";
 import { getStudentAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
-import { loadStudentAssignments } from "@/lib/assignments-server";
+import { loadAssignmentDraft, loadStudentAssignments } from "@/lib/assignments-server";
 import { AssignmentDetail } from "@/components/assignments/assignment-detail";
 import { AppHeader, AppBody } from "@/components/app/frame";
 import type { Role } from "@/lib/types";
@@ -21,9 +21,12 @@ export default async function StudentAppAssignment(props: { params: Promise<{ id
   const { items } = await loadStudentAssignments(supabase, profile.id, { assignmentId: id });
   const item = items[0];
   if (!item) notFound();
-  const { data: lesson } = item.assignment.lesson_id
-    ? await supabase.from("lessons").select("id, title").eq("id", item.assignment.lesson_id).maybeSingle()
-    : { data: null };
+  const [{ data: lesson }, draft] = await Promise.all([
+    item.assignment.lesson_id
+      ? supabase.from("lessons").select("id, title").eq("id", item.assignment.lesson_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    loadAssignmentDraft(supabase, profile.id, item.assignment.id),
+  ]);
 
   return (
     <>
@@ -45,6 +48,7 @@ export default async function StudentAppAssignment(props: { params: Promise<{ id
         <div className="pb-10">
           <AssignmentDetail
             item={item}
+            draft={draft}
             lesson={lesson}
             lessonHref={(l) => `/dashboard/course/${l}`}
             showTitle={false}

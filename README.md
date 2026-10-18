@@ -17,7 +17,7 @@ were carried into Chat.
 ## Stack
 
 - Node.js 24.x; `.nvmrc` pins the verified local version, 24.21.0
-- Next.js 15.5.25 (App Router), React 19.3.0, and TypeScript
+- Next.js 15.5.28 (App Router), React 19.3.1, and TypeScript; `docs/framework-upgrade.md` records each version bump and the security advisories behind it
 - Tailwind CSS and lucide-react
 - Supabase for authentication, database, and private file storage; Stripe for payments
 
@@ -83,7 +83,9 @@ redirects and webhook endpoints. See `.env.local.example` for available settings
 
 Migrations run after the code deploys: `npm run db:migrate -- --apply` runs
 every pending file in order (backup first, one transaction per file, verified;
-see SETUP.md), or paste them into the Supabase SQL editor by hand.
+see SETUP.md), or paste them into the Supabase SQL editor by hand. Supabase's
+GitHub integration also applies a new file to production when it reaches
+`main`; see *Versions* in `docs/migrations-2026-10.md`.
 The October 2026 release adds 0093–0101: 0095 and 0096 go in before the
 deploy and the rest right after it; see `docs/migrations-2026-10.md` for the
 order, why, and a verify query per file. The app runs without them. `/admin`

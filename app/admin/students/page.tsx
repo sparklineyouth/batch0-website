@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { requirePermission } from "@/lib/auth";
 import { getAllRoles } from "@/lib/roles";
 import { can, covers } from "@/lib/permissions";
+import { roleChangeLock } from "@/lib/role-change";
 import { StudentsBulkList } from "./bulk-list";
 import { PeopleSearch } from "./people-search";
 import { ButtonLink } from "@/components/ui/button";
@@ -32,7 +33,7 @@ export default async function AdminStudentsPage(
   }
 ) {
   const searchParams = await props.searchParams;
-  const { caps } = await requirePermission("people.view");
+  const { profile: viewer, caps } = await requirePermission("people.view");
   const admin = createAdminClient();
 
   // Filter tabs come from the roles table, so a role created at /admin/roles
@@ -134,6 +135,11 @@ export default async function AdminStudentsPage(
   const roleOptions = roles
     .filter((r) => covers(caps, r.permissions))
     .map((r) => ({ slug: r.slug, label: r.label, color: r.color }));
+  // Every role, for the badges on rows the viewer may not change: their own,
+  // and anyone whose role holds admin powers theirs doesn't
+  // (lib/role-change.ts). The
+  // picker list above only has what the viewer can hand out.
+  const roleBadges = roles.map((r) => ({ slug: r.slug, label: r.label, color: r.color }));
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -237,6 +243,7 @@ export default async function AdminStudentsPage(
         <StudentsBulkList
           canChangeRoles={canChangeRoles}
           roleOptions={roleOptions}
+          roleBadges={roleBadges}
           rows={(profiles ?? []).map((p: any) => {
             const latestApp = (p.applications ?? [])[0];
             const enrollment = (p.enrollments ?? [])[0];
@@ -250,6 +257,11 @@ export default async function AdminStudentsPage(
               email: isPlaceholderEmail(p.email) ? "" : p.email,
               full_name: p.full_name,
               role: p.role as Role,
+              // The same rule the action applies, so a row the server would
+              // refuse shows a badge instead of a picker.
+              role_locked:
+                !canChangeRoles ||
+                roleChangeLock({ userId: viewer.id, caps }, { id: p.id, role: p.role }, roles) !== null,
               created_at: p.created_at,
               latest_app_status: latestApp?.status ?? null,
               cohort_name: cohort?.name ?? null,
