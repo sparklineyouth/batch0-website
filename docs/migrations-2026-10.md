@@ -1,4 +1,4 @@
-# Migrations 0093–0104 (October 2026)
+# Migrations 0093–0105 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -71,6 +71,10 @@ check-ins, in-app files, discussions and the old recorder at once:
    **If 0101 ever runs again after 0104, run 0104 again**: 0101
    re-grants the message columns it knows by name, which takes away
    `client_id`'s (0104's verify query notices).
+6. **Any time after 0093: 0105.** It only adds the drafts table and its
+   two functions; nothing reads or writes them until it runs. Until then
+   assignment forms work as before, without autosave (the page reads the
+   missing table as "not set up yet", and Submit never touches it).
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -162,6 +166,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0102 | `0102_email_outbox_dedupe_index.sql` | `email_outbox.dedupe_key` gets a plain unique index in place of 0052's partial one, so the scheduled-automation fan-out's `on conflict (dedupe_key)` works. Changes no data and sends nothing by itself. |
 | 0103 | `0103_admin_integrity.sql` | `admin_move_student_cohort()` (service role only): moving a student to another cohort is one transaction — their enrollment (kept even without an application), the application it belongs to and their live scholarship rows move together, or nothing does; picking the cohort a student paid for while they're enrolled nowhere puts that enrollment back. Triggers `keep_a_full_admin` (on `profiles`) and `keep_a_full_admin_role` (on `app_roles`) refuse any change that would leave nobody holding a `*` role, serialised so two admins can't demote each other at once. Changes no data. |
 | 0104 | `0104_chat_client_ids.sql` | `chat_messages.client_id` (the composer's id for a message, kept by every Retry), unique per sender, readable by signed-in readers so Realtime's echo carries it: a resend of a message that went through gets the original back instead of posting it twice. Plus a partial index on deleted messages, `(channel_id, deleted_at desc, id desc)`, for *Report a deleted message*. Changes no data. See `docs/chat.md`. |
+| 0105 | `0105_assignment_drafts.sql` | `course_assignment_drafts`: a student's private, autosaved unsubmitted assignment work, readable by its owner only (no staff policy), with a version that only goes up (a submit empties the row instead of deleting it). `save_course_assignment_draft()` re-checks access on every save and refuses one from a tab holding an older version; `clear_course_assignment_draft()` empties it after a submit. Both service role only. Adds only; changes no existing data. |
 
 ## Verify
 
@@ -269,6 +274,16 @@ select exists (select 1 from information_schema.columns
                  and column_name = 'client_id' and grantee = 'authenticated'
                  and privilege_type = 'SELECT')
    and to_regclass('public.chat_messages_channel_deleted_idx') is not null as ok;
+
+-- 0105
+select to_regclass('public.course_assignment_drafts') is not null
+   and to_regprocedure('public.save_course_assignment_draft(uuid, uuid, text, text, integer)') is not null
+   and to_regprocedure('public.clear_course_assignment_draft(uuid, uuid, integer)') is not null
+   -- By oid: NULL (not an error) when a function doesn't exist yet.
+   and not has_function_privilege('authenticated',
+         to_regprocedure('public.save_course_assignment_draft(uuid, uuid, text, text, integer)'), 'execute')
+   and not has_function_privilege('authenticated',
+         to_regprocedure('public.clear_course_assignment_draft(uuid, uuid, integer)'), 'execute') as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,
