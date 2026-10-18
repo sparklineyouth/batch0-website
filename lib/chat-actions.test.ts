@@ -31,6 +31,8 @@ const state = {
   order: [] as string[],
   calls: [] as string[],
   me: "",
+  /** What requireActor answers for the signed-in person's capabilities. */
+  caps: null as null | { permissions: string[]; superAdmin: boolean },
   channels: {} as Record<string, Row>,
   afters: [] as (() => Promise<void>)[],
   bells: [] as Row[],
@@ -118,7 +120,7 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
       "next/server": g + "export const after=(fn)=>{t.state.afters.push(fn);t.state.order.push('bells asked for');};",
       "next/navigation": "export const unstable_rethrow=()=>{};",
       "@/lib/supabase/admin": g + "export const createAdminClient=()=>t.db;",
-      "@/lib/server-guards": g + "export const requireActor=async()=>({userId:t.state.me,caps:null});",
+      "@/lib/server-guards": g + "export const requireActor=async()=>({userId:t.state.me,caps:t.state.caps});",
       "@/lib/rate-limit": g + "export const checkRateLimit=async()=>({ok:!t.state.rateLimited});",
       "@/lib/notifications": g + "export const notifyMany=async(rows)=>{t.state.notified.push(...rows);};",
       "@/lib/audit": "export const logAudit=async()=>{};export const logAuditMany=async()=>{};",
@@ -143,6 +145,7 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
         "export const stampThreadSeen=async()=>0;",
       "@/lib/chat-help": g + "export const requestThreadHelp=async(x)=>t.state.threads.help(x);",
       "@/lib/chat-about": g + "export const aboutFor=async(r)=>t.state.threads.aboutFor(r);export const withAbout=async(m)=>m;",
+      "@/lib/chat-questions": g + "export const openQuestionCount=async(id)=>(t.state.threads.counted.push(id),t.state.threads.unanswered);",
       "@/lib/chat-files":
         "export const verifyChatUploads=async()=>({ok:true,attachments:[]});export const mintChatUploads=async()=>({ok:false,error:'no'});export const removeChannelFiles=async()=>{};",
       "@/app/chat/api/reads":
@@ -191,6 +194,7 @@ function reset(over: { columnMissing?: boolean } = {}) {
   state.order = [];
   state.calls = [];
   state.me = ME;
+  state.caps = null;
   state.afters = [];
   state.bells = [];
   state.reads = 0;
@@ -215,11 +219,13 @@ function reset(over: { columnMissing?: boolean } = {}) {
     about: [],
     changed: [],
     helped: [],
+    counted: [],
+    unanswered: 0,
     change: async (...a: unknown[]) => (state.threads.changed.push(a), true),
     describe: async (_v: unknown, _c: unknown, _ch: unknown, root: Row, row: Row | null) => ({
       rootId: root.id, question: row?.question ?? null, answerId: row?.answerId ?? null,
     }),
-    help: async (x: Row) => (state.threads.helped.push(x), { ticketId: uuid(6001), reference: "B0-2345-6789", outcome: "created" }),
+    help: async (x: Row) => (state.threads.helped.push(x), { ticketId: uuid(6001), reference: "B0-2345-6789", outcome: "created", yours: true }),
     aboutFor: async () => null,
   };
   send.resetClientIdState();
@@ -570,19 +576,25 @@ test("Ask the team files the thread's one help request (the reply's root, not th
   threadDoubles();
   const res = await flagForTeam(REPLY, "  stuck   on the outreach   message ");
   assert.equal(res.ok, true, res.ok ? "" : res.error);
-  assert.deepEqual(res.ok && res.data, { reference: "B0-2345-6789", outcome: "created" });
+  assert.deepEqual(res.ok && res.data, { reference: "B0-2345-6789", outcome: "created", yours: true });
   assert.equal(state.threads.helped.length, 1);
   const asked = state.threads.helped[0];
   assert.deepEqual([asked.rootId, asked.messageId, asked.askerId, asked.note], [ROOT, REPLY, ME, "stuck on the outreach message"]);
+  assert.equal(asked.askerIsTeam, false, "a student isn't the team: references of other people's requests stay hidden");
   assert.deepEqual(
     state.notified.map((b) => [b.userId, b.type, b.link]),
     [[STAFFER, "chat_flagged", `/chat?c=${HELP}&m=${REPLY}`]],
     "the bell opens the reply, in its thread",
   );
   // The thread's request already exists: the same ticket, joined.
-  state.threads.help = async (x: Row) => (state.threads.helped.push(x), { ticketId: uuid(6001), reference: "B0-2345-6789", outcome: "linked" });
+  state.threads.help = async (x: Row) => (state.threads.helped.push(x), { ticketId: uuid(6001), reference: null, outcome: "linked", yours: false });
   const again = await flagForTeam(ROOT, "");
-  assert.deepEqual(again.ok && again.data, { reference: "B0-2345-6789", outcome: "linked" });
+  assert.deepEqual(again.ok && again.data, { reference: null, outcome: "linked", yours: false }, "someone else's request: no reference");
+  // Someone who reads Support is the team: the help request says its reference to them.
+  state.caps = { permissions: ["support.view"], superAdmin: false };
+  await flagForTeam(ROOT, "");
+  assert.equal(state.threads.helped.at(-1)!.askerIsTeam, true);
+  state.caps = null;
   assert.equal(state.threads.helped.at(-1)!.rootId, ROOT, "a feed message is its own thread's root");
   // A ticket that couldn't be filed doesn't silence the team: the bell goes, and the screen isn't told of a request.
   state.notified = [];
@@ -591,7 +603,7 @@ test("Ask the team files the thread's one help request (the reply's root, not th
   };
   const down = await flagForTeam(ROOT, "help");
   assert.equal(down.ok, true);
-  assert.deepEqual(down.ok && down.data, { reference: null, outcome: null });
+  assert.deepEqual(down.ok && down.data, { reference: null, outcome: null, yours: false });
   assert.equal(state.notified.length, 1);
   // Before 0110: the bell alone, as it was.
   state.threads.ready = false;
@@ -615,9 +627,13 @@ test("settling a #help question: only its asker or the team, an answer from its 
   const wrong = await setQuestion({ rootId: ROOT, action: "accept", answerId: OTHER_REPLY, expect: open });
   assert.equal(wrong.ok, false);
   assert.match(wrong.ok ? "" : wrong.error, /That reply is gone/);
+  state.threads.unanswered = 4;
   const accepted = await setQuestion({ rootId: ROOT, action: "accept", answerId: REPLY, expect: open });
   assert.equal(accepted.ok, true, accepted.ok ? "" : accepted.error);
   assert.deepEqual(state.threads.changed.at(-1), [ROOT, open, { question: "answered", answerId: REPLY }, YOU]);
+  // #help's header count comes back with it, so the Unanswered badge moves now, not on the next open.
+  assert.equal(accepted.ok && accepted.data?.unanswered, 4);
+  assert.deepEqual(state.threads.counted, [HELP]);
   // Someone reopened it meanwhile: the screen's picture is stale, nothing moves.
   state.threads.rows[ROOT] = { question: "open", answerId: null };
   const changes = state.threads.changed.length;

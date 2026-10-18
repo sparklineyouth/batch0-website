@@ -41,8 +41,7 @@ import {
 } from "./dialogs";
 import type { MarkupContext } from "./markup";
 import { chatApi, NOT_AVAILABLE, tracked } from "./api";
-import { OFFLINE, resultError } from "./util";
-import { helpNotice } from "./thread-panel";
+import { OFFLINE, helpNotice, resultError } from "./util";
 import { aboutParam } from "@/lib/chat-threads-rules";
 import type { ActionResult } from "@/lib/action-result";
 import type { ChannelPayload, ChatPerson, ChatViewerInfo, Panel, UiMessage } from "./types";
@@ -88,6 +87,7 @@ export function ChannelView({
   onPeople,
   onOpenThread,
   onClearAsk,
+  unsentThreads,
 }: {
   viewer: ChatViewerInfo;
   payload: ChannelPayload | null;
@@ -142,6 +142,8 @@ export function ChannelView({
   onOpenThread: (rootId: string) => void;
   /** Take the "Ask about this" link off the composer. */
   onClearAsk: () => void;
+  /** Roots with a thread reply that failed to send (0110): the feed says so under each. */
+  unsentThreads?: ReadonlySet<string>;
 }) {
   const channel = payload?.channel ?? null;
   const [replyTo, setReplyTo] = useState<UiMessage | null>(null);
@@ -531,6 +533,7 @@ export function ChannelView({
         actions={actions}
         onNearBottom={onNearBottom}
         emptyHint={<Intro payload={payload} label={label} />}
+        unsentThreads={unsentThreads}
       />
 
       <div className="h-5 shrink-0 px-4 text-xs text-ink-faint md:px-6" aria-live="polite">

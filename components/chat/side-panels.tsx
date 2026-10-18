@@ -5,7 +5,7 @@ import { searchMessages } from "@/app/chat/actions";
 import { plainText } from "@/lib/chat-format";
 import { Avatar, RoleTag } from "./avatar";
 import { chatApi, READ_FAILED, tracked } from "./api";
-import { senderName, sinceLabel, stampLabel } from "./util";
+import { senderName, sinceLabel, stampLabel, unansweredLabel } from "./util";
 import { AboutLink } from "./message-list";
 import { ThreadPanel } from "./thread-panel";
 import type { ChannelInfo, ChatMessage, ChatPerson, ChatViewerInfo, Panel } from "./types";
@@ -13,7 +13,7 @@ import type { ChannelInfo, ChatMessage, ChatPerson, ChatViewerInfo, Panel } from
 /** What the thread pane needs from ChatApp (0110), passed straight through. */
 export type ThreadPaneProps = Omit<
   React.ComponentProps<typeof ThreadPanel>,
-  "viewer" | "channel" | "people" | "online" | "channelNames" | "onClose" | "onMessagePerson" | "addPeople"
+  "viewer" | "channel" | "people" | "online" | "channelNames" | "onClose" | "onMessagePerson" | "addPeople" | "blocked" | "onUnanswered"
 >;
 
 const FOCUSABLE =
@@ -52,6 +52,8 @@ export function SidePanel({
   addPeople,
   thread = null,
   onOpenThread,
+  blocked = [],
+  onUnanswered,
 }: {
   panel: Exclude<Panel, null>;
   viewer: ChatViewerInfo;
@@ -68,6 +70,10 @@ export function SidePanel({
   thread?: ThreadPaneProps | null;
   /** #help's Unanswered list: open a question's thread. */
   onOpenThread?: (rootId: string) => void;
+  /** People this viewer blocked: their messages are collapsed here as in the feed. */
+  blocked?: readonly string[];
+  /** #help's open-question count, as a list or a settled question just read it: the header's badge. */
+  onUnanswered?: (channelId: string, n: number) => void;
 }) {
   const title =
     panel === "members"
@@ -171,9 +177,11 @@ export function SidePanel({
           people={people}
           online={online}
           channelNames={channelNames}
+          blocked={blocked}
           onClose={onClose}
           onMessagePerson={onMessagePerson}
           addPeople={addPeople}
+          onUnanswered={onUnanswered}
         />
       ) : (
         <>
@@ -189,7 +197,15 @@ export function SidePanel({
             ) : panel === "pins" ? (
               <Pins channel={channel} people={people} channelNames={channelNames} onJump={onJump} addPeople={addPeople} />
             ) : panel === "unanswered" ? (
-              <Unanswered channel={channel} people={people} channelNames={channelNames} addPeople={addPeople} onOpenThread={onOpenThread} />
+              <Unanswered
+                channel={channel}
+                people={people}
+                channelNames={channelNames}
+                addPeople={addPeople}
+                onOpenThread={onOpenThread}
+                blocked={blocked}
+                onTotal={(n) => onUnanswered?.(channel.id, n)}
+              />
             ) : (
               <SearchPanel channel={channel} people={people} channelNames={channelNames} onJump={onJump} addPeople={addPeople} />
             )}
@@ -451,7 +467,10 @@ function SearchPanel({
 /**
  * #help's Unanswered list (0110): its open questions, the ones waiting
  * longest first — the questions' own messages, as anyone in #help reads
- * them. Picking one opens its thread.
+ * them, except that one from someone the viewer blocked says so instead of
+ * what it says (the thread's own copy is collapsed with "show", as in the
+ * feed). Picking one opens its thread. The count it reads is the header
+ * badge's too (`onTotal`).
  */
 function Unanswered({
   channel,
@@ -459,16 +478,22 @@ function Unanswered({
   channelNames,
   addPeople,
   onOpenThread,
+  blocked,
+  onTotal,
 }: {
   channel: ChannelInfo;
   people: Record<string, ChatPerson>;
   channelNames: Map<string, string>;
   addPeople: (p: Record<string, ChatPerson>) => void;
   onOpenThread?: (rootId: string) => void;
+  blocked: readonly string[];
+  onTotal: (n: number) => void;
 }) {
   const [list, setList] = useState<ChatMessage[] | null>(null);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const totalRef = useRef(onTotal);
+  totalRef.current = onTotal;
   useEffect(() => {
     let live = true;
     setList(null);
@@ -480,6 +505,7 @@ function Unanswered({
         addPeople(r.people);
         setList(r.questions);
         setTotal(r.total);
+        totalRef.current(r.total);
       })
       .catch(() => live && setError(READ_FAILED));
     return () => {
@@ -500,6 +526,8 @@ function Unanswered({
       <ul className="divide-y divide-line">
         {list.map((m) => {
           const replies = m.thread?.replyCount ?? 0;
+          const hidden = !!m.senderId && blocked.includes(m.senderId);
+          const who = hidden ? "Someone you blocked" : senderName(m, people);
           return (
             <li key={m.id}>
               <button
@@ -507,15 +535,19 @@ function Unanswered({
                 onClick={() => onOpenThread?.(m.id)}
                 data-thread-opener={m.id}
                 className="block w-full px-4 py-3 text-left hover:bg-wash"
-                aria-label={`${senderName(m, people)} asked ${sinceLabel(m.createdAt)} ago, ${replies === 0 ? "no replies yet" : `${replies} ${replies === 1 ? "reply" : "replies"}`}. Open thread`}
+                aria-label={unansweredLabel(who, m.createdAt, replies)}
               >
                 <span className="flex items-baseline gap-2">
-                  <span className="min-w-0 truncate text-sm font-semibold text-ink">{senderName(m, people)}</span>
+                  <span className="min-w-0 truncate text-sm font-semibold text-ink">{who}</span>
                   <span className="shrink-0 font-mono text-[10px] text-ink-faint">{sinceLabel(m.createdAt)}</span>
                 </span>
-                <span className="mt-0.5 line-clamp-3 block text-sm text-ink-soft">
-                  {plainText(m.body || "[attachment]", (id) => people[id]?.name, (id) => channelNames.get(id) ?? null, 300)}
-                </span>
+                {hidden ? (
+                  <span className="mt-0.5 block text-xs italic text-ink-faint">Question from someone you blocked</span>
+                ) : (
+                  <span className="mt-0.5 line-clamp-3 block text-sm text-ink-soft">
+                    {plainText(m.body || "[attachment]", (id) => people[id]?.name, (id) => channelNames.get(id) ?? null, 300)}
+                  </span>
+                )}
                 <span className={`mt-1 inline-flex items-center gap-1 text-[11px] ${replies === 0 ? "font-medium text-amber-800 dark:text-amber-200" : "text-ink-faint"}`}>
                   <MessagesSquare className="h-3 w-3" aria-hidden />
                   {replies === 0 ? "No replies yet" : `${replies} ${replies === 1 ? "reply" : "replies"}, not answered yet`}

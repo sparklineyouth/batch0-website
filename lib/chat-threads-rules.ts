@@ -287,23 +287,53 @@ export function threadBellTitle(input: { sender: string; channelName: string | n
 /** A Support ticket's status (lib/support-access.ts TICKET_STATUSES), as far as a help request cares. */
 export type HelpTicketStatus = "open" | "waiting_on_requester" | "resolved" | "closed";
 
-export type HelpStatus = "open" | "handled";
+export type HelpStatus = "open" | "waiting" | "handled";
 
-/** What the thread says about its help request: still with the team, or handled. */
+/**
+ * What the thread says about its help request: in the team's queue (open),
+ * answered by the team and waiting on the person who asked (Support's
+ * `waiting_on_requester`, the default after a staff reply), or handled.
+ */
 export function helpStatusFor(status: HelpTicketStatus): HelpStatus {
-  return status === "resolved" || status === "closed" ? "handled" : "open";
+  if (status === "resolved" || status === "closed") return "handled";
+  return status === "waiting_on_requester" ? "waiting" : "open";
+}
+
+/**
+ * Is the request in the team's queue — Support's "Needs reply", the one
+ * status with `needs_reply` set (lib/support-access.ts needsReplyForStatus)?
+ * Only then is it a Support row on the Overview; a question whose request is
+ * waiting on the asker, or handled, still needs its own row.
+ */
+export function helpWithTeam(status: HelpTicketStatus): boolean {
+  return status === "open";
 }
 
 /**
  * What "Ask the team" does with a thread's existing request: none, or a
  * closed one (final: someone with something new opens a new request, the
- * Support rule) → a new ticket; one still with the team → the same ticket,
- * with a note that someone asked again; a resolved one → that ticket,
- * reopened, so the history stays in one place.
+ * Support rule) → a new ticket; one in the team's queue → the same ticket,
+ * with a note that someone asked again; one waiting on the asker, or
+ * resolved → that ticket, back in the queue (as a requester's follow-up puts
+ * it, lib/support-access.ts statusAfterRequesterReply), so someone asking
+ * again is seen and the history stays in one place.
  */
 export function helpRequestPlan(existing: { status: HelpTicketStatus } | null): "create" | "link" | "reopen" {
   if (!existing || existing.status === "closed") return "create";
-  return existing.status === "resolved" ? "reopen" : "link";
+  return helpWithTeam(existing.status) ? "link" : "reopen";
+}
+
+/**
+ * A help request's reference, for one viewer: the person who filed it and
+ * the team (support.view) see it; anyone else in the thread doesn't — it's
+ * someone else's Support request, and a reference to a page that 404s for
+ * them (lib/chat-threads.ts helpInfoFor, and "Ask the team"'s answer).
+ */
+export function helpReferenceFor(
+  ticket: { reference: string; userId: string | null },
+  viewer: { userId: string; team: boolean },
+): string | null {
+  return viewer.team || (!!ticket.userId && ticket.userId === viewer.userId) ? ticket.reference : null;
 }
 
 // ---------------------------------------------------------------------------

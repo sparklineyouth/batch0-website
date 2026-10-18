@@ -858,16 +858,14 @@ export function AddPeopleDialog({
 }
 
 /**
- * "Ask the team for help" about a message in a channel: every chat moderator
- * gets a bell that opens it. Not a report — nobody is in trouble — so it
- * hands over nothing but the link and the note.
- */
-/**
- * "Ask the team for help" on a message. With threads (0110) it files, or
+ * "Ask the team for help" on a message: every chat moderator gets a bell
+ * that opens it. Not a report — nobody is in trouble — so it hands over
+ * nothing but the link and the note. With threads (0110) it also files, or
  * joins, the thread's one help request in Support: `onDone` gets its
- * reference, and whether this made a new one or joined the one already
- * open. Educational help only — the copy points safety worries at Report,
- * which is its own confidential queue.
+ * reference (for its requester and the team only), and whether this made a
+ * new one, joined the one already open or put it back with the team.
+ * Educational help only — the copy points safety worries at Report, which
+ * is its own confidential queue.
  */
 export function FlagDialog({
   message,
@@ -903,7 +901,7 @@ export function FlagDialog({
       </blockquote>
       <p className="mb-3 text-xs leading-relaxed text-ink-soft">
         {threads
-          ? "Someone on the batch0 team picks it up as a help request for this thread, and the thread shows when it's handled. If the thread already has one, you're added to it. Use it when someone's stuck or something needs a staff eye."
+          ? "Someone on the batch0 team picks it up as a help request for this thread, and the thread shows when it's handled. If the thread already has one, the team is told you asked too. Use it when someone's stuck or something needs a staff eye."
           : "The batch0 team gets a notification that opens this message. Use it when someone's stuck or something needs a staff eye."}{" "}
         If something here is unsafe or upsetting, use Report instead: it goes to the team privately.
       </p>

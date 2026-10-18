@@ -19,6 +19,7 @@ import {
   feedbackItems,
   followUpItems,
   questionItems,
+  questionLeftToSupport,
   supportItems,
   type AttentionProvider,
   type AttentionResult,
@@ -218,20 +219,23 @@ const chatReports: AttentionProvider<AttentionContext> = {
 
 /**
  * #help's open questions (Chat threads, 0110): the count its Unanswered list
- * shows, and the oldest few as rows that open their thread. Questions whose
- * help request is still with the team are counted but left to their Support
- * row (questionItems), and the note says how many.
+ * shows, and the oldest few as rows that open their thread. A question whose
+ * help request is in Support's "Needs reply" queue is counted but left to
+ * its Support row — for a viewer who sees Support's rows — and the note says
+ * how many (questionLeftToSupport). One the team has answered in Support
+ * (waiting on the asker) is in no queue, so it stays a row here.
  */
 const chatQuestions: AttentionProvider<AttentionContext> = {
   key: "chat_questions",
   permitted: ATTENTION_PERMITTED.chat_questions,
-  load: ({ now }) =>
+  load: ({ caps, now }) =>
     logged("chat_questions", async () => {
       try {
         const q = await loadUnansweredQuestions({ limit: ATTENTION_LIMIT });
         if (!q.ready || !q.help) return null;
-        const items = questionItems(q.rows, now).slice(0, ATTENTION_LIMIT);
-        const withHelp = q.rows.filter((r) => r.help && (r.help.status === "open" || r.help.status === "waiting_on_requester")).length;
+        const supportListed = ATTENTION_PERMITTED.support(caps);
+        const items = questionItems(q.rows, now, { supportListed }).slice(0, ATTENTION_LIMIT);
+        const withHelp = q.rows.filter((r) => questionLeftToSupport(r, supportListed)).length;
         return {
           key: "chat_questions",
           label: "Unanswered questions",

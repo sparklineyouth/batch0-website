@@ -86,6 +86,8 @@ import {
 } from "@/lib/chat-threads";
 import { requestThreadHelp, type HelpRequestOutcome } from "@/lib/chat-help";
 import { aboutFor, withAbout } from "@/lib/chat-about";
+import { openQuestionCount } from "@/lib/chat-questions";
+import { supportScopeFor } from "@/lib/support-access";
 import {
   canDecideQuestion,
   isQuestionChannel,
@@ -1288,9 +1290,15 @@ export async function reportConversation(input: { channelId: string; reason: str
 const FLAG_NOTE_MAX = 300;
 
 export type FlagResult = {
-  /** The thread's help request in Support (0110): its reference, and whether this made, linked or reopened it. */
+  /**
+   * The thread's help request in Support (0110): its reference — only for
+   * the person who filed it and the team (helpReferenceFor) — and whether
+   * this made, linked or reopened it.
+   */
   reference: string | null;
   outcome: HelpRequestOutcome | null;
+  /** The asker filed this request themselves (it's their Support request). */
+  yours?: boolean;
 };
 
 /**
@@ -1309,7 +1317,8 @@ export type FlagResult = {
  */
 export async function flagForTeam(messageId: string, note: string): Promise<ActionResult<FlagResult>> {
   return runAction({ name: "chat.flag" }, async () => {
-    const viewer = await viewerNow();
+    const actor = await requireActor();
+    const viewer = await getChatViewer(actor.userId, actor.caps);
     const row = await getMessageRow(messageId);
     if (!row || row.deleted_at) refuse("That message is gone.");
     const found = await getChannelForViewer(row.channel_id, viewer);
@@ -1329,6 +1338,7 @@ export async function flagForTeam(messageId: string, note: string): Promise<Acti
           rootId: row.thread_root_id ?? row.id,
           messageId: row.id,
           askerId: viewer.userId,
+          askerIsTeam: supportScopeFor(actor.userId, actor.caps).canView,
           note: text,
         });
       } catch (err) {
@@ -1352,7 +1362,7 @@ export async function flagForTeam(messageId: string, note: string): Promise<Acti
         })),
       );
     }
-    return { reference: request?.reference ?? null, outcome: request?.outcome ?? null };
+    return { reference: request?.reference ?? null, outcome: request?.outcome ?? null, yours: request?.yours ?? false };
   });
 }
 
@@ -1387,7 +1397,7 @@ export async function setQuestion(input: {
   action: QuestionAction;
   answerId?: string | null;
   expect?: { question: QuestionState | null; answerId: string | null } | null;
-}): Promise<ActionResult<{ info: ThreadInfo }>> {
+}): Promise<ActionResult<{ info: ThreadInfo; unanswered: number | null }>> {
   return runAction({ name: "chat.question" }, async () => {
     const actor = await requireActor();
     const viewer = await getChatViewer(actor.userId, actor.caps);
@@ -1416,7 +1426,13 @@ export async function setQuestion(input: {
     const step = questionTransition(now, input.action, answerId);
     if (!step.ok) refuse(step.reason);
     if (!(await changeQuestion(root.id, now, step.next, viewer.userId))) refuse(changed);
-    return { info: await describeThread(viewer, actor.caps, channel, root, await getThreadRow(root.id)) };
+    // #help's header counts its open questions: the screen updates it from
+    // here (null if it couldn't be counted: the screen keeps what it shows).
+    const [info, unanswered] = await Promise.all([
+      describeThread(viewer, actor.caps, channel, root, await getThreadRow(root.id)),
+      openQuestionCount(channel.id),
+    ]);
+    return { info, unanswered };
   });
 }
 

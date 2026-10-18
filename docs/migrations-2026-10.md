@@ -178,6 +178,17 @@ check-ins, in-app files, discussions and the old recorder at once:
   `profiles.discord_username`), its every-minute Discord cron fails, and
   Discord linking can't save. Fix forward instead. Before any of them has
   run, rolling back is safe.
+- **Don't roll the code back past 0110 once anyone has replied in a
+  thread.** 0110 itself is safe under the previous code (it ignores the new
+  column and tables), and nothing needs undoing in the database. But the
+  previous code's feed doesn't filter `thread_root_id`: every thread reply
+  shows in its channel's main feed as a plain message, out of context, and
+  live clients add new ones there and can pin or quote them, while 0110's
+  `chat_unread()` keeps leaving them out of unread counts. Fix forward. If a
+  revert is unavoidable, replies show in the feeds until the fix ships;
+  don't drop `thread_root_id` to hide them, since it's the only record of
+  which thread each reply belongs to. Before the first thread reply, a
+  revert is harmless.
 - People with `settings.manage` see one line on `/admin`, *Database update
   needed: run migration(s) …* naming the ones missing, while a probe finds one
   (`lib/pending-migrations.ts`, cached 5 minutes). It checks the new tables and

@@ -388,16 +388,33 @@ export type QuestionLike = {
 export const QUESTION_STALE_MS = 24 * 3_600_000;
 
 /**
- * Rows for #help's open questions, the ones waiting longest first. A
- * question whose help request is still with the team isn't a row: that
- * request is a Support row already (one record, one row), and the provider
- * says so in its note. A row names the channel and who asked — never the
- * question's words — and opens the thread, where it's answered and marked
- * answered: doing that is what takes the row off.
+ * Is this question left to its Support row? Only while its help request is
+ * in Support's "Needs reply" queue (status open — the one the Support
+ * provider lists), and only for someone who sees that provider. A request
+ * the team answered (waiting on the asker) or handled is in no queue, so the
+ * question is a row of its own; so is every question for a chat.manage
+ * holder who can't open Support.
  */
-export function questionItems(rows: readonly QuestionLike[], now: number): AttentionItem[] {
+export function questionLeftToSupport(q: Pick<QuestionLike, "help">, supportListed: boolean): boolean {
+  return supportListed && q.help?.status === "open";
+}
+
+/**
+ * Rows for #help's open questions, the ones waiting longest first. A
+ * question whose help request is in the team's Support queue isn't a row:
+ * that request is a Support row already (one record, one row), and the
+ * provider says so in its note (questionLeftToSupport). A row names the
+ * channel and who asked — never the question's words — and opens the
+ * thread, where it's answered and marked answered: doing that is what takes
+ * the row off.
+ */
+export function questionItems(
+  rows: readonly QuestionLike[],
+  now: number,
+  opts: { supportListed: boolean },
+): AttentionItem[] {
   return rows
-    .filter((q) => !q.help || q.help.status === "resolved" || q.help.status === "closed")
+    .filter((q) => !questionLeftToSupport(q, opts.supportListed))
     .map((q) => {
       const waited = now - Date.parse(q.askedAt);
       const unreplied = q.replyCount === 0;

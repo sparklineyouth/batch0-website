@@ -693,6 +693,21 @@ export function statusChangeFields(
 }
 
 /**
+ * A Chat thread's help request going back to the team (lib/support.ts
+ * reopenChatHelpTicket, migration 0110): someone in the thread asked again
+ * while it was waiting on them or resolved. What a requester's follow-up
+ * does (statusAfterRequesterReply → open): back in "Needs reply", and the
+ * reply clock — which runs from requester_activity_at (0090) — starts from
+ * this ask, not from when they first wrote.
+ */
+export function chatHelpReopenFields(
+  from: "waiting_on_requester" | "resolved",
+  nowIso: string,
+): TicketStatusFields & { requester_activity_at: string } {
+  return { ...statusChangeFields(from, "open", nowIso), requester_activity_at: nowIso };
+}
+
+/**
  * Whether the category asks for a receipt reference and offers the "which
  * payment?" picker. Only the two money categories do; asking an account
  * lockout for a Stripe id is noise.

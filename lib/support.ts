@@ -35,6 +35,7 @@ import {
   TICKET_BODY_MAX,
   TICKET_BODY_MIN,
   canRequesterMarkSolved,
+  chatHelpReopenFields,
   chatThreadPath,
   checkStaffReceivedAt,
   requesterThreadPath,
@@ -890,16 +891,23 @@ export async function addChatHelpNote(ticketId: string, text: string): Promise<v
 }
 
 /**
- * Put a handled help request back in the queue: someone in the thread asked
- * again. Only from `resolved` (a closed ticket is final, and gets a new one),
- * and only if it still is — the conditional update is the lock.
+ * Put a help request back in the team's queue: someone in the thread asked
+ * again. From `waiting_on_requester` (the team replied — asking again is the
+ * follow-up it was waiting for) or `resolved`; a closed ticket is final, and
+ * the thread gets a new one. As a requester's follow-up does
+ * (statusAfterRequesterReply), it goes to `open`, with needs_reply set, and
+ * the reply clock (requester_activity_at, 0090) starts from this ask — a
+ * request answered a week ago isn't overdue the moment it's back.
+ * Conditional on the status the caller saw: the update is the lock, and a
+ * false says it moved meanwhile (look again).
  */
-export async function reopenChatHelpTicket(ticketId: string): Promise<boolean> {
+export async function reopenChatHelpTicket(ticketId: string, from: "waiting_on_requester" | "resolved"): Promise<boolean> {
+  const now = new Date().toISOString();
   const { data, error } = await createAdminClient()
     .from("support_tickets")
-    .update(statusChangeFields("resolved", "open", new Date().toISOString()))
+    .update(chatHelpReopenFields(from, now))
     .eq("id", ticketId)
-    .eq("status", "resolved")
+    .eq("status", from)
     .select("id");
   if (error) throw dbFailure("reopenChatHelpTicket", error);
   return (data ?? []).length > 0;

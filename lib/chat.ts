@@ -1076,7 +1076,12 @@ async function attachReplies(rows: any[]): Promise<ChatMessage[]> {
         : null,
     );
     const t = threads.get(r.id);
-    if (t && (t.replyCount > 0 || t.question)) m.thread = toSummary(t);
+    // A message with only an "Ask about this" link (a staff post, a quote, a
+    // question someone unmarked) gets an empty summary too, so the per-viewer
+    // chip has somewhere to go (lib/chat-about.ts withAbout). The summary
+    // never says there's a link: a viewer who can't read the item sees the
+    // same as for a message with no thread at all.
+    if (t && (t.replyCount > 0 || t.question || t.about)) m.thread = toSummary(t);
     return m;
   });
 }

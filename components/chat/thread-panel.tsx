@@ -26,8 +26,9 @@ import { Composer } from "./composer";
 import { FlagDialog, MuteDialog, ReportDeletedDialog, ReportDialog } from "./dialogs";
 import { ChatReadError, NOT_AVAILABLE, READ_FAILED, chatApi, tracked } from "./api";
 import { applyUpdate, localOnly, sameMessage, toUiMessage, withoutMessage } from "./live-rows";
-import { OFFLINE, newClientId, resultError, senderName, stampLabel } from "./util";
+import { OFFLINE, helpNotice, newClientId, resultError, senderName, stampLabel } from "./util";
 import type { ThreadBus } from "./thread-bus";
+import type { ThreadOutbox } from "./thread-outbox";
 import type { ChannelInfo, ChatPerson, ChatViewerInfo, UiMessage } from "./types";
 
 const POLL_MS = 30_000;
@@ -49,7 +50,11 @@ export type RootPatch = Partial<NonNullable<UiMessage["thread"]>>;
  * over the thread bus; every 30 seconds and on a reconnect it reconciles with
  * the newest page, so nothing is skipped or shown twice, and a page fetched
  * before a delete can't bring the reply back (`deleted`). A send carries
- * its client id (0104), so a Retry is the same reply.
+ * its client id (0104), so a Retry is the same reply. A reply still sending,
+ * or one that failed, is kept in ChatApp's outbox by its root, not only
+ * here: closing the pane (Back on a phone) or opening another thread
+ * mid-send loses nothing, and it's waiting with its Retry when the thread
+ * opens again.
  */
 export function ThreadPanel({
   viewer,
@@ -61,6 +66,7 @@ export function ThreadPanel({
   channelNames,
   blocked,
   bus,
+  outbox,
   deleted,
   onReplyDeleted,
   addPeople,
@@ -70,6 +76,7 @@ export function ThreadPanel({
   onMessagePerson,
   onOpenChannel,
   onBlocksChanged,
+  onUnanswered,
 }: {
   viewer: ChatViewerInfo;
   channel: ChannelInfo;
@@ -81,6 +88,8 @@ export function ThreadPanel({
   channelNames: Map<string, string>;
   blocked: readonly string[];
   bus: ThreadBus;
+  /** Unsent and failed replies, by thread, outliving this pane (ChatApp's). */
+  outbox: ThreadOutbox;
   /** Ids this page has seen deleted (ChatApp's set): they stay gone whatever a page says. */
   deleted: ReadonlySet<string>;
   /** A reply this pane deleted: ChatApp counts it off the root, once. */
@@ -92,18 +101,45 @@ export function ThreadPanel({
   onMessagePerson: (userId: string) => void;
   onOpenChannel: (id: string) => void;
   onBlocksChanged: () => void;
+  /** #help's open-question count changed (a question settled here): the header's badge. */
+  onUnanswered?: (channelId: string, n: number) => void;
 }) {
   const [root, setRoot] = useState<UiMessage | null>(null);
   const [rootGone, setRootGone] = useState(false);
   const [info, setInfo] = useState<ThreadInfo | null>(null);
-  const [replies, setRepliesState] = useState<UiMessage[]>([]);
-  const repliesRef = useRef<UiMessage[]>([]);
-  const setReplies = useCallback((next: UiMessage[] | ((list: UiMessage[]) => UiMessage[])) => {
-    const value = typeof next === "function" ? next(repliesRef.current) : next;
-    if (value === repliesRef.current) return;
-    repliesRef.current = value;
-    setRepliesState(value);
+  const [replies, setRepliesState] = useState<UiMessage[]>(() => outbox.get(rootId));
+  const repliesRef = useRef<UiMessage[]>(replies);
+  const rootRef = useRef(rootId);
+  rootRef.current = rootId;
+  /** Whose replies `replies` holds: `rootId` once the effect below has started the new thread over. */
+  const listRoot = useRef(rootId);
+  /** The open thread's replies; its unsent and failed ones are kept in the outbox too. */
+  const setReplies = useCallback(
+    (next: UiMessage[] | ((list: UiMessage[]) => UiMessage[])) => {
+      const value = typeof next === "function" ? next(repliesRef.current) : next;
+      if (value === repliesRef.current) return;
+      repliesRef.current = value;
+      setRepliesState(value);
+      outbox.keep(listRoot.current, value);
+    },
+    [outbox],
+  );
+  // Mounted: a send that finishes after the pane closed goes to the outbox instead.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
   }, []);
+  /** Change a thread's replies wherever they are now: on screen, or kept for when it opens again. */
+  const applyToThread = useCallback(
+    (id: string, fn: (list: UiMessage[]) => UiMessage[]) => {
+      if (mounted.current && listRoot.current === id) setReplies(fn);
+      else outbox.update(id, fn);
+    },
+    [outbox, setReplies],
+  );
   const [hasMoreBefore, setHasMoreBefore] = useState(false);
   const hasMoreRef = useRef(false);
   hasMoreRef.current = hasMoreBefore;
@@ -122,10 +158,10 @@ export function ThreadPanel({
   const [muting, setMuting] = useState<{ userId: string; name: string } | null>(null);
   const [deciding, setDeciding] = useState(false);
   const [members, setMembers] = useState<ChatPerson[]>([]);
+  /** The root is from someone this viewer blocked, and they chose to see it anyway (as in the feed). */
+  const [revealRoot, setRevealRoot] = useState(false);
   const touched = useRef(new Map<string, number>());
   const loadSeq = useRef(0);
-  const rootRef = useRef(rootId);
-  rootRef.current = rootId;
   const infoRef = useRef(info);
   infoRef.current = info;
   const ids = useId();
@@ -193,16 +229,19 @@ export function ThreadPanel({
     [addPeople, adoptInfo, channel.id, freshen, guard, setReplies],
   );
 
-  // A different thread: start over.
+  // A different thread: start over, with whatever of its replies hadn't gone yet.
   useEffect(() => {
-    repliesRef.current = [];
-    setRepliesState([]);
+    const kept = outbox.get(rootId);
+    listRoot.current = rootId;
+    repliesRef.current = kept;
+    setRepliesState(kept);
     setRoot(null);
     setInfo(null);
     setHasMoreBefore(false);
     setReplyTo(null);
     setEditingId(null);
     setNotice(null);
+    setRevealRoot(false);
     setJumpTo(focusId);
     void refresh(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -361,7 +400,7 @@ export function ThreadPanel({
         pending: true,
         retry,
       };
-      setReplies((prev) => [...prev, optimistic]);
+      applyToThread(id, (prev) => [...prev, optimistic]);
       const res = await tracked(
         sendMessage({
           channelId: channel.id,
@@ -372,19 +411,23 @@ export function ThreadPanel({
           threadRootId: id,
         }),
       ).catch(() => ({ ok: false as const, error: OFFLINE }));
+      // The answer belongs to the reply wherever it is now: on screen, or in
+      // the outbox if the pane closed or moved to another thread meanwhile
+      // (the feed then says under the root that it didn't send).
       if (!res.ok || !res.data) {
         const why = resultError(res, "Couldn't send. Try again.");
-        setReplies((prev) => prev.map((m) => (m.id === tempId ? { ...m, pending: false, failed: why } : m)));
+        applyToThread(id, (prev) => prev.map((m) => (m.id === tempId ? { ...m, pending: false, failed: why } : m)));
         return;
       }
       const message = res.data.message as UiMessage;
-      setReplies((prev) => mergeMessages(prev.filter((m) => m.id !== tempId), [message], guard));
+      applyToThread(id, (prev) => mergeMessages(prev.filter((m) => m.id !== tempId), [message], guard));
       onReplySent(id, message);
+      if (!mounted.current || rootRef.current !== id) return;
       if (message.mentions.some((m) => !people[m])) void hydrate([message.id]);
       // Replying makes you a follower (0110) unless you unfollowed on purpose: ask.
       if (infoRef.current && !infoRef.current.following) void refresh();
     },
-    [channel.id, guard, hydrate, onReplySent, people, refresh, setReplies, viewer.id],
+    [applyToThread, channel.id, guard, hydrate, onReplySent, people, refresh, viewer.id],
   );
 
   const send = useCallback(
@@ -482,6 +525,7 @@ export function ThreadPanel({
         return;
       }
       adoptInfo(res.data.info, null);
+      if (typeof res.data.unanswered === "number") onUnanswered?.(channel.id, res.data.unanswered);
       setNotice(
         action === "accept"
           ? "Answer accepted. The question shows as answered."
@@ -494,7 +538,7 @@ export function ThreadPanel({
                 : "It's a question now, in Unanswered.",
       );
     },
-    [adoptInfo, deciding, refresh],
+    [adoptInfo, channel.id, deciding, onUnanswered, refresh],
   );
 
   const toggleFollow = useCallback(async () => {
@@ -557,11 +601,25 @@ export function ThreadPanel({
         : channel.compose.reason;
   const answer = info?.answerId ? replies.find((m) => m.id === info.answerId) : undefined;
   const replyCount = root?.thread?.replyCount ?? replies.filter((m) => !localOnly(m)).length;
+  // Someone this viewer blocked: collapsed, with "show", exactly as the feed does it.
+  const rootHidden = !!root?.senderId && blocked.includes(root.senderId) && !revealRoot;
+  // The list's mode, stable across renders so its rows aren't all redrawn on every one.
+  const answerId = info?.answerId ?? null;
+  const canAccept = !!info?.canDecide && info.question !== null;
+  const threadMode = useMemo(() => ({ answerId, canAccept }), [answerId, canAccept]);
 
   const lead = (
     <div className="mx-4 mb-4 md:mx-5">
       <div className="rounded-md border border-line bg-wash/40 p-3">
-        {root ? (
+        {root && rootHidden ? (
+          <button
+            type="button"
+            onClick={() => setRevealRoot(true)}
+            className="text-xs text-ink-faint underline-offset-2 hover:underline"
+          >
+            Message from someone you blocked — show
+          </button>
+        ) : root ? (
           <>
             <div className="flex items-center gap-2">
               <Avatar name={senderName(root, people)} online={!!root.senderId && online.has(root.senderId)} size={28} />
@@ -595,6 +653,7 @@ export function ThreadPanel({
             hasRoot={!!root}
             busy={deciding}
             answer={answer ?? null}
+            answerBlocked={!!answer?.senderId && blocked.includes(answer.senderId)}
             people={people}
             onDecide={(a) => void decide(a)}
             onJump={(id) => setJumpTo(id)}
@@ -713,7 +772,7 @@ export function ThreadPanel({
             )
           }
           lead={lead}
-          thread={{ answerId: info?.answerId ?? null, canAccept: !!info?.canDecide && info.question !== null }}
+          thread={threadMode}
           composerId={composerId}
           listKey={`thread:${rootId}`}
           label="Replies"
@@ -822,21 +881,13 @@ export function ThreadPanel({
   );
 }
 
-/** What "Ask the team" says once it went through. */
-export function helpNotice(result: FlagResult | null): string {
-  if (!result?.outcome) return "Sent to the batch0 team. Someone will take a look.";
-  const ref = result.reference ? ` (${result.reference})` : "";
-  if (result.outcome === "created") return `Sent to the batch0 team as a help request${ref}. The thread shows when it's handled.`;
-  if (result.outcome === "reopened") return `This thread's help request${ref} is open again. The team will pick it back up.`;
-  return `This thread already has a help request${ref}. You've been added to it.`;
-}
-
 /** The question's state and what the asker or the team can do with it (#help, 0110). */
 function QuestionControls({
   info,
   hasRoot,
   busy,
   answer,
+  answerBlocked,
   people,
   onDecide,
   onJump,
@@ -845,6 +896,8 @@ function QuestionControls({
   hasRoot: boolean;
   busy: boolean;
   answer: UiMessage | null;
+  /** The answer is from someone this viewer blocked: say so, not what it says (the reply itself is collapsed). */
+  answerBlocked: boolean;
   people: Record<string, ChatPerson>;
   onDecide: (action: QuestionAction) => void;
   onJump: (id: string) => void;
@@ -889,8 +942,16 @@ function QuestionControls({
           onClick={() => onJump(info.answerId!)}
           className="block w-full rounded-md border border-phosphor/40 bg-phosphor/5 px-2.5 py-1.5 text-left text-xs text-ink-soft hover:bg-phosphor/10"
         >
-          <span className="font-semibold text-ink">Accepted answer{answer ? ` from ${senderName(answer, people)}` : ""}:</span>{" "}
-          {answer ? plainText(answer.body || "[attachment]", (id) => people[id]?.name, () => null, 140) : "Show it"}
+          {answer && answerBlocked ? (
+            <>
+              <span className="font-semibold text-ink">Accepted answer</span> from someone you blocked. Show it
+            </>
+          ) : (
+            <>
+              <span className="font-semibold text-ink">Accepted answer{answer ? ` from ${senderName(answer, people)}` : ""}:</span>{" "}
+              {answer ? plainText(answer.body || "[attachment]", (id) => people[id]?.name, () => null, 140) : "Show it"}
+            </>
+          )}
         </button>
       ) : null}
       {info.question === "open" ? (
@@ -904,9 +965,23 @@ function QuestionControls({
   );
 }
 
-/** The thread's help request: its state and owner, from its Support ticket (the one record). */
+/**
+ * The thread's help request: its state and owner, from its Support ticket
+ * (the one record). "Waiting" is Support's waiting_on_requester: the team
+ * replied there and the ball is with whoever asked — asking again here puts
+ * it back with the team.
+ */
 function HelpLine({ help }: { help: NonNullable<ThreadInfo["help"]> }) {
-  const state = help.status === "handled" ? "Handled" : help.owner ? `${help.owner} has it` : "Waiting for someone on the team";
+  const state =
+    help.status === "handled"
+      ? "Handled"
+      : help.status === "waiting"
+        ? help.yours
+          ? "The team replied: over to you"
+          : "The team replied: waiting on the asker"
+        : help.owner
+          ? `${help.owner} has it`
+          : "Waiting for someone on the team";
   return (
     <p className="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-soft">
       <LifeBuoy className="h-3.5 w-3.5 shrink-0" aria-hidden />

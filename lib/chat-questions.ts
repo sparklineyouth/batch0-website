@@ -46,8 +46,13 @@ export async function listOpenQuestions(
   return { questions: messages, total: count ?? messages.length };
 }
 
-/** How many open questions a channel has (the header's Unanswered count). Zero before 0110 or on a failed read. */
-export async function countOpenQuestions(channelId: string): Promise<number> {
+/**
+ * How many open questions a channel has (the header's Unanswered count),
+ * or null when it couldn't be counted — so a screen that already shows a
+ * count keeps it rather than dropping to zero on one failed read. Zero
+ * before 0110.
+ */
+export async function openQuestionCount(channelId: string): Promise<number | null> {
   if (!(await threadsReady())) return 0;
   const { count, error } = await createAdminClient()
     .from("chat_threads")
@@ -55,10 +60,16 @@ export async function countOpenQuestions(channelId: string): Promise<number> {
     .eq("channel_id", channelId)
     .eq("question", "open");
   if (error) {
-    if (!isMissingSchemaError(error)) console.error("[chat] counting open questions", error.message);
-    return 0;
+    if (isMissingSchemaError(error)) return 0;
+    console.error("[chat] counting open questions", error.message);
+    return null;
   }
   return count ?? 0;
+}
+
+/** As openQuestionCount, zero on a failed read: a channel's first paint. */
+export async function countOpenQuestions(channelId: string): Promise<number> {
+  return (await openQuestionCount(channelId)) ?? 0;
 }
 
 // ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import { THREAD_COLS, noteThreadsMissing, threadsReady, toThreadRow, type Thread
 import {
   THREAD_BELL_TYPES,
   canDecideQuestion,
+  helpReferenceFor,
   helpStatusFor,
   isFollowing,
   isQuestionChannel,
@@ -44,6 +45,8 @@ export type HelpInfo = {
   reference: string | null;
   /** Where this viewer can open it: the team's ticket page, or the asker's. Null for anyone else. */
   href: string | null;
+  /** This viewer filed it: "waiting on you" rather than "waiting on the asker". */
+  yours: boolean;
 };
 
 /** Everything the thread pane needs to know about a thread, for one viewer. */
@@ -176,8 +179,9 @@ export function helpInfoFor(ticket: HelpTicket, ownerName: string | null, viewer
   return {
     status: helpStatusFor(ticket.status),
     owner: ticket.assignedTo ? ownerName : null,
-    reference: team || mine ? ticket.reference : null,
+    reference: helpReferenceFor(ticket, { userId: viewer.userId, team }),
     href: team ? `/admin/support/${ticket.id}` : mine ? requesterThreadPath(ticket.reference) : null,
+    yours: mine,
   };
 }
 

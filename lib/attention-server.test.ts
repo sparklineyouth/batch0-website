@@ -360,19 +360,30 @@ test("unanswered questions (0110): chat staff only; #help's count; rows open the
   const q = (id: string, over: object = {}) => ({
     rootId: id, channelId: "help-id", channelName: "help", askerName: "Maya", askedAt: "2026-10-16T10:00:00.000Z", replyCount: 0, help: null, ...over,
   });
-  state.questions = [q("q1"), q("q2", { replyCount: 2 }), q("q3", { help: { status: "open", assigneeName: "Rish" } })];
-  state.questionTotal = 3;
+  state.questions = [
+    q("q1"),
+    q("q2", { replyCount: 2 }),
+    q("q3", { help: { status: "open", assigneeName: "Rish" } }),
+    // The team replied in Support (waiting on the asker): in no queue, so a row here.
+    q("q4", { replyCount: 1, help: { status: "waiting_on_requester", assigneeName: "Rish" } }),
+  ];
+  state.questionTotal = 4;
   // Nobody without chat.manage reads it at all.
   await loadAttention({ userId: ME, caps: caps("support.view", "people.view"), now: NOW });
   assert.equal(call("loadUnansweredQuestions"), undefined);
-  const r = await loadAttention({ userId: ME, caps: caps("chat.manage"), now: NOW });
+  const r = await loadAttention({ userId: ME, caps: caps("chat.manage", "support.view"), now: NOW });
   assert.deepEqual(call("loadUnansweredQuestions")!.args, [{ limit: 8 }]);
   const src = r.sources.find((s) => s.key === "chat_questions")!;
-  assert.equal(src.total, 3, "the number #help's Unanswered list shows");
+  assert.equal(src.total, 4, "the number #help's Unanswered list shows");
   assert.equal(src.href, "/chat?c=help-id");
-  assert.deepEqual(src.items.map((x) => x.key), ["chat_questions:q1", "chat_questions:q2"]);
+  assert.deepEqual(src.items.map((x) => x.key), ["chat_questions:q1", "chat_questions:q2", "chat_questions:q4"]);
   assert.equal(src.items[0].action.href, "/chat?c=help-id&thread=q1");
   assert.equal(src.note?.text, "1 question has a help request open: listed under Support.");
+  assert.equal(src.note?.href, "/admin/support");
+  // chat.manage without Support: no Support rows to leave anything to, and no note pointing at a page they can't open.
+  const chatOnly = (await loadAttention({ userId: ME, caps: caps("chat.manage"), now: NOW })).sources.find((s) => s.key === "chat_questions")!;
+  assert.deepEqual(chatOnly.items.map((x) => x.key), ["chat_questions:q1", "chat_questions:q2", "chat_questions:q3", "chat_questions:q4"]);
+  assert.equal(chatOnly.note, null);
   // Answered questions aren't loaded, so marking one answered is what takes its row off.
   reset();
   state.questions = [];

@@ -14,6 +14,7 @@ import {
   ownerLabel,
   pickAttention,
   questionItems,
+  questionLeftToSupport,
   QUESTION_STALE_MS,
   supportItems,
   type AttentionItem,
@@ -65,6 +66,7 @@ test("whoever sees a source can open every row's action — checked for every ro
   const questions = questionItems(
     [{ rootId: ID, channelId: ID, channelName: "help", askerName: "s", askedAt: hoursAgo(1), replyCount: 0, help: null }],
     NOW,
+    { supportListed: false },
   );
   // Where a row's one action goes, given who's looking (the feedback link
   // depends on whether they review program-wide).
@@ -427,15 +429,25 @@ test("unanswered questions: oldest-waiting rows naming the channel and the asker
       q({ rootId: "stale", askedAt: new Date(NOW - QUESTION_STALE_MS - 60_000).toISOString() }),
       q({ rootId: "fresh", askedAt: hoursAgo(2) }),
       q({ rootId: "replied", replyCount: 3, askedAt: hoursAgo(30) }),
-      // Someone asked the team about these: the open request is the row (Support), not the question.
+      // Someone asked the team about this one and it's in Support's Needs
+      // reply queue: the open request is the row (Support), not the question.
       q({ rootId: "helped", help: { status: "open", assigneeName: "Rish" } }),
+      // The team answered in Support and is waiting on the asker: in nobody's
+      // queue, so the still-open question stays a row here.
       q({ rootId: "waiting", help: { status: "waiting_on_requester", assigneeName: null } }),
       // A handled request with the question still open: the question is back on the list.
       q({ rootId: "handled", help: { status: "resolved", assigneeName: "Rish" } }),
     ],
     NOW,
+    { supportListed: true },
   );
-  assert.deepEqual(rows.map((r) => r.key), ["chat_questions:stale", "chat_questions:fresh", "chat_questions:replied", "chat_questions:handled"]);
+  assert.deepEqual(rows.map((r) => r.key), [
+    "chat_questions:stale",
+    "chat_questions:fresh",
+    "chat_questions:replied",
+    "chat_questions:waiting",
+    "chat_questions:handled",
+  ]);
   const [stale, fresh, replied] = rows;
   assert.deepEqual([stale.reason, stale.urgency], ["No reply in 24 hours", "overdue"]);
   assert.deepEqual([fresh.reason, fresh.urgency], ["No reply yet", "waiting"]);
@@ -443,8 +455,17 @@ test("unanswered questions: oldest-waiting rows naming the channel and the asker
   assert.equal(stale.context, "#help · Maya Chen", "where and who asked, nothing of what they wrote");
   assert.deepEqual(stale.action, { label: "Answer", href: "/chat?c=help-id&thread=stale" });
   assert.deepEqual(stale.owner, { kind: "team", label: "Anyone on the team" });
+  // Someone with chat.manage who can't open Support sees no Support rows, so
+  // nothing is left to them: every open question is a row.
+  const noSupport = questionItems([q({ rootId: "helped", help: { status: "open", assigneeName: null } })], NOW, { supportListed: false });
+  assert.deepEqual(noSupport.map((r) => r.key), ["chat_questions:helped"]);
+  assert.equal(questionLeftToSupport({ help: { status: "open", assigneeName: null } }, true), true);
+  for (const status of ["waiting_on_requester", "resolved", "closed"] as const) {
+    assert.equal(questionLeftToSupport({ help: { status, assigneeName: null } }, true), false, status);
+  }
+  assert.equal(questionLeftToSupport({ help: null }, true), false);
   // Answered (or no longer a question) means it isn't loaded at all; the provider reads open questions only.
-  assert.deepEqual(questionItems([], NOW), []);
+  assert.deepEqual(questionItems([], NOW, { supportListed: true }), []);
   // An overdue question outranks the queue's waiting rows.
   assert.equal(pickAttention([...rows], 2)[0].key, "chat_questions:stale");
 });

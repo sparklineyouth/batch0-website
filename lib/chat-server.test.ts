@@ -504,6 +504,21 @@ test("the feed leaves thread replies out; a message with replies carries its cou
   assert.ok(!around.messages.some((m) => m.threadRootId), "still no replies in the feed");
 });
 
+test("a message whose only thread state is an 'Ask about this' link still gets a summary, so its chip can be resolved per viewer", async () => {
+  const CH = id(820);
+  // A staff post (never a question), a quote-reply (never a question), and a
+  // question someone unmarked before anyone replied: each kept its link.
+  const rows = [message(821, CH, "2026-10-17T10:00:00.000Z"), message(822, CH, "2026-10-17T10:01:00.000Z")];
+  reset({
+    chat_messages: rows,
+    chat_threads: [{ root_id: id(821), channel_id: CH, reply_count: 0, last_reply_at: null, question: null, answer_id: null, help_ticket_id: null, about_kind: "assignment", about_id: id(901) }],
+  });
+  const page = await chat.listMessages(CH);
+  assert.deepEqual(page.messages[0].thread, { replyCount: 0, lastReplyAt: null, question: null, answerId: null });
+  assert.ok(!("about" in page.messages[0].thread!), "the summary says nothing of the link itself");
+  assert.equal(page.messages[1].thread, undefined);
+});
+
 test("a thread's replies page on (created_at, id): replies sharing a timestamp across the edge are neither skipped nor repeated", async () => {
   const CH = id(810);
   const ROOT = id(811);

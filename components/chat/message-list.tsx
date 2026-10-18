@@ -96,6 +96,7 @@ export function MessageList({
   composerId = "chat-composer",
   listKey,
   label = "Messages",
+  unsentThreads,
 }: {
   viewer: ChatViewerInfo;
   channel: ChannelInfo | null;
@@ -127,6 +128,8 @@ export function MessageList({
   /** What resets the scroll position: the channel, or the thread. */
   listKey?: string;
   label?: string;
+  /** The feed: roots with a thread reply that failed to send (ChatApp's outbox), said under each. */
+  unsentThreads?: ReadonlySet<string>;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   // Day dividers and times are in the viewer's timezone, which the server
@@ -453,6 +456,7 @@ export function MessageList({
                 tabbable={tabId === r.m.id}
                 thread={thread}
                 composerId={composerId}
+                threadUnsent={!!unsentThreads?.has(r.m.id)}
               />
             );
           })}
@@ -508,6 +512,7 @@ const MessageItem = memo(function MessageItem({
   tabbable,
   thread,
   composerId,
+  threadUnsent,
 }: {
   m: UiMessage;
   head: boolean;
@@ -536,6 +541,8 @@ const MessageItem = memo(function MessageItem({
   /** In a thread's pane (0110): its question's answer, and who may accept one. */
   thread: ThreadMode | null;
   composerId: string;
+  /** In the feed: a reply to this message's thread failed to send, and waits in the thread with its Retry. */
+  threadUnsent: boolean;
 }) {
   const [menu, setMenu] = useState<"emoji" | "more" | null>(null);
   const [reveal, setReveal] = useState(false);
@@ -738,8 +745,8 @@ const MessageItem = memo(function MessageItem({
             </div>
           ) : null}
 
-          {!thread && channel?.threads && showsThread(m.thread) && actions.onOpenThread ? (
-            <ThreadLine m={m} tab={tab} mounted={mounted} onOpen={() => actions.onOpenThread!(m)} />
+          {!thread && channel?.threads && (showsThread(m.thread) || !!m.thread?.about || threadUnsent) && actions.onOpenThread ? (
+            <ThreadLine m={m} tab={tab} mounted={mounted} unsent={threadUnsent} onOpen={() => actions.onOpenThread!(m)} />
           ) : null}
 
           {m.failed ? (
@@ -781,7 +788,13 @@ const MessageItem = memo(function MessageItem({
             </ToolbarButton>
           ) : null}
           {!readOnly && channel?.compose.ok ? (
-            <ToolbarButton label={thread ? "Quote in reply" : "Reply"} tabbable={showTools} onClick={() => { setMenu(null); actions.onReply(m); }}>
+            // In #help a feed reply is a quote in the channel, not an answer
+            // in the question's thread: say so, beside "Reply in thread".
+            <ToolbarButton
+              label={thread ? "Quote in reply" : channel?.threads && channel.questionChannel ? "Quote in channel" : "Reply"}
+              tabbable={showTools}
+              onClick={() => { setMenu(null); actions.onReply(m); }}
+            >
               <CornerUpLeft className="h-4 w-4" />
             </ToolbarButton>
           ) : null}
@@ -935,13 +948,18 @@ export function AboutLink({ about, tab = 0 }: { about: AboutChip; tab?: number }
   );
 }
 
+const NO_THREAD = { replyCount: 0, lastReplyAt: null, question: null, answerId: null } as const;
+
 /**
  * Under a message that starts a thread: its question state, "4 replies ·
- * 3h", and what it's about. One button opens the thread; its label says all
- * of it for a screen reader.
+ * 3h", and what it's about — and, when a reply to it didn't send, that it's
+ * waiting in the thread with its Retry. One button opens the thread; its
+ * label says all of it for a screen reader. With no replies yet it says
+ * "Reply in thread", the same as the toolbar's button, so it's never
+ * mistaken for the toolbar's quote-in-the-channel.
  */
-function ThreadLine({ m, tab, mounted, onOpen }: { m: UiMessage; tab: number; mounted: boolean; onOpen: () => void }) {
-  const t = m.thread!;
+function ThreadLine({ m, tab, mounted, unsent, onOpen }: { m: UiMessage; tab: number; mounted: boolean; unsent: boolean; onOpen: () => void }) {
+  const t = m.thread ?? NO_THREAD;
   const count = t.replyCount === 0 ? "No replies yet" : `${t.replyCount} ${t.replyCount === 1 ? "reply" : "replies"}`;
   const state = t.question ? `, question ${t.question === "answered" ? "answered" : "open"}` : "";
   return (
@@ -956,12 +974,17 @@ function ThreadLine({ m, tab, mounted, onOpen }: { m: UiMessage; tab: number; mo
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-phosphor-ink hover:bg-wash"
       >
         <MessagesSquare className="h-3.5 w-3.5" aria-hidden />
-        {t.replyCount === 0 ? "Reply" : count}
+        {t.replyCount === 0 ? "Reply in thread" : count}
         {t.replyCount > 0 && t.lastReplyAt && mounted ? (
           <span className="font-normal text-ink-faint">· {sinceLabel(t.lastReplyAt)}</span>
         ) : null}
       </button>
-      {t.about ? <AboutLink about={t.about} tab={tab} /> : null}
+      {m.thread?.about ? <AboutLink about={m.thread.about} tab={tab} /> : null}
+      {unsent ? (
+        <span role="alert" className="text-red-600 dark:text-red-400">
+          A reply didn&apos;t send. Open the thread to retry.
+        </span>
+      ) : null}
     </div>
   );
 }

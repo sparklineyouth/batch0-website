@@ -13,8 +13,10 @@ import {
   bumpThread,
   canDecideQuestion,
   dropThreadReply,
+  helpReferenceFor,
   helpRequestPlan,
   helpStatusFor,
+  helpWithTeam,
   isAutoQuestion,
   isFollowing,
   isQuestionChannel,
@@ -202,16 +204,32 @@ test("thread bells ring only for fresh replies (never for history carried in), s
   assert.equal(isFollowing(null), false, "having had it open is no follow");
 });
 
-test("Ask the team: one request per thread — link a live one, reopen a handled one, a new one only after it closed", () => {
+test("Ask the team: one request per thread — link one in the queue, put a waiting or handled one back, a new one only after it closed", () => {
   assert.equal(helpRequestPlan(null), "create");
   assert.equal(helpRequestPlan({ status: "open" }), "link");
-  assert.equal(helpRequestPlan({ status: "waiting_on_requester" }), "link");
+  // The team replied and is waiting on the asker: someone asking again in the
+  // thread is that follow-up, so it goes back in the queue rather than
+  // sitting out of it until the 7-day auto-resolve.
+  assert.equal(helpRequestPlan({ status: "waiting_on_requester" }), "reopen");
   assert.equal(helpRequestPlan({ status: "resolved" }), "reopen");
   assert.equal(helpRequestPlan({ status: "closed" }), "create");
   assert.equal(helpStatusFor("open"), "open");
-  assert.equal(helpStatusFor("waiting_on_requester"), "open");
+  assert.equal(helpStatusFor("waiting_on_requester"), "waiting");
   assert.equal(helpStatusFor("resolved"), "handled");
   assert.equal(helpStatusFor("closed"), "handled");
+  // Only an open request is in Support's "Needs reply" queue (needs_reply).
+  assert.deepEqual(
+    (["open", "waiting_on_requester", "resolved", "closed"] as const).filter(helpWithTeam),
+    ["open"],
+  );
+});
+
+test("a help request's reference is for the person who filed it and the team, nobody else in the thread", () => {
+  const ticket = { reference: "B0-ABCD-1234", userId: "asker" };
+  assert.equal(helpReferenceFor(ticket, { userId: "asker", team: false }), "B0-ABCD-1234");
+  assert.equal(helpReferenceFor(ticket, { userId: "staff", team: true }), "B0-ABCD-1234");
+  assert.equal(helpReferenceFor(ticket, { userId: "second-asker", team: false }), null);
+  assert.equal(helpReferenceFor({ reference: "B0-X", userId: null }, { userId: "second-asker", team: false }), null);
 });
 
 test("Ask about this: an id and a kind, nothing else; the chip opens the item's own page", () => {

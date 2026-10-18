@@ -21,7 +21,7 @@ import {
 import { peopleIn } from "@/lib/chat-payload";
 import { withAbout } from "@/lib/chat-about";
 import { describeThread, getThreadRow, threadsReady, type ThreadInfo } from "@/lib/chat-threads";
-import { listOpenQuestions } from "@/lib/chat-questions";
+import { listOpenQuestions, openQuestionCount } from "@/lib/chat-questions";
 import { isQuestionChannel } from "@/lib/chat-threads-rules";
 
 /**
@@ -54,6 +54,12 @@ export type MessagesPayload = {
   people: Record<string, ChatPerson>;
   /** Everything created before this instant that isn't in `messages` (and is inside the page) is gone. */
   asOf: string;
+  /**
+   * #help's newest page only (0110): how many open questions it has, so the
+   * header's Unanswered count catches up on the 30-second resync. Absent
+   * elsewhere, and when it couldn't be counted.
+   */
+  unanswered?: number;
 };
 
 export type MessagesByIdPayload = { messages: ChatMessage[]; people: Record<string, ChatPerson> };
@@ -92,9 +98,13 @@ export async function readMessages(
     beforeId: opts.beforeId ?? undefined,
     around: opts.around ?? undefined,
   });
-  const messages = await withAbout(page.messages);
+  const newest = !opts.before && !opts.around;
+  const [messages, unanswered] = await Promise.all([
+    withAbout(page.messages),
+    newest && isQuestionChannel(found.channel.systemKey) ? openQuestionCount(found.channel.id) : Promise.resolve(null),
+  ]);
   const people = await getPeople(peopleIn(messages));
-  return { ...page, messages, people: Object.fromEntries(people), asOf };
+  return { ...page, messages, people: Object.fromEntries(people), asOf, ...(unanswered === null ? {} : { unanswered }) };
 }
 
 /** Messages by id — the realtime path hands the client ids it then hydrates. */

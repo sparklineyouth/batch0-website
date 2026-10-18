@@ -270,7 +270,11 @@ enter the feed. DMs and groups have no threads.
   root's count once per reply (`bumpThread`). The pane reconciles with the
   newest page every 30 seconds and on a reconnect, and the page's deleted
   set keeps a stale page from bringing a deleted reply back. A send carries
-  its client id (0104): a Retry is the same reply.
+  its client id (0104): a Retry is the same reply. A reply still sending, or
+  one that failed, is kept by its root outside the pane
+  (`components/chat/thread-outbox.ts`): Back on a phone or opening another
+  thread mid-send loses nothing, the feed says "A reply didn't send" under
+  the root, and the reply is waiting with its Retry when the thread opens.
 - **Follows and bells.** The root's author and everyone who replies follow
   by default (a trigger); unfollowing sticks — replying again doesn't undo
   it. A reply bells its followers (`chat_thread`) and the people it
@@ -296,10 +300,17 @@ enter the feed. DMs and groups have no threads.
   is in the append-only `chat_thread_events`, written by trigger.
 - **Unanswered.** #help's header has an Unanswered button with the count:
   its open questions, waiting longest first, in the side pane
-  (`/chat/api/unanswered`, `lib/chat-questions.ts`). The admin Overview's
+  (`/chat/api/unanswered`, `lib/chat-questions.ts`). The count moves when a
+  question is settled in the pane, when one arrives live, and on the
+  30-second resync (#help's newest page carries it). A question from
+  someone the viewer blocked is listed without its words, and its thread
+  shows it collapsed with "show", as the feed does. The admin Overview's
   *Unanswered questions* (`chat.manage`) reads the same count, lists the
-  oldest as rows that open their thread, and leaves out a question whose
-  help request is still with the team: that's a Support row already.
+  oldest as rows that open their thread, and leaves out only a question
+  whose help request is in Support's *Needs reply* queue (status `open`),
+  for someone who sees Support's rows: that's a Support row already. One the
+  team has answered in Support (waiting on the asker) is in no queue, so it
+  stays a row here (`questionLeftToSupport`).
 - **Ask the team.** Pressing it on a message (or in the thread's header)
   files ONE help request per thread in Support (`lib/chat-help.ts`): a
   program ticket with the asker as requester, their note and a link to the
@@ -307,16 +318,24 @@ enter the feed. DMs and groups have no threads.
   who may not read that channel). Its owner and open/handled state are the
   ticket's, worked in Support like any request; the thread shows them, and
   links the asker to their request and the team to the ticket. Asking again
-  while it's open adds a team-only note to the same ticket; a resolved one
-  is reopened; a closed one is final and a new one takes the thread. Two
-  people asking at once end on one ticket. It's never confidential:
-  safeguarding stays with Report, which the dialog points to.
+  while it's in the team's queue adds a team-only note to the same ticket.
+  One the team answered (waiting on the asker) or resolved goes back in the
+  queue — open, needing a reply, its reply clock from this ask, as a
+  requester's follow-up would — with the note; the thread says "The team
+  replied: over to you" (or "waiting on the asker") while it waits. A closed
+  one is final and a new one takes the thread. Two people asking at once end
+  on one ticket. The reference is shown only to whoever filed the request
+  and the team (`helpReferenceFor`): someone else asking is told the team
+  heard them. It's never confidential: safeguarding stays with Report,
+  which the dialog points to.
 - **Ask about this.** A lesson or assignment page links to
-  `/chat?ask=lesson:<id>`. The question it sends stores the item's id on its
+  `/chat?ask=lesson:<id>`. The message it sends stores the item's id on its
   thread (never a title, never anything the student wrote for it), and each
   viewer's chip is resolved through their OWN database client
   (`lib/chat-about.ts`): someone who reads #help but not that item sees no
-  chip at all. The sender must be able to open it too.
+  chip at all. The sender must be able to open it too. The chip shows under
+  any top-level message that carries one — a question, a staff post, a
+  quote-reply, a question someone unmarked — with or without replies.
 - **Before 0110** (`threadsReady()`, asked once a minute): no thread
   buttons, question states or Unanswered list; the feed, sends, search and
   *Ask the team* (bell only, no ticket) work as before.
@@ -555,6 +574,18 @@ Until it runs, Chat has no threads, question states or Unanswered list, and
 after it: 0101 re-creates `chat_unread()` and
 `chat_messages_touch_channel()` without the thread clause, and takes
 `thread_root_id`'s column grant away.
+
+**Don't roll the code back past 0110 once threads are in use; fix
+forward.** The migration itself never needs undoing (the previous code
+ignores the new column and tables). But the previous code's feed doesn't
+know about `thread_root_id`: every thread reply would show in its channel's
+main feed as a plain message, out of its thread, and live clients would
+add new ones there (and could pin or quote them), while 0110's
+`chat_unread()` still leaves them out of the unread count. Before anyone
+has replied in a thread, a revert is harmless. If a revert can't be
+avoided, expect replies in the feeds until the fix-forward ships — never
+drop the column to hide them: it's the only record of which thread each
+reply belongs to.
 
 When the deploy goes live, **lock the Discord server**. The code no longer
 manages it: nobody is kicked or loses a role there when they leave the

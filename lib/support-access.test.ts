@@ -51,6 +51,7 @@ import {
   normalizeReference,
   parseCategory,
   readStoredContext,
+  chatHelpReopenFields,
   chatThreadPath,
   requesterThreadPath,
   refundWindow,
@@ -684,6 +685,24 @@ test("a Chat help request's thread (0110) survives the re-check only as two ids,
   assert.equal(chatThreadPath(thread), `/chat?c=${thread.channelId}&thread=${thread.rootId}`);
   assert.equal(requesterThreadPath("B0-2345-6789"), "/dashboard/support/B0-2345-6789");
   assert.equal(requesterThreadPath("B0-2345-6789", "app"), "/app/support/B0-2345-6789");
+});
+
+test("a Chat help request someone asks about again goes back to the team: open, needs a reply, the clock from now", () => {
+  const now = "2026-10-17T12:00:00.000Z";
+  // The team replied (waiting on them), or resolved it: either way the ask is a follow-up.
+  for (const from of ["waiting_on_requester", "resolved"] as const) {
+    const f = chatHelpReopenFields(from, now);
+    assert.equal(f.status, "open", from);
+    assert.equal(f.needs_reply, true, "it's in Support's Needs reply queue (and the Overview's Support rows) again");
+    assert.equal(f.needs_reply, needsReplyForStatus(f.status));
+    assert.equal(f.requester_activity_at, now, "the reply target runs from this ask");
+    assert.equal(f.status_changed_at, now, "the housekeeping cron's clock restarts too");
+    assert.equal(f.resolved_at, null);
+    assert.equal(f.outcome, null);
+  }
+  // The same transition a requester's follow-up makes.
+  assert.equal(statusAfterRequesterReply({ status: "waiting_on_requester" } as never), "open");
+  assert.equal(statusAfterRequesterReply({ status: "resolved" } as never), "open");
 });
 
 // ---------------------------------------------------------------------------

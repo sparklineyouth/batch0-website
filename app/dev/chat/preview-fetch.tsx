@@ -66,7 +66,7 @@ export function PreviewFetch(props: {
               answerId: null,
               canDecide: false,
               following: true,
-              help: { status: "open", owner: "Rish", reference: null, href: null },
+              help: { status: "open", owner: "Rish", reference: null, href: null, yours: false },
               about: { kind: "lesson", id: "l0000000-0000-4000-8000-000000000001", title: "Week 2 · Customer interviews", href: "/dashboard/course/l0000000-0000-4000-8000-000000000001" },
             },
             root,

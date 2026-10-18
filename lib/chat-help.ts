@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { addChatHelpNote, createChatHelpTicket, discardChatHelpTicket, reopenChatHelpTicket } from "@/lib/support";
 import type { ChannelRow } from "@/lib/chat";
 import { ensureThreadRow, getHelpTicket, getThreadRow } from "@/lib/chat-threads";
-import { helpRequestPlan } from "@/lib/chat-threads-rules";
+import { helpReferenceFor, helpRequestPlan } from "@/lib/chat-threads-rules";
 
 /**
  * "Ask the team" on a Chat message (migration 0110): ONE help request per
@@ -13,9 +13,16 @@ import { helpRequestPlan } from "@/lib/chat-threads-rules";
  * Support rows read it; nothing keeps a second copy anywhere.
  *
  *   no request yet, or a closed one   a new ticket, linked to the thread
- *   one still with the team           that ticket, and a team-only note
+ *   one in the team's queue (open)    that ticket, and a team-only note
  *                                     saying who asked again
- *   a resolved one                    that ticket, reopened, with the note
+ *   one waiting on the asker, or      that ticket, back in the queue (open,
+ *   a resolved one                    needs a reply, the clock from now),
+ *                                     with the note
+ *
+ * The answer names the ticket's reference only to the person who filed it
+ * and to the team (helpReferenceFor, as the thread pane shows it): a second
+ * person asking in the thread is told the team heard them, not handed the
+ * reference of someone else's Support request.
  *
  * Two people asking at the same instant: each makes a ticket, and the link
  * is a conditional update on what the thread had — whoever loses takes their
@@ -29,7 +36,14 @@ import { helpRequestPlan } from "@/lib/chat-threads-rules";
 
 export type HelpRequestOutcome = "created" | "linked" | "reopened";
 
-export type HelpRequestResult = { ticketId: string; reference: string; outcome: HelpRequestOutcome };
+export type HelpRequestResult = {
+  ticketId: string;
+  /** For the person who filed the request and the team only; null for anyone else asking. */
+  reference: string | null;
+  outcome: HelpRequestOutcome;
+  /** The asker is the request's requester (it's theirs: emails and their Support page). */
+  yours: boolean;
+};
 
 /** Who's asking, from their profile — the ticket's requester (the email never leaves the server). */
 async function requester(userId: string): Promise<{ name: string | null; email: string | null }> {
@@ -50,9 +64,17 @@ export async function requestThreadHelp(input: {
   rootId: string;
   messageId: string;
   askerId: string;
+  /** The asker reads Support (support.view): the team sees every reference. */
+  askerIsTeam: boolean;
   note: string;
 }): Promise<HelpRequestResult> {
   const { channel, rootId } = input;
+  const answer = (ticket: { id: string; reference: string; userId: string | null }, outcome: HelpRequestOutcome): HelpRequestResult => ({
+    ticketId: ticket.id,
+    reference: helpReferenceFor(ticket, { userId: input.askerId, team: input.askerIsTeam }),
+    outcome,
+    yours: !!ticket.userId && ticket.userId === input.askerId,
+  });
   await ensureThreadRow(rootId, channel.id);
   const who = await requester(input.askerId);
   const name = who.name ?? "Someone";
@@ -64,10 +86,18 @@ export async function requestThreadHelp(input: {
     const row = await getThreadRow(rootId);
     const existing = row?.helpTicketId ? await getHelpTicket(row.helpTicketId) : null;
     const plan = helpRequestPlan(existing);
-    if (existing && plan !== "create") {
-      const reopened = plan === "reopen" ? await reopenChatHelpTicket(existing.id) : false;
+    if (existing && plan === "reopen") {
+      // Back to the team, from the status we saw. If it moved meanwhile (the
+      // team answered, the cron resolved it), look again rather than leave
+      // it out of the queue.
+      const from = existing.status === "resolved" ? "resolved" : "waiting_on_requester";
+      if (!(await reopenChatHelpTicket(existing.id, from))) continue;
       await addChatHelpNote(existing.id, again);
-      return { ticketId: existing.id, reference: existing.reference, outcome: reopened ? "reopened" : "linked" };
+      return answer(existing, "reopened");
+    }
+    if (existing && plan === "link") {
+      await addChatHelpNote(existing.id, again);
+      return answer(existing, "linked");
     }
 
     const made = await createChatHelpTicket({
@@ -86,7 +116,7 @@ export async function requestThreadHelp(input: {
       await discardChatHelpTicket(made.id);
       throw new Error(`Couldn't file that help request: ${error.message}`);
     }
-    if ((data ?? []).length > 0) return { ticketId: made.id, reference: made.reference, outcome: "created" };
+    if ((data ?? []).length > 0) return answer({ ...made, userId: input.askerId }, "created");
     // Someone else's request landed first: it's the thread's, ours goes.
     await discardChatHelpTicket(made.id);
   }

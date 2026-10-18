@@ -59,9 +59,12 @@ export async function aboutFor(ref: Ref, db?: Db): Promise<AboutChip | null> {
 }
 
 /**
- * Put each question's course-item chip on it — for this viewer only, and
- * only where they can read the item. Messages without a thread row are
- * left alone; a failure leaves every chip off, never the wrong one on.
+ * Put each message's course-item chip on it — for this viewer only, and
+ * only where they can read the item. Every top-level message whose thread
+ * row has a link gets a summary from lib/chat.ts (a question or not, with
+ * replies or none), so a link a staff member or a quote-reply carried shows
+ * as well as a question's. Messages without a thread row are left alone; a
+ * failure leaves every chip off, never the wrong one on.
  */
 export async function withAbout<M extends ChatMessage>(messages: M[], db?: Db): Promise<M[]> {
   const roots = messages.filter((m) => m.thread && !m.threadRootId).map((m) => m.id);

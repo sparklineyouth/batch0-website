@@ -21,6 +21,10 @@ const state = {
   tickets: new Map<string, Row>(),
   notes: [] as [string, string][],
   discarded: [] as string[],
+  /** reopenChatHelpTicket's calls: [ticket, the status it reopened from]. */
+  reopened: [] as [string, string][],
+  /** Something moves the ticket to this status just before our reopen lands (the team, the cron). */
+  moveBeforeReopen: null as string | null,
   made: 0,
   /** Before the link lands, someone else's request takes the thread (the race). */
   raceWith: null as string | null,
@@ -99,7 +103,9 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
         `export const createChatHelpTicket=async(x)=>{const id='00000000-0000-4000-8000-0000000090'+String(++t.state.made).padStart(2,'0');
            t.state.tickets.set(id,{id,reference:'B0-NEW'+t.state.made,status:'open',userId:x.userId,assignedTo:null,input:x});return{id,reference:'B0-NEW'+t.state.made};};
          export const addChatHelpNote=async(id,text)=>{t.state.notes.push([id,text]);};
-         export const reopenChatHelpTicket=async(id)=>{const k=t.state.tickets.get(id);if(k&&k.status==='resolved'){k.status='open';return true;}return false;};
+         export const reopenChatHelpTicket=async(id,from)=>{t.state.reopened.push([id,from]);const k=t.state.tickets.get(id);
+           if(t.state.moveBeforeReopen){const to=t.state.moveBeforeReopen;t.state.moveBeforeReopen=null;if(k)k.status=to;return false;}
+           if(k&&k.status===from&&(from==='resolved'||from==='waiting_on_requester')){k.status='open';return true;}return false;};
          export const discardChatHelpTicket=async(id)=>{t.state.discarded.push(id);t.state.tickets.delete(id);};`,
       "@/lib/chat-threads":
         g +
@@ -127,6 +133,8 @@ function reset() {
   state.tickets = new Map();
   state.notes = [];
   state.discarded = [];
+  state.reopened = [];
+  state.moveBeforeReopen = null;
   state.made = 0;
   state.raceWith = null;
   state.readable = { lessons: [], assignments: [] };
@@ -136,12 +144,12 @@ function reset() {
 }
 
 const ask = (over: Row = {}) =>
-  requestThreadHelp({ channel: CHANNEL, rootId: ROOT, messageId: ROOT, askerId: ME, note: "stuck on outreach", ...over } as any);
+  requestThreadHelp({ channel: CHANNEL, rootId: ROOT, messageId: ROOT, askerId: ME, askerIsTeam: false, note: "stuck on outreach", ...over } as any);
 
 test("the first ask makes the thread's help request in Support and links it; nothing of the thread is copied", async () => {
   reset();
   const r = await ask();
-  assert.deepEqual([r.outcome, r.reference], ["created", "B0-NEW1"]);
+  assert.deepEqual([r.outcome, r.reference, r.yours], ["created", "B0-NEW1", true]);
   assert.equal(state.thread!.helpTicketId, r.ticketId);
   const filed = state.tickets.get(r.ticketId)!.input;
   assert.deepEqual(filed.chatThread, { channelId: CHANNEL.id, rootId: ROOT });
@@ -150,16 +158,49 @@ test("the first ask makes the thread's help request in Support and links it; not
   assert.ok(!("body" in filed), "the ticket gets a note and a link, never the thread's words");
 });
 
-test("while the request is with the team, asking again joins it: the same ticket, and a note only the team sees", async () => {
+test("while the request is in the team's queue, asking again joins it: the same ticket, and a note only the team sees", async () => {
   reset();
   const first = await ask();
   const again = await ask({ askerId: uuid(101), messageId: REPLY, note: "me too" });
   assert.deepEqual([again.outcome, again.ticketId], ["linked", first.ticketId]);
   assert.equal(state.made, 1, "one ticket for the thread");
   assert.deepEqual(state.notes, [[first.ticketId, "Ava Patel asked the team again about a reply in the thread: me too"]]);
-  // Ownership and resolution live on that one ticket, so the thread follows it.
+  assert.deepEqual(state.reopened, [], "it's already with the team: no status moves");
+  // The one who filed it, asking again, is told it's theirs.
+  const mine = await ask();
+  assert.deepEqual([mine.outcome, mine.reference, mine.yours], ["linked", "B0-NEW1", true]);
+});
+
+test("a second person asking isn't handed someone else's Support reference; the team is", async () => {
+  reset();
+  await ask();
+  const second = await ask({ askerId: uuid(101), note: "me too" });
+  assert.deepEqual([second.outcome, second.reference, second.yours], ["linked", null, false]);
+  const staff = await ask({ askerId: uuid(102), askerIsTeam: true, note: "" });
+  assert.deepEqual([staff.outcome, staff.reference, staff.yours], ["linked", "B0-NEW1", false]);
+});
+
+test("the team replied and is waiting on the asker: asking again in the thread puts it back in the queue", async () => {
+  reset();
+  const first = await ask();
+  // A staff reply in Support moves it to waiting_on_requester by default
+  // (lib/support-access.ts statusAfterStaffReply): out of "Needs reply".
   state.tickets.get(first.ticketId)!.status = "waiting_on_requester";
-  assert.equal((await ask()).outcome, "linked");
+  const again = await ask({ askerId: uuid(101), note: "still stuck" });
+  assert.deepEqual([again.outcome, again.ticketId], ["reopened", first.ticketId]);
+  assert.deepEqual(state.reopened, [[first.ticketId, "waiting_on_requester"]]);
+  assert.equal(state.tickets.get(first.ticketId)!.status, "open", "back in Needs reply, where the team will see it");
+  assert.equal(state.made, 1);
+  assert.deepEqual(state.notes, [[first.ticketId, "Ava Patel asked the team again: still stuck"]]);
+  // It moved between our read and our reopen (here: the team resolved it):
+  // we look again and reopen it from where it is now, rather than give up.
+  state.tickets.get(first.ticketId)!.status = "waiting_on_requester";
+  state.moveBeforeReopen = "resolved";
+  const raced = await ask();
+  assert.equal(raced.outcome, "reopened");
+  assert.deepEqual(state.reopened.slice(1), [[first.ticketId, "waiting_on_requester"], [first.ticketId, "resolved"]]);
+  assert.equal(state.tickets.get(first.ticketId)!.status, "open");
+  assert.equal(state.notes.length, 2, "one note per ask, however many tries it took");
 });
 
 test("a handled request is reopened rather than duplicated; a closed one is final, and a new one takes the thread", async () => {
@@ -168,6 +209,7 @@ test("a handled request is reopened rather than duplicated; a closed one is fina
   state.tickets.get(first.ticketId)!.status = "resolved";
   const reopened = await ask();
   assert.deepEqual([reopened.outcome, reopened.ticketId], ["reopened", first.ticketId]);
+  assert.deepEqual(state.reopened, [[first.ticketId, "resolved"]]);
   assert.equal(state.tickets.get(first.ticketId)!.status, "open", "the same record, back in the queue");
   state.tickets.get(first.ticketId)!.status = "closed";
   const fresh = await ask();
@@ -183,7 +225,7 @@ test("two people asking at the same moment end on one request: the loser's ticke
   state.tickets.set(theirs, { id: theirs, reference: "B0-THEIRS", status: "open", userId: uuid(102), assignedTo: null });
   state.raceWith = theirs;
   const r = await ask();
-  assert.deepEqual([r.outcome, r.ticketId], ["linked", theirs]);
+  assert.deepEqual([r.outcome, r.ticketId, r.reference], ["linked", theirs, null], "theirs: no reference for us");
   assert.equal(state.discarded.length, 1, "ours was discarded");
   assert.ok(!state.tickets.has(state.discarded[0]));
   assert.equal(state.thread!.helpTicketId, theirs);
@@ -211,4 +253,20 @@ test("Ask about this: a question's lesson shows to a viewer who can open it, and
   state.readable.lessons = [{ id: LESSON, title: "x" }];
   state.rlsFails = true;
   assert.ok(!("about" in (await withAbout([q]))[0].thread));
+});
+
+test("Ask about this: a link on a message that isn't a question and has no replies (a staff post, a quote) still shows its chip", async () => {
+  reset();
+  const ASSIGNMENT = uuid(501);
+  // lib/chat.ts gives such a message an empty summary; withAbout fills its chip in.
+  const post = { id: ROOT, channelId: CHANNEL.id, thread: { replyCount: 0, lastReplyAt: null, question: null, answerId: null } } as any;
+  state.threadRows = [{ root_id: ROOT, channel_id: CHANNEL.id, reply_count: 0, question: null, about_kind: "assignment", about_id: ASSIGNMENT }];
+  state.readable.assignments = [{ id: ASSIGNMENT, title: "Customer discovery log" }];
+  const [shown] = await withAbout([post]);
+  assert.deepEqual(shown.thread.about, {
+    kind: "assignment",
+    id: ASSIGNMENT,
+    title: "Customer discovery log",
+    href: `/dashboard/assignments/${ASSIGNMENT}`,
+  });
 });
