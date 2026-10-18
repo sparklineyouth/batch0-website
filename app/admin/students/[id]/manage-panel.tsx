@@ -82,7 +82,11 @@ export function ManagePanel({
             setError(res.error);
             return;
           }
-          setOkMsg("Moved to selected cohort.");
+          setOkMsg(
+            res.data?.restored
+              ? "Their enrollment in that cohort is back."
+              : "Moved to selected cohort.",
+          );
         } else if (action === "reset") {
           await sendPasswordResetForUser(userId);
           setOkMsg("Password reset email sent.");

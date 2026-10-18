@@ -43,8 +43,8 @@ export function RoleSelect({
     setError(undefined);
     start(async () => {
       try {
-        // Refusals (your own role, someone who holds more than you, the last
-        // full admin) come back as results so the real reason shows.
+        // Refusals (your own role, someone with admin powers you don't hold,
+        // the last full admin) come back as results so the real reason shows.
         const res = await changeUserRole(userId, next);
         if (!res.ok) {
           setCurrent(previous);

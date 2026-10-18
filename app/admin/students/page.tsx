@@ -136,7 +136,8 @@ export default async function AdminStudentsPage(
     .filter((r) => covers(caps, r.permissions))
     .map((r) => ({ slug: r.slug, label: r.label, color: r.color }));
   // Every role, for the badges on rows the viewer may not change: their own,
-  // and anyone whose role holds more than theirs (lib/role-change.ts). The
+  // and anyone whose role holds admin powers theirs doesn't
+  // (lib/role-change.ts). The
   // picker list above only has what the viewer can hand out.
   const roleBadges = roles.map((r) => ({ slug: r.slug, label: r.label, color: r.color }));
 

@@ -19,14 +19,24 @@
  *   1. nobody changes their own role, full admins included;
  *   2. you can't assign a role that holds anything you don't (the long-standing
  *      escalation rule);
- *   3. you can't change someone whose CURRENT role holds anything you don't —
- *      so only a full admin changes a full admin;
+ *   3. you can't change someone whose CURRENT role holds admin powers you
+ *      don't — so only a full admin changes a full admin, and a delegate
+ *      can't strip someone of, say, payments.manage they don't hold;
  *   4. the change can't leave nobody with full access.
  * The database enforces 4 on its own (0103's keep_a_full_admin trigger, which
  * also serialises concurrent demotions); 1–3 need to know who is acting, which
  * only the app does.
+ *
+ * Rule 3 compares admin powers only, not the participant and panel keys
+ * (student.dashboard, mentor.panel, investor.panel, calls.invite,
+ * calls.join_any). Every new account is a Student, the Student role holds
+ * student.dashboard, and staff roles normally don't (its description says to
+ * grant it only to roles that take part in the programme). Comparing every
+ * key locked a delegated role manager out of every Student row, which is the
+ * change that role exists to make. Taking a panel key away is a de-escalation,
+ * and handing one out is still rule 2's business.
  */
-import { WILDCARD, covers, type Capabilities } from "./permissions.ts";
+import { ADMIN_AREA_PERMISSIONS, WILDCARD, covers, type Capabilities } from "./permissions.ts";
 
 export type RoleDef = {
   slug: string;
@@ -47,6 +57,17 @@ export function isFullAccessRole(role: Pick<RoleDef, "permissions"> | null | und
   return !!role && role.permissions.includes(WILDCARD);
 }
 
+const ADMIN_POWERS: ReadonlySet<string> = new Set<string>([WILDCARD, ...ADMIN_AREA_PERMISSIONS]);
+
+/**
+ * The part of a role rule 3 compares: the wildcard and the admin-area keys.
+ * Panel keys and strings the catalog no longer knows (a stale row) grant no
+ * admin power, so they don't make someone untouchable.
+ */
+export function adminPowersOf(permissions: readonly string[]): string[] {
+  return permissions.filter((p) => ADMIN_POWERS.has(p));
+}
+
 /**
  * Why `actor` can't move `target` off their current role at all, whatever the
  * destination — or null when they can. The People pages use this to decide
@@ -60,10 +81,10 @@ export function roleChangeLock(
   if (target.id === actor.userId) return SELF_ROLE_CHANGE;
   // A profile pointing at a role that no longer exists holds nothing.
   const current = roles.find((r) => r.slug === target.role);
-  if (current && !covers(actor.caps, current.permissions)) {
+  if (current && !covers(actor.caps, adminPowersOf(current.permissions))) {
     return isFullAccessRole(current)
       ? "Only a full admin can change a full admin's role."
-      : `You can't change the role of someone who is "${current.label}": it holds permissions you don't have.`;
+      : `You can't change the role of someone who is "${current.label}": it holds admin permissions you don't have.`;
   }
   return null;
 }

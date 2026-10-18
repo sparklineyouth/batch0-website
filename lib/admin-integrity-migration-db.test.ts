@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { MIGRATION_CHECKS } from "./migration-plan.ts";
+import { cohortMoveFailureMessage } from "./cohort-move.ts";
 
 /**
  * Migration 0103, executed for real against a throwaway Postgres.
@@ -325,6 +326,88 @@ test("0103: a paid application with no enrollment gets one in the new cohort, ah
   }
 });
 
+// Review of PR #346: with no enrollment, the paid application's own cohort
+// was refused as "same_cohort" ("They're already in X") although they had no
+// access there. The old action's failed insert left exactly this behind.
+test("0103: a paid application with no enrollment is restored in its own cohort", async () => {
+  const db = await setup();
+  try {
+    const paid = await application(db, FALL, "paid");
+    await scholarship(db, FALL, "awarded");
+    const res = await move(db, FALL);
+    assert.equal(res.ok, true);
+    assert.equal(res.enrollment, "restored");
+    assert.equal(res.from_cohort_id, FALL);
+    assert.equal(res.application_id, paid);
+    // Nothing moved, so no scholarship row is reported as restamped, and the
+    // award in that cohort isn't taken for a second one.
+    assert.deepEqual(res.scholarship_application_ids, []);
+    const after = await picture(db);
+    assert.deepEqual(after.enrollments, [{ cohort_id: FALL, application_id: paid }]);
+    assert.deepEqual(after.applications, [{ id: paid, cohort_id: FALL, status: "paid" }]);
+    assert.deepEqual(after.scholarships, [{ cohort_id: FALL, status: "awarded" }]);
+    // Once restored, the same pick is "already in" again.
+    assert.equal((await move(db, FALL)).code, "same_cohort");
+  } finally {
+    await db.close();
+  }
+});
+
+test("0103: a restore finds the paid application behind a newer draft or a newer paid one", async () => {
+  const db = await setup();
+  try {
+    // A newer draft was moved (or withdrawn) in the paid one's place.
+    const paid = await application(db, FALL, "enrolled", 600);
+    const draft = await application(db, SPRING, "draft", 0);
+    const res = await move(db, FALL);
+    assert.equal(res.ok, true);
+    assert.equal(res.enrollment, "restored");
+    assert.equal(res.application_id, paid);
+    const after = await picture(db);
+    assert.deepEqual(after.enrollments, [{ cohort_id: FALL, application_id: paid }]);
+    assert.equal(after.applications.find((a) => a.id === draft)?.cohort_id, SPRING);
+
+    // A returning student who lost every enrollment: the older paid cohort is
+    // restored, not refused because a newer paid application exists.
+    await db.query("delete from public.enrollments where user_id = $1", [STUDENT]);
+    const winter = await application(db, WINTER, "paid", 0);
+    const again = await move(db, FALL);
+    assert.equal(again.enrollment, "restored");
+    assert.equal(again.application_id, paid);
+    assert.equal(
+      (await picture(db)).applications.find((a) => a.id === winter)?.cohort_id,
+      WINTER,
+    );
+  } finally {
+    await db.close();
+  }
+});
+
+test("0103: an unpaid application in the cohort picked is still \"already in\"", async () => {
+  const db = await setup();
+  try {
+    await application(db, FALL, "accepted");
+    assert.equal((await move(db, FALL)).code, "same_cohort");
+    assert.deepEqual((await picture(db)).enrollments, []);
+  } finally {
+    await db.close();
+  }
+});
+
+test("0103 rollback: a restore into a full cohort changes nothing", async () => {
+  const db = await setup();
+  try {
+    await application(db, FALL, "paid");
+    await db.query("update public.cohorts set capacity = 1 where id = $1", [FALL]);
+    await enroll(db, FALL, null, OTHER);
+    const before = await picture(db);
+    await rejects(move(db, FALL), /full/);
+    assert.deepEqual(await picture(db), before);
+  } finally {
+    await db.close();
+  }
+});
+
 test("0103: an accepted (unpaid) applicant's application moves and no access is invented", async () => {
   const db = await setup();
   try {
@@ -447,6 +530,79 @@ test("0103 rollback: the enrollment insert fails (the cohort is full), the paid 
     const before = await picture(db);
     await rejects(move(db, WINTER), /full/);
     assert.deepEqual(await picture(db), before);
+  } finally {
+    await db.close();
+  }
+});
+
+// The function checks the unique keys before writing, so hitting one is a
+// race: another writer landing between the check and the write. Staged with
+// a trigger on the first write (the scholarship restamp) that does what "Add
+// a person" would. The real Postgres message is fed to the action's mapper,
+// which used to call every duplicate key a scholarship-award clash.
+test("0103 rollback: an enrollment landing mid-move rolls back and is named as one", async () => {
+  const db = await setup();
+  try {
+    const app = await application(db, FALL, "enrolled");
+    await enroll(db, FALL, app);
+    await scholarship(db, FALL, "submitted");
+    await db.query(
+      `create function public.race_enrollment() returns trigger language plpgsql as $$
+       begin
+         insert into public.enrollments (user_id, cohort_id) values (new.user_id, '${WINTER}');
+         return new;
+       end $$`,
+    );
+    await db.exec(`
+      create trigger race_enrollment before update on public.scholarship_applications
+        for each row execute function public.race_enrollment();
+    `);
+    const before = await picture(db);
+    let message = "";
+    await assert.rejects(move(db, WINTER), (err: any) => {
+      message = String(err?.message ?? err);
+      return /enrollments_user_id_cohort_id_key/.test(message);
+    });
+    assert.deepEqual(await picture(db), before);
+    const shown = cohortMoveFailureMessage(message, "Winter");
+    assert.match(shown, /already enrolled in Winter/);
+    assert.doesNotMatch(shown, /scholarship/);
+  } finally {
+    await db.close();
+  }
+});
+
+test("0103 rollback: a second award landing mid-move rolls back and is named as one", async () => {
+  const db = await setup();
+  try {
+    const app = await application(db, FALL, "enrolled");
+    await enroll(db, FALL, app);
+    await scholarship(db, FALL, "awarded");
+    // Another admin awards a Winter scholarship after the up-front check.
+    await db.query(
+      `create function public.race_award() returns trigger language plpgsql as $$
+       begin
+         if new.cohort_id = '${WINTER}' and not exists (
+           select 1 from public.scholarship_applications where user_id = new.user_id and cohort_id = '${WINTER}'
+         ) then
+           insert into public.scholarship_applications (scholarship_id, user_id, cohort_id, status)
+           values ('${SCHOLARSHIP}', new.user_id, '${WINTER}', 'awarded');
+         end if;
+         return new;
+       end $$`,
+    );
+    await db.exec(`
+      create trigger race_award before update on public.scholarship_applications
+        for each row execute function public.race_award();
+    `);
+    const before = await picture(db);
+    let message = "";
+    await assert.rejects(move(db, WINTER), (err: any) => {
+      message = String(err?.message ?? err);
+      return /scholarship_applications_one_award_idx/.test(message);
+    });
+    assert.deepEqual(await picture(db), before);
+    assert.match(cohortMoveFailureMessage(message, "Winter"), /scholarship award in Winter/);
   } finally {
     await db.close();
   }

@@ -4,6 +4,7 @@ import { capabilitiesFrom } from "./permissions.ts";
 import {
   LAST_FULL_ADMIN,
   SELF_ROLE_CHANGE,
+  adminPowersOf,
   isFullAccessRole,
   isLastFullAdminError,
   planRoleChange,
@@ -19,12 +20,21 @@ const roles: RoleDef[] = [
   // A delegated role manager: may assign roles, holds nothing else much.
   { slug: "manager", label: "Manager", permissions: ["people.view", "people.roles", "student.dashboard", "mentor.panel", "calls.invite"] },
   { slug: "finance", label: "Finance", permissions: ["payments.view", "payments.manage"] },
+  { slug: "investor", label: "Investor", permissions: ["investor.panel", "calls.invite"] },
+  { slug: "intern", label: "Intern", permissions: ["applications.view", "people.view"] },
+  // A realistic delegate: staff, so no student.dashboard (permissions.ts says
+  // to grant it only to roles that take part in the programme).
+  { slug: "ops", label: "Ops", permissions: ["people.view", "people.roles", "applications.view", "mentor.panel", "calls.invite"] },
 ];
 
 const admin = { userId: "admin-1", caps: capabilitiesFrom("admin", ["*"]) };
 const manager = {
   userId: "manager-1",
   caps: capabilitiesFrom("manager", roles.find((r) => r.slug === "manager")!.permissions),
+};
+const ops = {
+  userId: "ops-1",
+  caps: capabilitiesFrom("ops", roles.find((r) => r.slug === "ops")!.permissions),
 };
 
 test("a full admin can't change their own role (the email form used to let them)", () => {
@@ -54,9 +64,51 @@ test("a delegated role manager can't demote a full admin", () => {
   assert.match(plan.skipped[0].reason, /Only a full admin/);
 });
 
-test("nor change anyone whose current role holds more than theirs", () => {
+test("nor change anyone whose current role holds admin powers theirs doesn't", () => {
   const lock = roleChangeLock(manager, { id: "fin-1", role: "finance" }, roles);
-  assert.match(lock!, /"Finance": it holds permissions you don't have/);
+  assert.match(lock!, /"Finance": it holds admin permissions you don't have/);
+  assert.match(roleChangeLock(ops, { id: "fin-1", role: "finance" }, roles)!, /"Finance"/);
+  assert.match(roleChangeLock(ops, { id: "admin-1", role: "admin" }, roles)!, /Only a full admin/);
+});
+
+// Review of PR #346: rule 3 compared every key, and the Student role holds
+// student.dashboard, which staff roles don't. A delegate without it was locked
+// out of every Student row: badge instead of picker, bulk "0 updated", and a
+// refusal from the email form.
+test("a delegate without student.dashboard can still promote a Student", () => {
+  assert.equal(roleChangeLock(ops, { id: "s1", role: "student" }, roles), null);
+  for (const nextRole of ["mentor", "intern"]) {
+    const plan = planRoleChange({
+      actor: ops,
+      roles,
+      targets: [{ id: "s1", role: "student" }, { id: "s2", role: "student" }],
+      nextRole,
+      fullAdminIds: null,
+    });
+    assert.deepEqual(plan, {
+      error: null,
+      change: [{ id: "s1", role: "student" }, { id: "s2", role: "student" }],
+      skipped: [],
+    });
+  }
+});
+
+test("panel keys the delegate lacks don't lock a target; handing them out still needs them", () => {
+  // investor.panel is a panel key, so an investor can be moved to a role the
+  // delegate covers…
+  assert.equal(roleChangeLock(ops, { id: "i1", role: "investor" }, roles), null);
+  const plan = planRoleChange({ actor: ops, roles, targets: [{ id: "i1", role: "investor" }], nextRole: "mentor", fullAdminIds: null });
+  assert.deepEqual(plan.change.map((t) => t.id), ["i1"]);
+  // …but rule 2 still stops the delegate making anyone an investor or a
+  // student, because they hold neither key.
+  assert.match(roleAssignRefusal(ops, "investor", roles)!, /can't assign "Investor"/);
+  assert.match(roleAssignRefusal(ops, "student", roles)!, /can't assign "Student"/);
+});
+
+test("adminPowersOf keeps the wildcard and admin-area keys only", () => {
+  assert.deepEqual(adminPowersOf(["*"]), ["*"]);
+  assert.deepEqual(adminPowersOf(["student.dashboard", "mentor.panel", "investor.panel", "calls.invite", "calls.join_any"]), []);
+  assert.deepEqual(adminPowersOf(["people.view", "student.dashboard", "payments.manage", "retired.key"]), ["people.view", "payments.manage"]);
 });
 
 test("a delegated manager can still re-role people within their own reach", () => {

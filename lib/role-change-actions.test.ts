@@ -21,6 +21,9 @@ const roles = [
   { slug: "admin", label: "Admin", permissions: ["*"] },
   { slug: "mentor", label: "Mentor", permissions: ["mentor.panel"] },
   { slug: "limited", label: "Limited", permissions: ["people.roles", "people.view", "student.dashboard", "mentor.panel"] },
+  // A staff delegate as they'd really be set up: no student.dashboard.
+  { slug: "ops", label: "Ops", permissions: ["people.roles", "people.view", "applications.view", "mentor.panel"] },
+  { slug: "intern", label: "Intern", permissions: ["applications.view", "people.view"] },
 ];
 const full = (r: string) => roles.find((x) => x.slug === r)?.permissions.includes("*") ?? false;
 const capsOf = (slug: string) => {
@@ -167,6 +170,26 @@ test("a limited role manager still re-roles people within their reach, audited w
   assert.equal(state.audit.length, 1);
   assert.deepEqual(state.audit[0].payload, { from: "student", to: "mentor", email: "s1@example.test" });
   assert.deepEqual(state.audit[0].actor, { userId: "delegate", email: "delegate@example.test" });
+});
+
+// Review of PR #346: a delegate whose role lacks student.dashboard (staff
+// roles normally do) was refused on every Student, by every path.
+test("a staff delegate without student.dashboard promotes Students by picker, bulk change and email", async () => {
+  reset([p("ops-1", "ops"), p("s1", "student"), p("s2", "student"), p("s3", "student"), p("s4", "student")], as("ops-1", "ops"));
+  assert.deepEqual(await changeUserRole("s1", "mentor"), { ok: true });
+  assert.equal(roleOf("s1"), "mentor");
+  assert.deepEqual(await bulkChangeUserRole({ userIds: ["s2", "s3"], role: "intern" }), { succeeded: 2, failed: 0, skipped: 0 });
+  assert.equal(roleOf("s2"), "intern");
+  assert.equal(roleOf("s3"), "intern");
+  const viaEmail = await grantRoleByEmail("s4@example.test", "intern");
+  assert.equal(viaEmail.ok, true);
+  assert.equal(roleOf("s4"), "intern");
+  assert.equal(state.audit.length, 4);
+  // Still not a full admin's role, and still not their own.
+  reset([p("ops-1", "ops"), p("admin-1", "admin")], as("ops-1", "ops"));
+  assert.match((await changeUserRole("admin-1", "intern") as any).error, /Only a full admin/);
+  assert.match((await changeUserRole("ops-1", "intern") as any).error, /can't change your own role/);
+  assert.equal(state.updates, 0);
 });
 
 test("the email form records where the change came from", async () => {

@@ -123,6 +123,11 @@ export async function removeFromProgram(userId: string, reason: string) {
  * `fromCohortId` is the cohort the profile showed them in. If they're no
  * longer there (someone else moved them), nothing moves.
  *
+ * Picking the cohort a student has paid for when they're enrolled nowhere
+ * (what the old action's failed insert left behind) restores that enrollment
+ * rather than refusing with "already in": `data.restored` says which it was,
+ * and the student is told their place is back, not that they moved.
+ *
  * Returns a result rather than throwing for the refusals an admin has to act
  * on, because a thrown message is replaced with a generic one in production
  * builds (lib/action-result.ts).
@@ -131,7 +136,7 @@ export async function moveToCohort(
   userId: string,
   cohortId: string,
   fromCohortId: string | null = null,
-): Promise<ActionResult> {
+): Promise<ActionResult<{ restored: boolean }>> {
   const { userId: actorId } = await assertPermission(PROFILE_ACTION_PERMISSIONS.moveCohort);
   if (!cohortId) return { ok: false, error: "Pick a cohort." };
   const target = await fetchTargetProfile(userId);
@@ -169,7 +174,9 @@ export async function moveToCohort(
       from_cohort_id: result.fromCohortId,
       to_cohort_id: cohortId,
       application_id: result.applicationId,
-      // moved | created (a paid application's missing enrollment) | none
+      // moved | created (a paid application's missing enrollment, in the new
+      // cohort) | restored (the same, put back where it was paid for: from
+      // and to are the same cohort) | none
       enrollment: result.enrollment,
       // The cohort the scholarship rows were restamped from, and which ones.
       from_scholarship_cohort:
@@ -179,11 +186,14 @@ export async function moveToCohort(
     },
   });
 
+  const restored = result.enrollment === "restored";
   await notify({
     userId,
     type: "moved_to_cohort",
-    title: `Moved to ${cohort.name}`,
-    body: "An admin has moved you to a different cohort.",
+    title: restored ? `You're back in ${cohort.name}` : `Moved to ${cohort.name}`,
+    body: restored
+      ? "An admin has restored your place in your cohort."
+      : "An admin has moved you to a different cohort.",
     link: "/dashboard",
   });
 
@@ -191,7 +201,7 @@ export async function moveToCohort(
   revalidatePath("/admin/students");
   revalidatePath("/admin/applications");
   if (result.scholarshipApplicationIds.length > 0) revalidatePath("/admin/scholarships/applications");
-  return { ok: true };
+  return { ok: true, data: { restored } };
 }
 
 /**

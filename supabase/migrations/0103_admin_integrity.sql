@@ -35,6 +35,11 @@
 --     the student's application on that cohort). With no enrollment, the
 --     application that holds access (paid/enrolled) before the newest one,
 --     and a paid one gets its missing enrollment back in the new cohort;
+--   - with no enrollment and a paid/enrolled application already in the
+--     cohort picked, nothing moves: the missing enrollment is put back there
+--     ('restored'). The old action's failed insert, or a newer draft moved or
+--     withdrawn in the paid one's place, left people like that, and "move
+--     them to the cohort they paid for" is the obvious repair;
 --   - their live scholarship rows on the cohort being left (the rule
 --     moveToCohort already had: declined/withdrawn rows stay where they were
 --     decided).
@@ -85,6 +90,7 @@ declare
   from_cohort uuid;
   moved_scholarships uuid[] := '{}';
   enrollment_change text := 'none';
+  restore boolean := false;
 begin
   -- One move per student at a time: a second click (or a second admin) waits
   -- here and then sees where the first one put them.
@@ -130,13 +136,23 @@ begin
       has_application := found;
     end if;
   else
-    -- No enrollment: the application that holds access, else the newest.
+    -- No enrollment. A paid/enrolled application on the cohort picked first:
+    -- that's the repair below, whichever application is newer. Else the
+    -- application that holds access, else the newest.
     select * into a from public.applications
      where user_id = p_user_id
-     order by (status in ('paid', 'enrolled')) desc, created_at desc, id
-     limit 1
+       and cohort_id = p_to_cohort_id
+       and status in ('paid', 'enrolled')
        for update;
     has_application := found;
+    if not has_application then
+      select * into a from public.applications
+       where user_id = p_user_id
+       order by (status in ('paid', 'enrolled')) desc, created_at desc, id
+       limit 1
+         for update;
+      has_application := found;
+    end if;
   end if;
 
   if not has_enrollment and not has_application then
@@ -144,7 +160,14 @@ begin
   end if;
 
   from_cohort := case when has_enrollment then e.cohort_id else a.cohort_id end;
-  if from_cohort is not distinct from p_to_cohort_id then
+  -- Paid for this cohort and enrolled in none: not a move but a repair. Only
+  -- reachable with no enrollment at all (a p_from_cohort_id that matched
+  -- nothing returned 'stale' above), so there's no enrollment to clash with.
+  restore := not has_enrollment
+             and has_application
+             and a.status in ('paid', 'enrolled')
+             and a.cohort_id is not distinct from p_to_cohort_id;
+  if from_cohort is not distinct from p_to_cohort_id and not restore then
     return jsonb_build_object('ok', false, 'code', 'same_cohort');
   end if;
 
@@ -165,8 +188,10 @@ begin
   end if;
 
   -- One award per student per cohort (0071's partial unique index). Checked
-  -- up front to say so; the index still refuses a race, and rolls back.
+  -- up front to say so; the index still refuses a race, and rolls back. A
+  -- restore stays in its cohort, so its award isn't a second one.
   if from_cohort is not null
+     and not restore
      and exists (select 1 from public.scholarship_applications
                   where user_id = p_user_id and cohort_id = from_cohort and status = 'awarded')
      and exists (select 1 from public.scholarship_applications
@@ -186,8 +211,8 @@ begin
   -- unused, and would stop blocking a second award in the new one. Only rows
   -- on the cohort being left move: a returning student's award from an
   -- earlier cohort belongs to that cohort, and declined/withdrawn rows are a
-  -- record of what was decided there.
-  if from_cohort is not null then
+  -- record of what was decided there. A restore leaves them where they are.
+  if from_cohort is not null and not restore then
     with moved as (
       update public.scholarship_applications
          set cohort_id = p_to_cohort_id
@@ -211,9 +236,10 @@ begin
      where id = e.id;
     enrollment_change := 'moved';
   elsif has_application and a.status in ('paid', 'enrolled') then
+    -- 0081's capacity guard fires on the insert too.
     insert into public.enrollments (user_id, cohort_id, application_id)
     values (p_user_id, p_to_cohort_id, a.id);
-    enrollment_change := 'created';
+    enrollment_change := case when restore then 'restored' else 'created' end;
   end if;
 
   return jsonb_build_object(

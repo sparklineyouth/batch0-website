@@ -17,8 +17,8 @@ import {
  * the rule and why). The caller has already asserted people.roles.
  *
  * Fails closed: if the targets' current roles can't be read, nothing is
- * written, because rule 3 (you can't change someone who holds more than you)
- * is decided on exactly that read.
+ * written, because rule 3 (you can't change someone who holds admin powers
+ * you don't) is decided on exactly that read.
  *
  * The write is a compare-and-set on the role that was read
  * (`where id in (...) and role = <what we saw>`), grouped by that role. A

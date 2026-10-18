@@ -146,8 +146,9 @@ export default async function AdminStudentDetail(
   // Deleting a full-access account is blocked server-side; mirror that here.
   const targetCaps = await capabilitiesForRole(profile.role);
   // The role picker only where the action would accept a change: not your
-  // own role, and not someone whose role holds more than yours (so only a
-  // full admin re-roles a full admin). lib/role-change.ts is the one rule.
+  // own role, and not someone whose role holds admin powers yours doesn't (so
+  // only a full admin re-roles a full admin). lib/role-change.ts is the one
+  // rule.
   const roleLock = canChangeRoles
     ? roleChangeLock({ userId: actor.id, caps }, { id: profile.id, role: profile.role }, allRoles)
     : null;

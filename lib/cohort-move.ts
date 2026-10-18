@@ -26,8 +26,13 @@ export type CohortMoveResult =
       fromCohortId: string | null;
       toCohortId: string;
       applicationId: string | null;
-      /** What happened to their access: moved with them, restored, or none to move. */
-      enrollment: "moved" | "created" | "none";
+      /**
+       * What happened to their access: moved with them, created in the new
+       * cohort for a paid application that had lost it, put back in the
+       * cohort they'd paid for without moving anything ("restored"), or none
+       * to move.
+       */
+      enrollment: "moved" | "created" | "restored" | "none";
       scholarshipApplicationIds: string[];
     }
   | { ok: false; code: CohortMoveRefusalCode | "unknown"; status?: string };
@@ -49,7 +54,10 @@ const str = (v: unknown): string | null => (typeof v === "string" && v ? v : nul
 export function parseCohortMoveResult(raw: unknown): CohortMoveResult {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   if (r.ok === true && str(r.to_cohort_id)) {
-    const enrollment = r.enrollment === "moved" || r.enrollment === "created" ? r.enrollment : "none";
+    const enrollment =
+      r.enrollment === "moved" || r.enrollment === "created" || r.enrollment === "restored"
+        ? r.enrollment
+        : "none";
     return {
       ok: true,
       fromCohortId: str(r.from_cohort_id),
@@ -99,11 +107,22 @@ export function cohortMoveRefusalMessage(
 /**
  * A write inside the move failed and the transaction rolled back. The guards
  * that raise (0081's capacity and checkout triggers) already speak plainly;
- * the one-award index doesn't.
+ * unique keys don't, so the three a move can hit are named. The function
+ * checks all three before it writes, so these are races: another writer
+ * ("Add a person", a second admin's award) landing between the check and the
+ * write. Which key it was decides the instruction, so an enrollment clash
+ * never tells the admin to revoke an award the student doesn't hold; any
+ * other duplicate key gets the plain "nothing was changed".
  */
 export function cohortMoveFailureMessage(message: string, cohortName: string): string {
-  if (/scholarship_applications_one_award_idx|duplicate key|unique constraint/i.test(message)) {
+  if (/scholarship_applications_one_award_idx/i.test(message)) {
     return `They already hold a scholarship award in ${cohortName}, and a student holds one award per cohort. Revoke one of the two awards, then move them.`;
+  }
+  if (/\benrollments_user_id_cohort_id_key\b/i.test(message)) {
+    return `They're already enrolled in ${cohortName} as well, so nothing was moved. Refresh to see it.`;
+  }
+  if (/\bapplications_user_id_cohort_id_key\b/i.test(message)) {
+    return `They already have an application for ${cohortName}, and a student has one application per cohort. Nothing was moved. Refresh to see it.`;
   }
   const reason = message.trim().replace(/\.$/, "") || "the database refused it";
   return `Couldn't move them to ${cohortName}, so nothing was changed: ${reason}.`;

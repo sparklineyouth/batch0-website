@@ -40,8 +40,8 @@ export async function changeUserRole(userId: string, role: Role): Promise<Action
  * one update per current role (usually one), one audit insert for the whole
  * batch, however many users are picked. A destination the actor can't hand
  * out fails the whole batch (`error`); the actor's own account, anyone whose
- * role holds more than the actor's, and anyone already in the role are
- * skipped and counted as such.
+ * role holds admin powers the actor's doesn't, and anyone already in the role
+ * are skipped and counted as such.
  */
 export async function bulkChangeUserRole(input: {
   userIds: string[];

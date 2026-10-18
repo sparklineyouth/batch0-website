@@ -36,8 +36,10 @@ team's own pages stay on `teams.manage`.
   (`lib/role-change-server.ts`) and one rule (`lib/role-change.ts`): nobody
   changes their own role (full admins included), nobody assigns a role that
   holds more than theirs, nobody changes someone whose current role holds
-  more than theirs (so only a full admin re-roles a full admin), and the site
-  always keeps one full admin. Rows the viewer can't change show a badge, not
+  admin permissions they don't (so only a full admin re-roles a full admin;
+  the participant and panel keys such as `student.dashboard` don't count, so
+  a delegate without them can still promote a Student), and the site always
+  keeps one full admin. Rows the viewer can't change show a badge, not
   a picker; a bulk change skips them and counts them as skipped. Migration
   0103's `keep_a_full_admin` triggers hold the last rule in the database too,
   for any writer and for two admins demoting each other at once.
@@ -46,8 +48,10 @@ team's own pages stay on `teams.manage`.
   shown as current, the application it came from and their live scholarship
   rows move together, or nothing does (a full cohort, an active checkout).
   Someone added with "Add a person" has no application and keeps their
-  access. Earlier cohorts, other applications and payments stay put. Until
-  0103 runs the button says it needs the migration.
+  access. Someone who paid but is enrolled nowhere (what the old move's
+  failed insert left behind) gets that enrollment back by being "moved" to
+  the cohort they paid for. Earlier cohorts, other applications and payments
+  stay put. Until 0103 runs the button says it needs the migration.
 - **What a profile shows.** It opens on `people.view`. Payments (amounts,
   statuses, Stripe ids) need `payments.view`, the same as `/admin/payments`;
   fees & fines need `charges.manage` or `payments.view`. Neither is fetched

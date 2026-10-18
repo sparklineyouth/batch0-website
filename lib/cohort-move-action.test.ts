@@ -99,7 +99,7 @@ test("a committed move is audited and announced, in that order, after the databa
     error: null,
   });
   const res = await moveToCohort(STUDENT, "winter", "fall");
-  assert.deepEqual(res, { ok: true });
+  assert.deepEqual(res, { ok: true, data: { restored: false } });
   assert.deepEqual(state.rpcArgs, { p_user_id: STUDENT, p_to_cohort_id: "winter", p_from_cohort_id: "fall" });
   assert.deepEqual(
     state.calls.map((c) => c.split(":").slice(0, 2).join(":")),
@@ -109,6 +109,29 @@ test("a committed move is audited and announced, in that order, after the databa
   assert.equal(audit.from_cohort_id, "fall");
   assert.equal(audit.enrollment, "moved");
   // The action itself writes nothing: no delete-then-insert to half-finish.
+  assert.deepEqual(state.writes, []);
+});
+
+test("a restore in place is reported as one, and the student isn't told they moved", async () => {
+  reset({
+    data: {
+      ok: true,
+      from_cohort_id: "winter",
+      to_cohort_id: "winter",
+      application_id: "app-1",
+      enrollment: "restored",
+      scholarship_application_ids: [],
+    },
+    error: null,
+  });
+  const res = await moveToCohort(STUDENT, "winter");
+  assert.deepEqual(res, { ok: true, data: { restored: true } });
+  assert.ok(state.calls.includes("notify:You're back in Winter"));
+  assert.ok(!state.calls.some((c) => c.startsWith("notify:Moved")));
+  const audit = JSON.parse(
+    state.calls.find((c) => c.startsWith("audit:"))!.slice("audit:user.moved_to_cohort:".length),
+  );
+  assert.equal(audit.enrollment, "restored");
   assert.deepEqual(state.writes, []);
 });
 
