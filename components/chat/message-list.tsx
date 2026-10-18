@@ -39,6 +39,8 @@ export type MessageActions = {
   onReact: (id: string, emoji: string) => void;
   onPin: (id: string) => void;
   onReport: (m: UiMessage) => void;
+  /** Report a deleted message (a text channel's, by its id and sender): a reply's quote of one offers it. */
+  onReportDeleted: (messageId: string, senderId: string) => void;
   onBlock: (userId: string) => void;
   onRetry: (m: UiMessage) => void;
   onDiscard: (id: string) => void;
@@ -599,7 +601,22 @@ const MessageItem = memo(function MessageItem({
         mentioned ? "border-l-2 border-phosphor bg-phosphor/10" : "border-l-2 border-transparent"
       } ${flash || selected ? "bg-phosphor/20" : ""} ${m.pending ? "opacity-60" : ""} hover:bg-wash/70 ${rowFocus}`}
     >
-      {head && m.replyTo ? <ReplyQuote reply={m.replyTo} people={people} markup={markup} /> : null}
+      {head && m.replyTo ? (
+        <ReplyQuote
+          reply={m.replyTo}
+          people={people}
+          markup={markup}
+          tab={tab}
+          // A quote of a deleted message is the one place a text channel still
+          // shows it was there: it's a report target (body-free, like the
+          // channel menu's list). Never your own.
+          onReport={
+            live && channel?.kind === "channel" && m.replyTo.deleted && m.replyTo.senderId && m.replyTo.senderId !== viewer.id
+              ? () => actions.onReportDeleted(m.replyTo!.id, m.replyTo!.senderId!)
+              : null
+          }
+        />
+      ) : null}
       <div className="flex gap-3">
         <div className="w-9 shrink-0">
           {head ? (
@@ -814,17 +831,30 @@ function ReplyQuote({
   reply,
   people,
   markup,
+  tab,
+  onReport,
 }: {
   reply: NonNullable<UiMessage["replyTo"]>;
   people: Record<string, ChatPerson>;
   markup: MarkupContext;
+  /** -1 keeps the Report button out of the Tab order until focus is in the message. */
+  tab: number;
+  /** A deleted original that can be reported from here. */
+  onReport: (() => void) | null;
 }) {
   const who = reply.senderId ? (people[reply.senderId]?.name ?? "Someone") : DELETED_NAME;
   return (
     <div className="mb-0.5 ml-12 flex min-w-0 items-center gap-1.5 text-xs text-ink-faint">
       <CornerUpLeft className="h-3 w-3 shrink-0 -scale-x-100" />
       {reply.deleted ? (
-        <span className="italic">Original message was deleted</span>
+        <>
+          <span className="italic">Original message was deleted</span>
+          {onReport ? (
+            <button type="button" tabIndex={tab} onClick={onReport} className="underline-offset-2 hover:underline">
+              Report it
+            </button>
+          ) : null}
+        </>
       ) : !reply.preview ? (
         // The original isn't loaded here yet.
         <span className="italic">Replying to a message</span>

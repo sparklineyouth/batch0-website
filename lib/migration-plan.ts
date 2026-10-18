@@ -110,6 +110,18 @@ where permissions @> array['ai_usage.view']::text[];`,
                where tgrelid = to_regclass('public.profiles') and tgname = 'keep_a_full_admin')
    and exists (select 1 from pg_trigger
                where tgrelid = to_regclass('public.app_roles') and tgname = 'keep_a_full_admin_role') as ok;`,
+  "0104": `select exists (select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'chat_messages'
+                 and column_name = 'client_id')
+   and exists (select 1 from pg_constraint
+               where conrelid = to_regclass('public.chat_messages')
+                 and conname = 'chat_messages_sender_id_client_id_key' and contype = 'u')
+   -- Readers may select it (Realtime's echo carries it); re-running 0101 takes that away.
+   and exists (select 1 from information_schema.column_privileges
+               where table_schema = 'public' and table_name = 'chat_messages'
+                 and column_name = 'client_id' and grantee = 'authenticated'
+                 and privilege_type = 'SELECT')
+   and to_regclass('public.chat_messages_channel_deleted_idx') is not null as ok;`,
 };
 
 /**

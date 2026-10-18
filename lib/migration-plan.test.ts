@@ -259,16 +259,16 @@ function productionTables(upTo: number): Set<string> {
   return new Set(real.filter((m) => m.num <= upTo).flatMap((m) => createdTables(m.sql)));
 }
 
-test("plan against the real files: a production database that has everything but 0101–0103", () => {
-  const notYet = new Set(["0101", "0102", "0103"]);
+test("plan against the real files: a production database that has everything but 0101–0104", () => {
+  const notYet = new Set(["0101", "0102", "0103", "0104"]);
   const checks = new Map(Object.keys(MIGRATION_CHECKS).map((v) => [v, !notYet.has(v)] as [string, boolean]));
   const plan = planMigrations(real, state({ checks, existingTables: productionTables(100) }));
   // 0099 and 0100 only check for an absence, and no later file proves they
   // ran, so they run again — they're idempotent; that's the safe answer.
-  assert.deepEqual(plan.filter((p) => p.status === "pending").map((p) => p.version), ["0099", "0100", "0101", "0102", "0103"]);
+  assert.deepEqual(plan.filter((p) => p.status === "pending").map((p) => p.version), ["0099", "0100", "0101", "0102", "0103", "0104"]);
   assert.equal(plan.filter((p) => p.status === "gap").length, 0);
-  // With 0101–0103 run, everything is accounted for.
-  const done = planMigrations(real, state({ checks: new Map([...checks, ["0101", true], ["0102", true], ["0103", true]]), existingTables: new Set([...productionTables(100), "profiles", "app_roles"]) }));
+  // With 0101–0104 run, everything is accounted for.
+  const done = planMigrations(real, state({ checks: new Map([...checks, ["0101", true], ["0102", true], ["0103", true], ["0104", true]]), existingTables: new Set([...productionTables(100), "profiles", "app_roles"]) }));
   assert.deepEqual(done.filter((p) => p.status !== "unrecorded" && p.status !== "applied").map((p) => p.version), []);
 });
 

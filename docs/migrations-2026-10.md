@@ -1,4 +1,4 @@
-# Migrations 0093–0103 (October 2026)
+# Migrations 0093–0104 (October 2026)
 
 **Fastest:** `npm run db:migrate -- --apply` (SETUP.md §2). It runs exactly the
 files below that the database is missing, in order, each in one transaction
@@ -61,6 +61,16 @@ check-ins, in-app files, discussions and the old recorder at once:
    0103" (the old move could leave a student with no enrollment, so the new
    code doesn't fall back to it), and "at least one full admin" is enforced
    by the app alone, not by the database.
+5. **Any time after 0101: 0104.** It adds `chat_messages.client_id` and a
+   unique `(sender_id, client_id)`, so a Chat message is sent once however
+   many times it's retried. The code works without it: until it runs, a
+   send whose answer is lost can still be posted twice by Retry, and the
+   failed bubble stays beside the message that went through until it's
+   discarded. It also indexes deleted messages for *Report a deleted
+   message*, which works without the index, just less directly.
+   **If 0101 ever runs again after 0104, run 0104 again**: 0101
+   re-grants the message columns it knows by name, which takes away
+   `client_id`'s (0104's verify query notices).
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -151,6 +161,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0101 | `0101_chat.sql` | batch0 Chat: channels, DMs and group DMs (`chat_*` tables including `chat_mutes`, read-only policies, `chat_can_read()`, realtime on `chat_messages`, private presence and typing topics on `realtime.messages`, a trigram index for search, the private `chat-files` bucket), the starting channels plus one per cohort and team (kept, archived, when their team or cohort is deleted), old DMs and team threads carried in, `discord.manage` removed (not converted), admins kept out of other people's chat bells, and the Discord integration's tables, columns and settings dropped. See `docs/chat.md`. |
 | 0102 | `0102_email_outbox_dedupe_index.sql` | `email_outbox.dedupe_key` gets a plain unique index in place of 0052's partial one, so the scheduled-automation fan-out's `on conflict (dedupe_key)` works. Changes no data and sends nothing by itself. |
 | 0103 | `0103_admin_integrity.sql` | `admin_move_student_cohort()` (service role only): moving a student to another cohort is one transaction — their enrollment (kept even without an application), the application it belongs to and their live scholarship rows move together, or nothing does; picking the cohort a student paid for while they're enrolled nowhere puts that enrollment back. Triggers `keep_a_full_admin` (on `profiles`) and `keep_a_full_admin_role` (on `app_roles`) refuse any change that would leave nobody holding a `*` role, serialised so two admins can't demote each other at once. Changes no data. |
+| 0104 | `0104_chat_client_ids.sql` | `chat_messages.client_id` (the composer's id for a message, kept by every Retry), unique per sender, readable by signed-in readers so Realtime's echo carries it: a resend of a message that went through gets the original back instead of posting it twice. Plus a partial index on deleted messages, `(channel_id, deleted_at desc, id desc)`, for *Report a deleted message*. Changes no data. See `docs/chat.md`. |
 
 ## Verify
 
@@ -244,6 +255,20 @@ select to_regprocedure('public.admin_move_student_cohort(uuid, uuid, uuid)') is 
                where tgrelid = to_regclass('public.profiles') and tgname = 'keep_a_full_admin')
    and exists (select 1 from pg_trigger
                where tgrelid = to_regclass('public.app_roles') and tgname = 'keep_a_full_admin_role') as ok;
+
+-- 0104
+select exists (select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'chat_messages'
+                 and column_name = 'client_id')
+   and exists (select 1 from pg_constraint
+               where conrelid = to_regclass('public.chat_messages')
+                 and conname = 'chat_messages_sender_id_client_id_key' and contype = 'u')
+   -- Readers may select it (Realtime's echo carries it); re-running 0101 takes that away.
+   and exists (select 1 from information_schema.column_privileges
+               where table_schema = 'public' and table_name = 'chat_messages'
+                 and column_name = 'client_id' and grantee = 'authenticated'
+                 and privilege_type = 'SELECT')
+   and to_regclass('public.chat_messages_channel_deleted_idx') is not null as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,

@@ -116,7 +116,39 @@ type Mergeable = {
   failed?: unknown;
   editedAt?: string | null;
   replyTo?: unknown;
+  senderId?: string | null;
+  /** The composer's id for the message (0104): an unsent bubble's, and the server copy's once it's in. */
+  clientId?: string;
 };
+
+const isLocal = (m: Mergeable) => !!m.pending || !!m.failed;
+const sentKey = (m: Mergeable) => (m.clientId && m.senderId ? `${m.senderId}:${m.clientId}` : null);
+
+/**
+ * Is this unsent or failed bubble a message the list already holds from the
+ * server — the same author, the same client id (0104)? Then it went through,
+ * whatever its own request said (the answer can be lost after the row
+ * commits), and the server's copy is the one to show. Only the author and
+ * the id decide: two messages with the same words have different ids and
+ * stay two.
+ */
+export function settledBy(m: Mergeable, list: Iterable<Mergeable>): boolean {
+  const key = isLocal(m) ? sentKey(m) : null;
+  if (!key) return false;
+  for (const x of list) if (x !== m && !isLocal(x) && sentKey(x) === key) return true;
+  return false;
+}
+
+/** The bubbles in `list` the server's own copy in it settles (settledBy). */
+function settledBubbles<M extends Mergeable>(list: readonly M[]): M[] {
+  const sent = new Set<string>();
+  for (const m of list) {
+    const key = isLocal(m) ? null : sentKey(m);
+    if (key) sent.add(key);
+  }
+  if (sent.size === 0) return [];
+  return list.filter((m) => isLocal(m) && sent.has(sentKey(m) ?? ""));
+}
 
 /**
  * What the screen knows that a page can't. A page is a snapshot taken when
@@ -132,8 +164,11 @@ export type MergeGuard = {
  * Merge incoming messages into a list: new ids are added, known ids take the
  * fresher copy, order is restored. A copy that says nothing new keeps the
  * object already on screen, and an edit seen live beats a page read before
- * it. Returns the same array when nothing changed, so React (and every
- * memoized row) can skip the render.
+ * it. An unsent or failed bubble whose message has now arrived from the
+ * server (settledBy) gives way to it, so one message shows once, whichever
+ * way the server's copy came: the send's answer, the Realtime echo, a resync
+ * or a page. Returns the same array when nothing changed, so React (and
+ * every memoized row) can skip the render.
  */
 export function mergeMessages<M extends Mergeable>(list: readonly M[], incoming: readonly M[], guard: MergeGuard = {}): M[] {
   if (incoming.length === 0) return list as M[];
@@ -149,6 +184,7 @@ export function mergeMessages<M extends Mergeable>(list: readonly M[], incoming:
     }
   }
   if (!changed) return list as M[];
+  for (const m of settledBubbles(Array.from(byId.values()))) byId.delete(m.id);
   return Array.from(byId.values()).sort(byTime);
 }
 
@@ -190,7 +226,8 @@ export function sameData(a: unknown, b: unknown): boolean {
  * Reconcile the newest page from the server with what's on screen: anything
  * on screen that the server should have returned but didn't (inside the
  * page's window, created before its snapshot) was deleted. Pending and
- * failed sends, and messages that arrived live after the snapshot, are kept.
+ * failed sends, and messages that arrived live after the snapshot, are kept
+ * — except a send the page shows went through after all (settledBy).
  * The window's edge is the page's oldest row by (created_at, id) — the
  * order the server pages in — so a row tied on created_at with it but
  * sorting before it is outside the page, not deleted.
