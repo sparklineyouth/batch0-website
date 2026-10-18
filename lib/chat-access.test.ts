@@ -11,6 +11,9 @@ import {
   defaultReadCursor,
   directoryOffers,
   dmVerdict,
+  GROUP_NEEDS_TEAM_REASON,
+  pickRefusal,
+  withheldHint,
   ONLY_THE_TEAM_REASON,
   reachVerdict,
   FINE_REASON,
@@ -467,6 +470,28 @@ test("the directory: a DM asks about the pair, a group about everyone in it with
   assert.equal(directoryOffers(student, student2, [mentor]), false, "a mentor already in it, no staff");
   assert.equal(directoryOffers(student, staff, [mentor]), true, "staff make any group allowed");
   assert.equal(directoryOffers(null, student), true, "staff searching: anyone");
+});
+
+test("New message says why a pick would be refused, in the words the server would use", () => {
+  const student = { id: "s", student: true, staff: false };
+  const student2 = { id: "s2", student: true, staff: false };
+  const mentor = { id: "m", student: false, staff: false };
+  const staff = { id: "a", student: false, staff: true };
+  assert.equal(pickRefusal(student, []), null, "nothing picked yet");
+  assert.equal(pickRefusal(student, [student2]), null);
+  assert.equal(pickRefusal(student, [staff, mentor]), null, "a group the team is in");
+  // The reviewer's case: staff picked, then a mentor, then staff taken out.
+  // One pick is a DM, and the server refuses a DM with the DM's reason.
+  assert.equal(pickRefusal(student, [mentor]), SAFEGUARD_REASON);
+  assert.equal(pickRefusal(student, [mentor, student2]), GROUP_NEEDS_TEAM_REASON, "two or more are a group");
+  assert.equal(pickRefusal(mentor, [student]), SAFEGUARD_REASON, "the same from the mentor's side");
+  assert.equal(pickRefusal(null, [mentor]), null, "staff pass");
+});
+
+test("the picker's hint names who a team member would let in, from the viewer's side", () => {
+  assert.match(withheldHint({ student: true }), /add a mentor, pick someone from the batch0 team first/);
+  assert.match(withheldHint({ student: false }), /add a student, pick someone from the batch0 team first/);
+  assert.match(withheldHint(null), /someone from the batch0 team/);
 });
 
 test("a safeguarded DM or group goes read-only with the reason", () => {

@@ -60,7 +60,9 @@ check-ins, in-app files, discussions and the old recorder at once:
    many times it's retried. The code works without it: until it runs, a
    send whose answer is lost can still be posted twice by Retry, and the
    failed bubble stays beside the message that went through until it's
-   discarded. **If 0101 ever runs again after 0104, run 0104 again**: 0101
+   discarded. It also indexes deleted messages for *Report a deleted
+   message*, which works without the index, just less directly.
+   **If 0101 ever runs again after 0104, run 0104 again**: 0101
    re-grants the message columns it knows by name, which takes away
    `client_id`'s (0104's verify query notices).
 
@@ -151,7 +153,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0100 | `0100_admin_cleanup.sql` | Removes the retired `ai_usage.view` permission from roles and deletes leftover founder-pass self-check rows (negative serials). |
 | 0101 | `0101_chat.sql` | batch0 Chat: channels, DMs and group DMs (`chat_*` tables including `chat_mutes`, read-only policies, `chat_can_read()`, realtime on `chat_messages`, private presence and typing topics on `realtime.messages`, a trigram index for search, the private `chat-files` bucket), the starting channels plus one per cohort and team (kept, archived, when their team or cohort is deleted), old DMs and team threads carried in, `discord.manage` removed (not converted), admins kept out of other people's chat bells, and the Discord integration's tables, columns and settings dropped. See `docs/chat.md`. |
 | 0102 | `0102_email_outbox_dedupe_index.sql` | `email_outbox.dedupe_key` gets a plain unique index in place of 0052's partial one, so the scheduled-automation fan-out's `on conflict (dedupe_key)` works. Changes no data and sends nothing by itself. |
-| 0104 | `0104_chat_client_ids.sql` | `chat_messages.client_id` (the composer's id for a message, kept by every Retry), unique per sender, readable by signed-in readers so Realtime's echo carries it: a resend of a message that went through gets the original back instead of posting it twice. Changes no data. See `docs/chat.md`. |
+| 0104 | `0104_chat_client_ids.sql` | `chat_messages.client_id` (the composer's id for a message, kept by every Retry), unique per sender, readable by signed-in readers so Realtime's echo carries it: a resend of a message that went through gets the original back instead of posting it twice. Plus a partial index on deleted messages, `(channel_id, deleted_at desc, id desc)`, for *Report a deleted message*. Changes no data. See `docs/chat.md`. |
 
 ## Verify
 
@@ -241,7 +243,8 @@ select exists (select 1 from information_schema.columns
    and exists (select 1 from information_schema.column_privileges
                where table_schema = 'public' and table_name = 'chat_messages'
                  and column_name = 'client_id' and grantee = 'authenticated'
-                 and privilege_type = 'SELECT') as ok;
+                 and privilege_type = 'SELECT')
+   and to_regclass('public.chat_messages_channel_deleted_idx') is not null as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,

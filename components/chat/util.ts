@@ -74,6 +74,23 @@ export function dayLabel(dayKey: string): string {
   return date.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 }
 
+/**
+ * The next page of "report a deleted message" under the ones already shown:
+ * in order, each once. A message deleted between two pages has moved to the
+ * top of the server's order, so it never comes back twice; this only makes
+ * sure of it.
+ */
+export function appendStubs<T extends { id: string }>(shown: readonly T[], page: readonly T[]): T[] {
+  const seen = new Set(shown.map((m) => m.id));
+  const out = [...shown];
+  for (const m of page) {
+    if (seen.has(m.id)) continue;
+    seen.add(m.id);
+    out.push(m);
+  }
+  return out;
+}
+
 /** "Today at 3:04 PM" / "10/12/2026 3:04 PM" — a message header's timestamp. */
 export function stampLabel(iso: string): string {
   const d = new Date(iso);

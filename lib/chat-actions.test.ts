@@ -8,9 +8,11 @@ import path from "node:path";
 // lib/chat-send.ts against an in-memory chat_messages that enforces
 // unique (sender_id, client_id), and then the real sendMessage
 // (app/chat/actions.ts) with doubles for everything around the insert — the
-// lost-answer retry, the race, two messages meant twice, and a database from
-// before 0104. Then the two reads beside it: searchPeople building a group's
-// membership for the directory, and fetchDeletedMessages' stubs.
+// lost-answer retry, the race (on the key, and into slow mode or the rate
+// limit), the bells a replay asks for again, two messages meant twice, and a
+// database from before 0104. Then the two reads beside it: searchPeople
+// building a group's membership for the directory, and fetchDeletedMessages'
+// stubs and cursor.
 
 type Row = Record<string, any>;
 const state = {
@@ -21,6 +23,10 @@ const state = {
   probeError: null as null | { code: string; message: string },
   /** A lookup that runs before the other request's row commits (the race). */
   hideNextLookup: false,
+  /** The rate limiter's answer. */
+  rateLimited: false,
+  /** What happened, in order: the insert, the bells being asked for, the read cursor. */
+  order: [] as string[],
   calls: [] as string[],
   me: "",
   channels: {} as Record<string, Row>,
@@ -44,6 +50,7 @@ function from(table: string) {
     state.calls.push(`${op} ${table}${cols ? ` ${cols}` : ""}${eqs.length ? ` ${eqs.map(([k]) => k).join(",")}` : ""}`);
     if (table === "chat_reads") {
       state.reads++;
+      state.order.push("read cursor");
       return { data: null, error: null };
     }
     assert.equal(table, "chat_messages");
@@ -57,6 +64,7 @@ function from(table: string) {
       // Now, a millisecond apart: slow mode counts from it.
       const row = { id: uuid(++seq), created_at: new Date(Date.now() + seq).toISOString(), deleted_at: null, client_id: null, kind: "message", ...values };
       state.messages.push(row);
+      state.order.push("insert");
       return { data: { id: row.id, created_at: row.created_at }, error: null };
     }
     if (state.columnMissing && (cols.includes("client_id") || eqs.some(([k]) => k === "client_id"))) {
@@ -99,11 +107,11 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
     const g = "const t=globalThis.__chatSend;";
     const doubles: Record<string, string> = {
       "server-only": "export {};",
-      "next/server": g + "export const after=(fn)=>{t.state.afters.push(fn);};",
+      "next/server": g + "export const after=(fn)=>{t.state.afters.push(fn);t.state.order.push('bells asked for');};",
       "next/navigation": "export const unstable_rethrow=()=>{};",
       "@/lib/supabase/admin": g + "export const createAdminClient=()=>t.db;",
       "@/lib/server-guards": g + "export const requireActor=async()=>({userId:t.state.me,caps:null});",
-      "@/lib/rate-limit": "export const checkRateLimit=async()=>({ok:true});",
+      "@/lib/rate-limit": g + "export const checkRateLimit=async()=>({ok:!t.state.rateLimited});",
       "@/lib/notifications": "export const notifyMany=async()=>{};",
       "@/lib/audit": "export const logAudit=async()=>{};export const logAuditMany=async()=>{};",
       "@/lib/env": "export const env={safeguardingEmail:null};",
@@ -157,6 +165,8 @@ function reset(over: { columnMissing?: boolean } = {}) {
   state.columnMissing = !!over.columnMissing;
   state.probeError = null;
   state.hideNextLookup = false;
+  state.rateLimited = false;
+  state.order = [];
   state.calls = [];
   state.me = ME;
   state.afters = [];
@@ -174,6 +184,11 @@ function reset(over: { columnMissing?: boolean } = {}) {
     getMessages: async (ids: string[]) => state.messages.filter((m) => ids.includes(m.id) && !m.deleted_at).map(asMessage),
   };
   send.resetClientIdState();
+}
+
+/** Run what after() was handed, as the response closing would. */
+async function runAfters() {
+  for (const fn of state.afters.splice(0)) await fn();
 }
 
 // ---------------------------------------------------------------------------
@@ -247,15 +262,23 @@ test("a retry after a lost answer returns the original message, even in slow mod
   assert.equal(state.messages.length, 1);
   assert.equal(retry.ok && retry.data?.message.id, first.ok && first.data?.message.id);
   assert.equal(retry.ok && retry.data?.message.clientId, ID, "the server copy carries the id the screen matches its bubble by");
-  assert.equal(state.afters.length, 1, "one message, one round of bells");
   assert.equal(state.reads, 1, "the read cursor moved once");
+  // The replay asks for the message's bells again, in case the first request
+  // died before ringing them: the same message, and its posting time, so
+  // notifyNewMessage's dedupe key and read-cursor check make it nobody's
+  // second bell (lib/chat-server.test.ts holds that side).
+  await runAfters();
+  assert.deepEqual(
+    state.bells.map((b) => [b.messageId, b.postedAt ?? null]),
+    [[state.messages[0].id, null], [state.messages[0].id, state.messages[0].created_at]],
+  );
   // A new message (its own id) is still held to slow mode.
   const next = await sendMessage({ channelId: GENERAL, body: "here is my update", clientId: "c1000000-0000-4000-8000-000000000002" });
   assert.equal(next.ok, false);
   assert.match(next.ok ? "" : next.error, /Slow mode is on/);
 });
 
-test("the same message sent twice at once ends on one row, and only the first request rings bells", async () => {
+test("the same message sent twice at once ends on one row, and every ask for bells is for that row", async () => {
   reset();
   await sendMessage({ channelId: HELP, body: "racing", clientId: ID });
   // The second request looked before the first committed, then lost on the key.
@@ -264,8 +287,50 @@ test("the same message sent twice at once ends on one row, and only the first re
   assert.equal(second.ok, true, second.ok ? "" : second.error);
   assert.equal(state.messages.length, 1);
   assert.equal(second.ok && second.data?.message.id, state.messages[0].id);
-  assert.equal(state.afters.length, 1);
   assert.equal(state.reads, 1);
+  await runAfters();
+  assert.ok(state.bells.every((b) => b.messageId === state.messages[0].id), "both asks are for the one message, deduped per person");
+});
+
+test("a Retry that looked before the first send committed, then hit slow mode, gets the original back", async () => {
+  reset();
+  // The first send is in #general (30-second slow mode) and commits while
+  // the Retry is between its replay check and slow mode's clock.
+  const first = await sendMessage({ channelId: GENERAL, body: "here is my update", clientId: ID });
+  assert.equal(first.ok, true);
+  state.hideNextLookup = true;
+  const retry = await sendMessage({ channelId: GENERAL, body: "here is my update", clientId: ID });
+  assert.equal(retry.ok, true, retry.ok ? "" : retry.error);
+  assert.equal(retry.ok && retry.data?.message.id, first.ok && first.data?.message.id);
+  assert.equal(state.messages.length, 1);
+  // Without a client id there's nothing to settle by: slow mode says no, as before.
+  const plain = await sendMessage({ channelId: GENERAL, body: "here is my update" });
+  assert.equal(plain.ok, false);
+  assert.match(plain.ok ? "" : plain.error, /Slow mode is on/);
+});
+
+test("the same race into the rate limit: the message is there, so it's that message", async () => {
+  reset();
+  const first = await sendMessage({ channelId: HELP, body: "racing", clientId: ID });
+  state.hideNextLookup = true;
+  state.rateLimited = true;
+  const retry = await sendMessage({ channelId: HELP, body: "racing", clientId: ID });
+  assert.equal(retry.ok, true, retry.ok ? "" : retry.error);
+  assert.equal(retry.ok && retry.data?.message.id, first.ok && first.data?.message.id);
+  // A new message the limit refuses is still refused, and nothing went in.
+  const fresh = await sendMessage({ channelId: HELP, body: "one more", clientId: "c1000000-0000-4000-8000-000000000003" });
+  assert.equal(fresh.ok, false);
+  assert.match(fresh.ok ? "" : fresh.error, /Slow down/);
+  assert.equal(state.messages.length, 1);
+});
+
+test("a message's bells are asked for the moment its row exists, before anything else is awaited", async () => {
+  reset();
+  const res = await sendMessage({ channelId: HELP, body: "hello", clientId: ID });
+  assert.equal(res.ok, true);
+  // after() runs even if the request fails from here on, so a message that
+  // went in is never one nobody hears about.
+  assert.deepEqual(state.order, ["insert", "bells asked for", "read cursor"]);
 });
 
 test("two messages meant twice, word for word, are two messages", async () => {
@@ -324,7 +389,7 @@ function directoryDoubles() {
   state.channels[STRANGERS] = textChannel(STRANGERS, { kind: "group", audience: "members", name: null });
   state.chat.getChatViewer = async (userId: string) => ({ userId, staff: false, vetted: true, cohortIds: [], teamIds: [], memberOf: [GROUP] });
   state.chat.listMembers = async (ids: string[]) => new Map(ids.map((cid) => [cid, cid === GROUP ? [ME, STAFFER] : [YOU, STAFFER]]));
-  state.chat.searchDirectory = async (...a: unknown[]) => (state.asked.push(a), []);
+  state.chat.searchDirectory = async (...a: unknown[]) => (state.asked.push(a), { people: [], withheld: false });
 }
 
 test("searchPeople: a DM search, a new group's picks, and an existing group's members as the directory's group", async () => {
@@ -349,13 +414,20 @@ test("searchPeople: a group the viewer isn't in lends its members to nobody's se
 
 test("fetchDeletedMessages: stubs for a channel the viewer reads, with names; nothing for one they don't", async () => {
   reset();
-  const stub = { id: uuid(7001), senderId: YOU, createdAt: "2026-10-17T09:00:00.000Z" };
+  const stub = { id: uuid(7001), senderId: YOU, createdAt: "2026-10-17T09:00:00.000Z", deletedAt: "2026-10-17T09:05:00.000Z" };
   state.chat.openChannelFor = async (id: string) => (state.channels[id] ? { channel: state.channels[id], reported: false, viewer: {} } : null);
-  state.chat.listDeletedForReport = async (...a: unknown[]) => (state.asked.push(a), [stub]);
+  state.chat.listDeletedForReport = async (...a: unknown[]) => (state.asked.push(a), { messages: [stub], hasMore: true });
   state.chat.getPeople = async (ids: string[]) => new Map(ids.map((i) => [i, { id: i, name: "You There" }]));
   const res = await fetchDeletedMessages(HELP);
   assert.deepEqual(res.messages, [stub]);
+  assert.equal(res.hasMore, true, "a pile of deletes pages on rather than ending the list");
   assert.deepEqual(res.people, { [YOU]: { id: YOU, name: "You There" } });
   assert.equal(state.asked[0][1], ME, "never the viewer's own: they're asked who's looking");
+  assert.deepEqual(state.asked[0][2], { before: null });
+  // The next page starts after the last stub shown; a cursor that isn't one is no cursor.
+  await fetchDeletedMessages(HELP, { deletedAt: stub.deletedAt, id: stub.id.toUpperCase() });
+  assert.deepEqual(state.asked[1][2], { before: { deletedAt: stub.deletedAt, id: stub.id } });
+  await fetchDeletedMessages(HELP, { deletedAt: stub.deletedAt, id: "nope" } as never);
+  assert.deepEqual(state.asked[2][2], { before: null });
   await assert.rejects(fetchDeletedMessages(uuid(8999)), /isn't available/);
 });

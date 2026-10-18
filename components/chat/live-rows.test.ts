@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { applyUpdate, bumpSidebarRow, pendingTwin, quotePreview, sameMessage, toUiMessage, withoutMessage } from "./live-rows.ts";
-import { newClientId } from "./util.ts";
+import { appendStubs, newClientId } from "./util.ts";
 import type { LiveRow } from "./use-chat-live";
 import type { SidebarData, SidebarItem, UiMessage } from "./types";
 
@@ -270,4 +270,13 @@ test("bumpSidebarRow: a DM's preview and its place in the list follow the new me
     personName: (id) => (id === MAYA ? "Maya Chen" : null),
   }).sidebar;
   assert.equal(find(named, "dm-old").preview, "hi @Maya Chen");
+});
+
+test("appendStubs: the next page of deleted messages goes under the ones shown, each once", () => {
+  const a = { id: "a" };
+  const b = { id: "b" };
+  const c = { id: "c" };
+  assert.deepEqual(appendStubs([a, b], [c]), [a, b, c]);
+  assert.deepEqual(appendStubs([a, b], [b, c]), [a, b, c], "never twice");
+  assert.deepEqual(appendStubs([], [a]), [a]);
 });

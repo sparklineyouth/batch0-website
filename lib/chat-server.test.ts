@@ -7,8 +7,9 @@ import path from "node:path";
 // The real lib/chat.ts and lib/chat-notify.ts against an in-memory database:
 // mention search past the first page of name matches, the sidebar and badge
 // under "Only @mentions", "Mark all read" clearing bells in chunks, the
-// directory for a group as against a DM, and the body-free stubs "report a
-// deleted message" lists.
+// directory for a group as against a DM (and when it says the safeguarding
+// rule held someone back), the body-free stubs "report a deleted message"
+// lists a page at a time, and one bell per message however often it's rung.
 
 type Row = Record<string, any>;
 const state: {
@@ -21,7 +22,9 @@ const state: {
   peak: number;
   fail: (table: string, op: string, call: number) => string | null;
   calls: number;
-} = { tables: {}, unread: [], log: [], selected: [], inFlight: 0, peak: 0, fail: () => null, calls: 0 };
+  /** What notifyMany was handed. */
+  notified: Row[];
+} = { tables: {}, unread: [], log: [], selected: [], inFlight: 0, peak: 0, fail: () => null, calls: 0, notified: [] };
 
 const likeToRegExp = (pattern: string) =>
   new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`, "is");
@@ -59,8 +62,14 @@ function from(table: string) {
     if (cap !== null) hit = hit.slice(0, cap);
     return { data: hit.map((r) => ({ ...r })), error: null };
   };
-  // `a.eq.x,b.eq.y`: the only shape these reads hand .or() (the block lookups).
+  // `a.eq.x,b.eq.y` (the block lookups), or a keyset cursor,
+  // `c.lt."t",and(c.eq."t",id.lt.x)` — the only shapes these reads hand .or().
   const anyOf = (expr: string) => {
+    const keyset = /^(\w+)\.lt\."([^"]*)",and\(\1\.eq\."\2",id\.lt\.([0-9a-f-]+)\)$/.exec(expr);
+    if (keyset) {
+      const [, c, t, before] = keyset;
+      return (r: Row) => r[c] != null && (String(r[c]) < t || (String(r[c]) === t && String(r.id) < before));
+    }
     const parts = expr.split(",").map((p) => p.split("."));
     return (r: Row) => parts.some(([c, o, v]) => o === "eq" && r[c] === v);
   };
@@ -111,7 +120,7 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
       "@/lib/supabase/admin": g + "export const createAdminClient=()=>t.db;",
       "@/lib/roles":
         "export const getAllRoles=async()=>[{slug:'student',label:'Student',color:null,permissions:[]},{slug:'admin',label:'Admin',color:'red',permissions:['*']}];",
-      "@/lib/notifications": "export const notifyMany=async()=>{};",
+      "@/lib/notifications": g + "export const notifyMany=async(rows)=>{t.state.notified.push(...rows);};",
     };
     if (doubles[specifier]) return { url: fake(doubles[specifier]), shortCircuit: true };
     if (specifier.startsWith("@/")) return next(pathToFileURL(path.join(root, specifier.slice(2) + ".ts")).href, context);
@@ -119,7 +128,7 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
   },
 });
 const chat = await import("./chat.ts");
-const { clearChannelBellsMany, CHAT_BELL_TYPES } = await import("./chat-notify.ts");
+const { clearChannelBellsMany, notifyNewMessage, CHAT_BELL_TYPES } = await import("./chat-notify.ts");
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const ME = id(1);
@@ -132,6 +141,7 @@ function reset(tables: Record<string, Row[]>) {
   state.peak = 0;
   state.calls = 0;
   state.fail = () => null;
+  state.notified = [];
 }
 
 const channelRow = (n: number, kind: string, extra: Row = {}): Row => ({
@@ -266,7 +276,7 @@ function directory() {
   });
 }
 const vettedViewer = (userId: string, staff = false) => ({ userId, staff, vetted: true, cohortIds: [], teamIds: [], memberOf: [] });
-const names = (people: { name: string }[]) => people.map((p) => p.name).sort();
+const names = (found: { people: { name: string }[] }) => found.people.map((p) => p.name).sort();
 
 test("a DM's directory keeps the strict pair: no mentor for a student, no student for a mentor", async () => {
   directory();
@@ -301,8 +311,38 @@ test("a group's directory asks about the whole group: with staff in it, a studen
   assert.deepEqual(names(await chat.searchDirectory("", vettedViewer(STUDENT_A), 20, [MENTOR])), ["Rish Admin"]);
   // Staff reach everyone, group or not.
   directory();
-  assert.equal((await chat.searchDirectory("", vettedViewer(STAFFER, true))).length, 4);
+  assert.equal((await chat.searchDirectory("", vettedViewer(STAFFER, true))).people.length, 4);
 });
+
+test("the directory says when the safeguarding rule held someone back, and only then", async () => {
+  // A student looking for the mentor with nobody from the team picked: held
+  // back, so the picker can say "pick someone from the batch0 team first".
+  directory();
+  assert.deepEqual(await chat.searchDirectory("sam", vettedViewer(STUDENT_A)), { people: [], withheld: true });
+  directory();
+  assert.equal((await chat.searchDirectory("sam", vettedViewer(STUDENT_A), 20, [STUDENT_B])).withheld, true, "a group with no staff");
+  // A typo for a classmate: nobody matches at all, so nothing to say about mentors.
+  directory();
+  assert.deepEqual(await chat.searchDirectory("bne", vettedViewer(STUDENT_A)), { people: [], withheld: false });
+  // The classmate, found: nobody held back.
+  directory();
+  assert.deepEqual(await chat.searchDirectory("ben", vettedViewer(STUDENT_A)), { people: [await person(STUDENT_B)], withheld: false });
+  // With the team in the group, the mentor is offered, so nothing is held back.
+  directory();
+  assert.equal((await chat.searchDirectory("sam", vettedViewer(STUDENT_A), 20, [STAFFER])).withheld, false);
+  // A block is never what it reports: the person is gone before the rule is asked.
+  directory();
+  state.tables.chat_blocks = [{ blocker_id: MENTOR, blocked_id: STUDENT_A }];
+  assert.deepEqual(await chat.searchDirectory("sam", vettedViewer(STUDENT_A)), { people: [], withheld: false });
+  // Staff are held to no rule.
+  directory();
+  assert.equal((await chat.searchDirectory("", vettedViewer(STAFFER, true))).withheld, false);
+});
+
+/** A person as the directory hands them back. */
+async function person(userId: string) {
+  return (await chat.getPeople([userId])).get(userId);
+}
 
 // ---------------------------------------------------------------------------
 // "Report a deleted message": stubs, never words
@@ -317,24 +357,103 @@ test("a text channel's deleted messages come back as stubs: who and when, never 
   });
   reset({
     chat_messages: [
-      message(7001, { created_at: at(30) }),
-      message(7002, { created_at: at(20), sender_id: id(3) }),
+      message(7001, { deleted_at: at(30) }),
+      message(7002, { deleted_at: at(20), sender_id: id(3) }),
       message(7003, { deleted_at: null, body: "still here" }),
       message(7004, { sender_id: ME }), // the viewer's own
       message(7005, { kind: "system", sender_id: null }),
       message(7006, { sender_id: null }), // a deleted account's: nothing left to review
-      message(7007, { created_at: at(60 * 24 * 15) }), // older than two weeks
+      message(7007, { created_at: at(60 * 24 * 20), deleted_at: at(60 * 24 * 15) }), // deleted more than two weeks ago
       message(7008, { channel_id: id(701) }), // another channel
+      // Posted three weeks ago, edited into something abusive and deleted
+      // yesterday: the window counts from the delete, so it's there.
+      message(7009, { created_at: at(60 * 24 * 21), deleted_at: at(60 * 24) }),
     ],
   });
-  const stubs = await chat.listDeletedForReport(chat.toChannel(CH), ME);
-  assert.deepEqual(stubs.map((m) => m.id), [id(7002), id(7001)], "newest first");
-  for (const stub of stubs) assert.deepEqual(Object.keys(stub).sort(), ["createdAt", "id", "senderId"], "no body, no files, no deleted_by");
+  const { messages: stubs, hasMore } = await chat.listDeletedForReport(chat.toChannel(CH), ME);
+  assert.deepEqual(stubs.map((m) => m.id), [id(7002), id(7001), id(7009)], "most recently deleted first");
+  assert.equal(hasMore, false);
+  for (const stub of stubs) {
+    assert.deepEqual(Object.keys(stub).sort(), ["createdAt", "deletedAt", "id", "senderId"], "no body, no files, no deleted_by");
+  }
   assert.deepEqual(
     state.selected.filter((x) => x.startsWith("chat_messages")),
-    ["chat_messages: id, sender_id, created_at"],
+    ["chat_messages: id, sender_id, created_at, deleted_at"],
     "the read itself never asks for the words, the files or who deleted it",
   );
   // A DM or group has none: its report hands the whole conversation over.
-  assert.deepEqual(await chat.listDeletedForReport(chat.toChannel(channelRow(702, "group")), ME), []);
+  assert.deepEqual(await chat.listDeletedForReport(chat.toChannel(channelRow(702, "group")), ME), { messages: [], hasMore: false });
+});
+
+test("a burst of deletes can't bury a deleted message: the list pages on to it", async () => {
+  const CH = channelRow(710, "channel", { name: "general", audience: "everyone" });
+  const now = Date.now();
+  const at = (secondsAgo: number) => new Date(now - secondsAgo * 1000).toISOString();
+  const X = id(2);
+  // X posts something abusive, then 50 junk messages, and deletes them all.
+  // The abusive one goes in the same instant as one of the junk (rows deleted
+  // together share deleted_at), right where the first page ends, so the
+  // cursor's id is what keeps it from being skipped.
+  const rows: Row[] = [{ id: id(8000), channel_id: CH.id, sender_id: X, kind: "message", body: "", created_at: at(4000), deleted_at: at(99) }];
+  for (let i = 1; i <= 50; i++) {
+    rows.push({ id: id(8000 + i), channel_id: CH.id, sender_id: X, kind: "message", body: "", created_at: at(3000 - i), deleted_at: at(i === 50 ? 2 : 100 - i) });
+  }
+  assert.equal(rows.find((r) => r.id === id(8001))!.deleted_at, rows[0].deleted_at);
+  reset({ chat_messages: rows });
+  const first = await chat.listDeletedForReport(chat.toChannel(CH), ME);
+  assert.equal(first.messages.length, chat.DELETED_PAGE_SIZE);
+  assert.equal(first.hasMore, true);
+  assert.ok(!first.messages.some((m) => m.id === id(8000)), "the abusive one is past the first page");
+  const last = first.messages.at(-1)!;
+  assert.equal(last.id, id(8001), "the page ends inside the tie");
+  const second = await chat.listDeletedForReport(chat.toChannel(CH), ME, { before: { deletedAt: last.deletedAt, id: last.id } });
+  assert.deepEqual(second.messages.map((m) => m.id), [id(8000)], "the next page reaches it");
+  assert.equal(second.hasMore, false);
+  // Every message once across the pages, nothing skipped.
+  const all = [...first.messages, ...second.messages].map((m) => m.id);
+  assert.equal(new Set(all).size, 51);
+  // A cursor that isn't one is ignored, never an error: the first page again.
+  const odd = await chat.listDeletedForReport(chat.toChannel(CH), ME, { before: { deletedAt: "yesterday", id: "nope" } });
+  assert.equal(odd.messages[0].id, first.messages[0].id);
+});
+
+// ---------------------------------------------------------------------------
+// Bells: once per message, however often they're asked for
+// ---------------------------------------------------------------------------
+
+test("a message's bells carry its id, so ringing them again rings nobody twice; a replay skips who read past it", async () => {
+  const YOU = id(2);
+  const DM = channelRow(720, "dm", { dm_key: `${ME}:${YOU}` });
+  const fresh = (lastReadAt: string | null) =>
+    reset({
+      chat_channels: [DM],
+      chat_members: [{ channel_id: DM.id, user_id: ME }, { channel_id: DM.id, user_id: YOU }],
+      chat_reads: [{ channel_id: DM.id, user_id: YOU, last_read_at: lastReadAt, seen_at: null, notify: null, hidden_at: null }],
+      notifications: [],
+      chat_blocks: [],
+      profiles: [{ id: ME, full_name: "Me", role: "student" }, { id: YOU, full_name: "You", role: "student" }],
+    });
+  const bell = (extra: Record<string, unknown> = {}) =>
+    notifyNewMessage({ channelId: DM.id, messageId: id(7300), senderId: ME, mentions: [], mentionEveryone: false, channel: chat.toChannel(DM), ...extra });
+
+  fresh("2026-10-17T09:00:00.000Z");
+  await bell();
+  assert.deepEqual(
+    state.notified.map((n) => [n.userId, n.dedupeKey]),
+    [[YOU, `chat-message:${id(7300)}`]],
+    "the notifications index turns a second bell with this key into nothing",
+  );
+  // A replay of a message posted before the recipient's read cursor: they've
+  // read it, so no bell for it.
+  fresh("2026-10-17T09:00:00.000Z");
+  await bell({ postedAt: "2026-10-17T08:59:00.000Z" });
+  assert.equal(state.notified.length, 0);
+  // One posted after it, which they haven't read: belled, under the same key.
+  fresh("2026-10-17T09:00:00.000Z");
+  await bell({ postedAt: "2026-10-17T09:01:00.000Z" });
+  assert.deepEqual(state.notified.map((n) => n.dedupeKey), [`chat-message:${id(7300)}`]);
+  // Never opened the DM at all: belled.
+  fresh(null);
+  await bell({ postedAt: "2026-10-17T09:01:00.000Z" });
+  assert.equal(state.notified.length, 1);
 });

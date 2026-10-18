@@ -1,5 +1,6 @@
 -- ============================================================================
--- 0104 — batch0 Chat: a message is sent once, however many times it's retried.
+-- 0104 — batch0 Chat: a message is sent once, however many times it's retried;
+--        and a deleted channel message is quick to find for a report.
 --
 -- A send whose answer was lost — the row committed, then the phone dropped
 -- off the network before the reply came back — left a failed bubble with a
@@ -29,6 +30,13 @@
 -- it. It's a random id the sender's browser made up; it says nothing about
 -- anyone.
 --
+-- Also an index for "Report a deleted message" (listDeletedForReport in
+-- lib/chat.ts): a text channel's messages deleted in the last two weeks, most
+-- recently deleted first, a page at a time on (deleted_at, id). Partial, so it
+-- holds deleted rows only — a sliver of the table — and the list never reads
+-- through a channel's whole history to find them. Before it exists the list
+-- still works, just less directly.
+--
 -- The code deploys first and works without this file: a send goes in without
 -- a client id (as before) and nothing is replayed (lib/chat-send.ts checks
 -- for the column once a minute). If 0101 is ever run again after this file,
@@ -53,5 +61,9 @@ begin
 end $$;
 
 grant select (client_id) on public.chat_messages to authenticated;
+
+create index if not exists chat_messages_channel_deleted_idx
+  on public.chat_messages (channel_id, deleted_at desc, id desc)
+  where deleted_at is not null;
 
 notify pgrst, 'reload schema';

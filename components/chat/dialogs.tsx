@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import {
   GROUP_MAX_MEMBERS,
   GROUP_NAME_MAX,
-  GROUP_NEEDS_TEAM_REASON,
   REPORT_REASON_MAX,
   SLOWMODE_CHOICES,
   TOPIC_MAX,
-  conversationAllowed,
   normalizeChannelName,
+  pickRefusal,
+  withheldHint,
   type Party,
   type Posting,
   outsideReportAdvice,
@@ -36,7 +36,7 @@ import { addChannelMembers, mutePerson, unmutePerson, updateChannel } from "@/ap
 import { Avatar, RoleTag } from "./avatar";
 import { Modal } from "./modal";
 import { tracked } from "./api";
-import { OFFLINE, resultError, senderName, stampLabel } from "./util";
+import { OFFLINE, appendStubs, resultError, senderName, stampLabel } from "./util";
 import type { ChannelInfo, ChatPerson, ChatViewerInfo, SidebarData, UiMessage } from "./types";
 import type { DeletedMessageStub } from "@/lib/chat";
 
@@ -64,11 +64,13 @@ function ErrorLine({ text }: { text: string | null }) {
 /**
  * The directory search shared by "new message" and "add people". `group`
  * makes it a search for a group (searchPeople): whoever may join it with the
- * people already in it, not only whom the viewer could DM.
+ * people already in it, not only whom the viewer could DM. `withheld`: the
+ * safeguarding rule alone left someone matching out.
  */
 function usePeopleSearch(open: boolean, group: DirectoryGroup | null) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ChatPerson[]>([]);
+  const [withheld, setWithheld] = useState(false);
   const [loading, setLoading] = useState(false);
   const seq = useRef(0);
   const groupKey = group ? `${group.channelId ?? ""}|${[...(group.withIds ?? [])].sort().join(",")}` : null;
@@ -81,16 +83,22 @@ function usePeopleSearch(open: boolean, group: DirectoryGroup | null) {
     const t = setTimeout(async () => {
       try {
         const found = await tracked(searchPeople(query, groupRef.current));
-        if (n === seq.current) setResults(found);
+        if (n === seq.current) {
+          setResults(found.people);
+          setWithheld(found.withheld);
+        }
       } catch {
-        if (n === seq.current) setResults([]);
+        if (n === seq.current) {
+          setResults([]);
+          setWithheld(false);
+        }
       } finally {
         if (n === seq.current) setLoading(false);
       }
     }, 200);
     return () => clearTimeout(t);
   }, [query, open, groupKey]);
-  return { query, setQuery, results, loading };
+  return { query, setQuery, results, withheld, loading };
 }
 
 /** A person as the safeguarding rule sees them, on this side (lib/chat.ts asParty). */
@@ -103,7 +111,7 @@ function PeoplePicker({
   max,
   exclude = [],
   group = null,
-  emptyHint = null,
+  hint = null,
 }: {
   open: boolean;
   picked: ChatPerson[];
@@ -112,11 +120,16 @@ function PeoplePicker({
   exclude?: readonly string[];
   /** Picking for a group: an existing one (its id), or a new one (null). The picks so far ride along. */
   group?: { channelId: string | null } | null;
-  /** Said under "nobody by that name" — what would let more people in. */
-  emptyHint?: string | null;
+  /**
+   * What would let more people in (withheldHint), said only when the search
+   * says the safeguarding rule left someone matching out — never under a
+   * search that found nobody for any other reason.
+   */
+  hint?: string | null;
 }) {
   const search = group ? { channelId: group.channelId, withIds: picked.map((p) => p.id) } : null;
-  const { query, setQuery, results, loading } = usePeopleSearch(open, search);
+  const { query, setQuery, results, withheld, loading } = usePeopleSearch(open, search);
+  const showHint = !!hint && withheld && !loading;
   const shown = results.filter((p) => !exclude.includes(p.id));
   const toggle = (p: ChatPerson) => {
     if (picked.some((x) => x.id === p.id)) setPicked(picked.filter((x) => x.id !== p.id));
@@ -153,7 +166,6 @@ function PeoplePicker({
         ) : shown.length === 0 ? (
           <li className="py-6 text-center text-xs text-ink-faint">
             {query ? "Nobody by that name you can message." : "Nobody to show yet."}
-            {query && emptyHint ? <span className="mx-auto mt-1 block max-w-xs">{emptyHint}</span> : null}
           </li>
         ) : (
           shown.map((p) => {
@@ -176,6 +188,9 @@ function PeoplePicker({
           })
         )}
       </ul>
+      {showHint ? (
+        <p className="mt-1 text-center text-xs text-ink-soft" role="status">{hint}</p>
+      ) : null}
     </div>
   );
 }
@@ -214,16 +229,12 @@ export function NewConversationDialog({
     }
   }, [open]);
   // The rule the server will hold this group (or DM) to, said before the
-  // click rather than after: a mentor picked while a staff member was, and
-  // then the staff member taken out, leaves one it refuses.
-  const allowed = viewer.staff || !self || conversationAllowed([self, ...picked].map(party));
-  const teamPicked = picked.some((p) => p.isStaff);
-  const emptyHint =
-    viewer.staff || !viewer.vetted || !self || teamPicked
-      ? null
-      : self.isStudent
-        ? "To add a mentor, start a group with someone from the batch0 team first."
-        : "To add a student, start a group with someone from the batch0 team first.";
+  // click rather than after, in the words the server would use: a mentor
+  // picked while a staff member was, and then the staff member taken out,
+  // leaves one it refuses.
+  const me = viewer.staff || !self ? null : party(self);
+  const refusal = pickRefusal(me, picked.map(party));
+  const allowed = refusal === null;
   const go = async () => {
     if (picked.length === 0 || !allowed) return;
     if (picked.length === 1) {
@@ -250,10 +261,10 @@ export function NewConversationDialog({
         setPicked={setPicked}
         max={viewer.vetted || viewer.staff ? GROUP_MAX_MEMBERS - 1 : 1}
         group={picked.length > 0 && (viewer.vetted || viewer.staff) ? { channelId: null } : null}
-        emptyHint={emptyHint}
+        hint={me && viewer.vetted ? withheldHint(me) : null}
       />
-      {picked.length > 0 && !allowed ? (
-        <p className="mt-2 text-xs text-ink-soft" role="status">{GROUP_NEEDS_TEAM_REASON}</p>
+      {refusal ? (
+        <p className="mt-2 text-xs text-ink-soft" role="status">{refusal}</p>
       ) : null}
       {picked.length > 1 ? (
         <input
@@ -522,15 +533,18 @@ function ReportSaved({ advice, onClose }: { advice: string[]; onClose: () => voi
  * Report something posted in a text channel and then deleted. History and
  * search leave deleted messages out, and only a DM or group can be reported
  * whole, so this lists the channel's recently deleted messages as stubs —
- * who sent it and when, never what it said (fetchDeletedMessages) — and
- * files an ordinary report on the one picked. The report page shows what it
- * said to the moderators the report leaves out (never to its sender); the
- * reporter doesn't see it again.
+ * who sent it and when, never what it said (fetchDeletedMessages) — a page
+ * at a time, so a pile of later deletes only pushes the one that matters
+ * further down, and files an ordinary report on the one picked. The report
+ * page shows what it said to the moderators the report leaves out (never to
+ * its sender). A reporter who isn't one doesn't see it again; a moderator who
+ * files one reviews it like any report, and is told so up front.
  */
 export function ReportDeletedDialog({
   channel,
   people,
   preselect,
+  moderator,
   onClose,
   onDone,
 }: {
@@ -538,10 +552,14 @@ export function ReportDeletedDialog({
   people: Record<string, ChatPerson>;
   /** Opened from a reply's "Original message was deleted": that message. */
   preselect: { id: string; senderId: string } | null;
+  /** The viewer runs chat (chat.manage): the report page will show them what it said. */
+  moderator: boolean;
   onClose: () => void;
   onDone: () => void;
 }) {
   const [stubs, setStubs] = useState<DeletedMessageStub[] | null>(null);
+  const [more, setMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [names, setNames] = useState<Record<string, ChatPerson>>({});
   const [picked, setPicked] = useState<string | null>(preselect?.id ?? null);
   const [reason, setReason] = useState("");
@@ -554,6 +572,7 @@ export function ReportDeletedDialog({
       .then((res) => {
         if (!live) return;
         setStubs(res.messages);
+        setMore(res.hasMore);
         setNames(res.people);
       })
       .catch(() => {
@@ -565,11 +584,27 @@ export function ReportDeletedDialog({
       live = false;
     };
   }, [channel.id]);
-  // The quoted original stays pickable when it's older than the list reaches.
+  const loadOlder = async () => {
+    const last = stubs?.at(-1);
+    if (!last || loadingMore) return;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const res = await tracked(fetchDeletedMessages(channel.id, { deletedAt: last.deletedAt, id: last.id }));
+      setStubs((now) => appendStubs(now ?? [], res.messages));
+      setMore(res.hasMore);
+      setNames((now) => ({ ...now, ...res.people }));
+    } catch {
+      setError("Couldn't load older ones. Try again.");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+  // The quoted original stays pickable when the list hasn't reached it.
   const rows = useMemo(() => {
     const list = stubs ?? [];
     if (!preselect || list.some((m) => m.id === preselect.id)) return list;
-    return [{ id: preselect.id, senderId: preselect.senderId, createdAt: "" }, ...list];
+    return [{ id: preselect.id, senderId: preselect.senderId, createdAt: "", deletedAt: "" }, ...list];
   }, [stubs, preselect]);
   const who = (id: string) => (names[id] ?? people[id])?.name ?? "Deleted account";
   const submit = async () => {
@@ -587,8 +622,19 @@ export function ReportDeletedDialog({
   return (
     <Modal open title="Report a deleted message" onClose={onClose} busy={busy}>
       <p className="mb-3 text-xs leading-relaxed text-ink-soft">
-        Something posted in #{channel.label} and then deleted? Pick it and say what was wrong. The batch0 team can still
-        see what it said; you won&apos;t see it here again, and the person you report isn&apos;t told who reported them.{" "}
+        {moderator ? (
+          <>
+            Something posted in #{channel.label} and then deleted? Pick it and say what was wrong. As a moderator
+            you&apos;ll see what it said on the report page, as with any report you file, and the rest of the team sees
+            that you filed it. The person you report isn&apos;t told who reported them.{" "}
+          </>
+        ) : (
+          <>
+            Something posted in #{channel.label} and then deleted? Pick it and say what was wrong. The batch0 team can
+            still see what it said; you won&apos;t see it here again, and the person you report isn&apos;t told who
+            reported them.{" "}
+          </>
+        )}
         <Link href="/community-guidelines" target="_blank" className="link-ink">
           Community guidelines
         </Link>
@@ -598,7 +644,7 @@ export function ReportDeletedDialog({
       ) : rows.length === 0 ? (
         error ? null : (
           <p className="py-4 text-center text-xs text-ink-faint" role="status">
-            Nothing posted here in the last two weeks has been deleted.
+            Nothing here has been deleted in the last two weeks.
           </p>
         )
       ) : (
@@ -625,6 +671,14 @@ export function ReportDeletedDialog({
               </li>
             );
           })}
+          {more ? (
+            <li className="flex justify-center pt-1">
+              <Button variant="ghost" onClick={loadOlder} disabled={loadingMore}>
+                {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Show older
+              </Button>
+            </li>
+          ) : null}
         </ul>
       )}
       {rows.length > 0 ? (
@@ -743,7 +797,18 @@ export function RenameGroupDialog({ channel, onClose, onSaved }: { channel: Chan
 }
 
 /** Add people: to a group (any member), or to a text channel beyond its audience (staff). */
-export function AddPeopleDialog({ channel, onClose, onSaved }: { channel: ChannelInfo; onClose: () => void; onSaved: (n: number) => void }) {
+export function AddPeopleDialog({
+  channel,
+  self,
+  onClose,
+  onSaved,
+}: {
+  channel: ChannelInfo;
+  /** The viewer as a person, null for staff: who the safeguarding rule would keep out of the group. */
+  self: ChatPerson | null;
+  onClose: () => void;
+  onSaved: (n: number) => void;
+}) {
   const [picked, setPicked] = useState<ChatPerson[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -766,6 +831,7 @@ export function AddPeopleDialog({ channel, onClose, onSaved }: { channel: Channe
           max={max}
           exclude={channel.memberIds}
           group={isGroup ? { channelId: channel.id } : null}
+          hint={isGroup && self ? withheldHint(party(self)) : null}
         />
       )}
       <ErrorLine text={error} />

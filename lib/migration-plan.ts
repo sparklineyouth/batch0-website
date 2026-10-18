@@ -101,7 +101,8 @@ where permissions @> array['ai_usage.view']::text[];`,
    and exists (select 1 from information_schema.column_privileges
                where table_schema = 'public' and table_name = 'chat_messages'
                  and column_name = 'client_id' and grantee = 'authenticated'
-                 and privilege_type = 'SELECT') as ok;`,
+                 and privilege_type = 'SELECT')
+   and to_regclass('public.chat_messages_channel_deleted_idx') is not null as ok;`,
 };
 
 /**

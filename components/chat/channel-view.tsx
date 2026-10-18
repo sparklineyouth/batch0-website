@@ -579,6 +579,7 @@ export function ChannelView({
           channel={channel}
           people={people}
           preselect={reportDeleted.preselect}
+          moderator={viewer.staff}
           onClose={() => setReportDeleted(null)}
           onDone={() => {
             setReportDeleted(null);
@@ -635,6 +636,7 @@ export function ChannelView({
       {dialog === "add" && channel ? (
         <AddPeopleDialog
           channel={channel}
+          self={viewer.staff ? null : (people[viewer.id] ?? null)}
           onClose={() => setDialog(null)}
           onSaved={(n) => {
             setDialog(null);

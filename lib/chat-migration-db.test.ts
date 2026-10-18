@@ -1197,6 +1197,12 @@ test("0104 applies twice on top of 0101, and its verify query tells before from 
   await db.exec(clientIds);
   await db.exec(clientIds);
   assert.equal(await verified(db), true);
+  // "Report a deleted message" reads deleted rows only, most recently deleted
+  // first, on its own partial index (listDeletedForReport).
+  const index = (
+    await db.query<{ indexdef: string }>(`select indexdef from pg_indexes where indexname = 'chat_messages_channel_deleted_idx'`)
+  ).rows[0]?.indexdef;
+  assert.match(index ?? "", /\(channel_id, deleted_at DESC, id DESC\) WHERE \(deleted_at IS NOT NULL\)/);
   // 0101 run again re-grants the columns it names, and its table-level
   // revoke takes client_id's grant with it: the check notices, and 0104
   // again puts it back (the order docs/migrations-2026-10.md gives).

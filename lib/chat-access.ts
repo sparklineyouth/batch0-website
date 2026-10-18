@@ -422,6 +422,33 @@ export function directoryOffers(viewer: Party | null, candidate: Party, group: r
 export const GROUP_NEEDS_TEAM_REASON =
   "A group with students and adults outside the batch0 team needs someone from the team in it. Add one, or talk in your team or cohort channel.";
 
+/**
+ * What *New message* says before the click when the people picked would be
+ * refused, or null when they wouldn't. One pick is a DM, and the server
+ * refuses a DM with SAFEGUARD_REASON (dmVerdict); two or more are a group,
+ * refused with GROUP_NEEDS_TEAM_REASON. So a student who picked staff, then
+ * a mentor, then took the staff member out reads the DM's reason, which is
+ * what the server would say — not the group's. Staff (`self` null) pass.
+ */
+export function pickRefusal(self: Party | null, picked: readonly Party[]): string | null {
+  if (!self || picked.length === 0 || conversationAllowed([self, ...picked])) return null;
+  return picked.length === 1 ? SAFEGUARD_REASON : GROUP_NEEDS_TEAM_REASON;
+}
+
+/**
+ * What a picker says when the directory left someone matching out on the
+ * safeguarding rule alone (searchDirectory's `withheld`): picking someone from
+ * the team is what lets them in. Only then — under a search that found
+ * nobody for some other reason (a typo, someone not on batch0) it would send
+ * people looking for a mentor they never asked about.
+ */
+export function withheldHint(self: Pick<Party, "student"> | null): string {
+  if (!self) return "Some people can join only a group with someone from the batch0 team in it. Pick a team member first.";
+  return self.student
+    ? "To add a mentor, pick someone from the batch0 team first."
+    : "To add a student, pick someone from the batch0 team first.";
+}
+
 export const ONLY_THE_TEAM_REASON =
   "For now you can message the batch0 team. Messaging other people opens once you've been accepted.";
 
@@ -766,7 +793,7 @@ export function asUuid(id: unknown): string | null {
 
 /**
  * How far back "report a deleted message" reaches in a text channel: what
- * was posted in the last two weeks and has since been deleted
+ * was deleted in the last two weeks, however long ago it was posted
  * (listDeletedForReport in lib/chat.ts).
  */
 export const REPORTABLE_DELETED_MS = 14 * 24 * 60 * 60_000;
