@@ -58,8 +58,9 @@ check-ins, in-app files, discussions and the old recorder at once:
 
 4. **Any time: 0107.** It only adds the `student_followups` table (no client
    policies, no data changes). Until it runs, Student progress says
-   "Follow-ups aren't set up yet" and the Overview's attention list leaves
-   follow-ups out; everything else on both pages works.
+   "Follow-ups aren't set up yet", the Overview's attention list leaves
+   follow-ups out, and `settings.manage` holders see "run migration 0107" on
+   the Overview; everything else on both pages works.
 
 - **Safe to re-run.** Every file is idempotent (`if not exists`,
   `create or replace`, `drop policy if exists`, guarded data moves). Running
@@ -130,9 +131,9 @@ check-ins, in-app files, discussions and the old recorder at once:
   Discord linking can't save. Fix forward instead. Before any of them has
   run, rolling back is safe.
 - People with `settings.manage` see one line on `/admin`, *Database update
-  needed: run migrations 0093–0101*, while a probe finds one missing
+  needed: run migration(s) …* naming the ones missing, while a probe finds one
   (`lib/pending-migrations.ts`, cached 5 minutes). It checks the new tables and
-  columns of 0093–0096 and 0101, and the retired permission keys 0099, 0100
+  columns of 0093–0096, 0101 and 0107, and the retired permission keys 0099, 0100
   and 0101 strip from roles. The policy changes in 0097–0099 are invisible to it: the line
   going away does not prove those ran, so run the verify queries below.
 

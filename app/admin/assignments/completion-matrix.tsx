@@ -183,6 +183,11 @@ function ReviewPanel({ assignmentId, userId }: { assignmentId: string; userId: s
             </span>
           )}
         </div>
+        {!data.enrolled && (
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+            No longer in this cohort. What they handed in can still be reviewed.
+          </p>
+        )}
       </div>
       {s && (s.body || s.link_url) ? (
         <div className="border-t border-line pt-4">
@@ -202,9 +207,12 @@ function ReviewPanel({ assignmentId, userId }: { assignmentId: string; userId: s
       )}
       <div className="flex items-center justify-between gap-3 border-t border-line pt-4">
         <FieldError>{error}</FieldError>
-        <Button variant="secondary" size="sm" disabled={pending} onClick={() => excuse(!excused)}>
-          {excused ? "Undo excuse" : "Excuse"}
-        </Button>
+        {/* setExcused works on the cohort's roster, which they've left. */}
+        {data.enrolled && (
+          <Button variant="secondary" size="sm" disabled={pending} onClick={() => excuse(!excused)}>
+            {excused ? "Undo excuse" : "Excuse"}
+          </Button>
+        )}
       </div>
     </div>
   );

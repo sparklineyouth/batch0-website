@@ -13,6 +13,7 @@ import {
   FOLLOWUP_NOTE_MAX,
   defaultNextCheck,
   followUpDueLabel,
+  followUpOwnerChoice,
   formatCheckDate,
   type FollowUpView,
 } from "@/lib/student-followups";
@@ -171,17 +172,16 @@ function ActiveFollowUp({ followUp, viewerId, today }: { followUp: FollowUpView;
 
 function FollowUpForm({ data, onSaved }: { data: FollowUpDrawerData; onSaved: () => void }) {
   const active = data.active;
-  const viewerCanOwn = data.owners.some((o) => o.id === data.viewerId);
-  const [ownerId, setOwnerId] = useState(active?.ownerId ?? (viewerCanOwn ? data.viewerId : ""));
+  // Only people who can own follow-ups are offered — the server refuses
+  // anyone else — so an owner whose role changed isn't preselected; the
+  // line under the picker says who needs replacing.
+  const choice = followUpOwnerChoice(active, data.owners, data.viewerId);
+  const [ownerId, setOwnerId] = useState(choice.initialOwnerId);
   const [nextCheckOn, setNextCheckOn] = useState(defaultNextCheck(active, data.today));
   const [note, setNote] = useState(active?.note ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  // An owner whose account changed role keeps the follow-up; still list them.
-  const owners =
-    active?.ownerId && !data.owners.some((o) => o.id === active.ownerId)
-      ? [{ id: active.ownerId, name: active.ownerName ?? "Current owner" }, ...data.owners]
-      : data.owners;
+  const owners = data.owners;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -217,7 +217,13 @@ function FollowUpForm({ data, onSaved }: { data: FollowUpDrawerData; onSaved: ()
           <Label htmlFor="followup-owner" required>
             Owner
           </Label>
-          <Select id="followup-owner" value={ownerId} onChange={(e) => setOwnerId(e.target.value)} required>
+          <Select
+            id="followup-owner"
+            value={ownerId}
+            onChange={(e) => setOwnerId(e.target.value)}
+            aria-describedby={choice.staleOwnerName ? "followup-owner-hint" : undefined}
+            required
+          >
             <option value="" disabled>
               Pick someone
             </option>
@@ -227,6 +233,11 @@ function FollowUpForm({ data, onSaved }: { data: FollowUpDrawerData; onSaved: ()
               </option>
             ))}
           </Select>
+          {choice.staleOwnerName && (
+            <p id="followup-owner-hint" className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+              {choice.staleOwnerName} can no longer own follow-ups. Pick who takes it over to save.
+            </p>
+          )}
         </div>
         <div>
           <Label htmlFor="followup-date" required>

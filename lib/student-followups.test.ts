@@ -10,6 +10,7 @@ import {
   defaultNextCheck,
   followUpDueLabel,
   followUpDueState,
+  followUpOwnerChoice,
   followUpOwnerRoleSlugs,
   formatCheckDate,
   isFollowUpDue,
@@ -109,4 +110,25 @@ test("a second open follow-up is the unique index's 23505", () => {
   assert.equal(isOneOpenConflict({ code: "23505" }), true);
   assert.equal(isOneOpenConflict({ code: "23514" }), false);
   assert.equal(isOneOpenConflict(null), false);
+});
+
+test("the owner picker offers only people who can own one, and says when the current owner no longer can", () => {
+  const ME = "00000000-0000-4000-8000-000000000001";
+  const ALICE = "00000000-0000-4000-8000-000000000002";
+  const owners = [{ id: ME }, { id: OWNER }];
+  // An eligible owner stays selected; nothing to explain.
+  assert.deepEqual(followUpOwnerChoice({ ownerId: OWNER, ownerName: "Sam" }, owners, ME), {
+    initialOwnerId: OWNER,
+    staleOwnerName: null,
+  });
+  // Alice's role changed: she isn't preselected (the server would refuse
+  // her), and the drawer names her so the empty picker makes sense.
+  assert.deepEqual(followUpOwnerChoice({ ownerId: ALICE, ownerName: "Alice" }, owners, ME), {
+    initialOwnerId: "",
+    staleOwnerName: "Alice",
+  });
+  assert.equal(followUpOwnerChoice({ ownerId: ALICE, ownerName: null }, owners, ME).staleOwnerName, "The current owner");
+  // A new one starts with the viewer, when they can own it.
+  assert.deepEqual(followUpOwnerChoice(null, owners, ME), { initialOwnerId: ME, staleOwnerName: null });
+  assert.deepEqual(followUpOwnerChoice(null, [{ id: OWNER }], ME), { initialOwnerId: "", staleOwnerName: null });
 });

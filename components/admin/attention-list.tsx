@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CalendarClock, ClipboardCheck, Flag, LifeBuoy, type LucideIcon } from "lucide-react";
 import { ButtonLink } from "@/components/ui/button";
 import {
+  attentionEmptyText,
   ownerLabel,
   type AttentionResult,
   type AttentionSourceKey,
@@ -41,6 +42,7 @@ export function AttentionList({ attention }: { attention: AttentionResult }) {
   const { sources, rows, failed } = attention;
   if (sources.length === 0 && failed.length === 0) return null;
   const notes = sources.flatMap((s) => (s.note ? [{ key: s.key, ...s.note }] : []));
+  const empty = attentionEmptyText(attention);
 
   return (
     <section aria-labelledby="attention-heading" className="mt-8">
@@ -63,9 +65,7 @@ export function AttentionList({ attention }: { attention: AttentionResult }) {
       </div>
 
       {rows.length === 0 ? (
-        sources.length > 0 && (
-          <p className="mt-3 border-y border-line py-6 text-center text-sm text-ink-soft">Nothing is waiting on the team.</p>
-        )
+        empty && <p className="mt-3 border-y border-line py-6 text-center text-sm text-ink-soft">{empty}</p>
       ) : (
         <ul className="mt-3 divide-y divide-line border-y border-line">
           {rows.map((r) => {
@@ -83,15 +83,17 @@ export function AttentionList({ attention }: { attention: AttentionResult }) {
                     {r.context}
                   </p>
                 </div>
-                {/* On a phone this drops under the reason, lined up with its text. */}
-                <div className="flex w-full items-center gap-4 pl-8 sm:w-auto sm:pl-0">
-                  <p className="w-28 shrink-0 truncate text-xs" title={`Owner: ${owner}`}>
+                {/* On a phone this drops under the reason, lined up with its
+                    text, and the owner gives way (truncates) so the button
+                    stays inside the gutter down to a 320px screen. */}
+                <div className="flex w-full items-center gap-3 pl-8 sm:w-auto sm:gap-4 sm:pl-0">
+                  <p className="min-w-0 flex-1 truncate text-xs sm:w-28 sm:flex-none" title={`Owner: ${owner}`}>
                     <span className="sr-only">Owner: </span>
                     <span className={r.owner.kind === "nobody" ? "text-amber-700 dark:text-amber-300" : "text-ink-soft"}>
                       {owner}
                     </span>
                   </p>
-                  <p className="w-20 shrink-0 font-mono text-[11px] tabular-nums text-ink-faint">
+                  <p className="shrink-0 whitespace-nowrap font-mono text-[11px] tabular-nums text-ink-faint sm:w-20">
                     <span className="sr-only">Waiting: </span>
                     {r.age}
                   </p>
@@ -100,7 +102,7 @@ export function AttentionList({ attention }: { attention: AttentionResult }) {
                     prefetch={false}
                     variant="secondary"
                     size="sm"
-                    className="ml-auto w-20 shrink-0 sm:ml-0"
+                    className="w-20 shrink-0"
                   >
                     {r.action.label}
                   </ButtonLink>

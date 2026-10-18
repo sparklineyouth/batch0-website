@@ -100,6 +100,10 @@ export default async function AdminProgressPage(
     listDueFollowUps({ today, limit: DUE_LIST_MAX }),
   ]);
   const followUpsReady = openFollowUps.ready && due.ready;
+  // Not set up (0107 not applied) and couldn't load are different sentences:
+  // a timeout must not tell anyone the feature doesn't exist, or that
+  // nothing is due.
+  const followUpsFailed = !followUpsReady && (openFollowUps.failed || due.failed);
   const summaryOf = (f: FollowUpView | undefined): FollowUpSummary | null =>
     f
       ? {
@@ -189,7 +193,11 @@ export default async function AdminProgressPage(
         />
       </section>
 
-      {!followUpsReady ? (
+      {followUpsFailed ? (
+        <p role="status" className="mt-6 text-xs text-red-600 dark:text-red-400">
+          Couldn&apos;t load follow-ups just now, so who is following up with whom isn&apos;t shown. Reload to try again.
+        </p>
+      ) : !followUpsReady ? (
         <p className="mt-6 text-xs text-ink-faint">Follow-ups aren&apos;t set up yet.</p>
       ) : (
         due.total > 0 && (

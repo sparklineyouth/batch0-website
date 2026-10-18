@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { capabilitiesFrom } from "./permissions.ts";
+import { ALL_PERMISSIONS, can, canViewAdminPath, capabilitiesFrom } from "./permissions.ts";
 import {
   ATTENTION_LIMIT,
   ATTENTION_PERMITTED,
   ageSince,
+  attentionEmptyText,
   chatReportItems,
   collectAttention,
   compareAttention,
@@ -32,7 +33,10 @@ test("each source opens only to the permission of the page its rows open", () =>
   const sees = (c: ReturnType<typeof caps>) =>
     (Object.keys(ATTENTION_PERMITTED) as AttentionSourceKey[]).filter((k) => ATTENTION_PERMITTED[k](c)).sort();
   assert.deepEqual(sees(caps("support.view")), ["support"]);
-  assert.deepEqual(sees(caps("support.manage")), ["support"]);
+  // /admin/support is gated on support.view; support.manage alone bounces
+  // off the layout, so it doesn't open the source either.
+  assert.deepEqual(sees(caps("support.manage")), []);
+  assert.deepEqual(sees(caps("support.view", "support.manage")), ["support"]);
   // support.sensitive alone opens nothing, as in the Support policies.
   assert.deepEqual(sees(caps("support.sensitive")), []);
   assert.deepEqual(sees(caps("assignments.manage")), ["feedback"]);
@@ -41,6 +45,42 @@ test("each source opens only to the permission of the page its rows open", () =>
   assert.deepEqual(sees(caps("people.view")), ["followups"]);
   assert.deepEqual(sees(caps("payments.view", "applications.view", "student.dashboard")), []);
   assert.deepEqual(sees(caps("*")), ["chat_reports", "feedback", "followups", "support"]);
+});
+
+test("whoever sees a source can open every row's action — checked for every role of up to two keys", () => {
+  const ID = "00000000-0000-4000-8000-0000000000aa";
+  const support = supportItems(
+    [{ id: ID, reference: "B0-1", subject: "s", needsReply: true, priority: "normal", sensitive: false, requesterActivityAt: hoursAgo(1), assignedTo: null, assignedName: null }],
+    { userId: ME, canManage: true },
+    NOW,
+  );
+  const sub = { id: ID, assignmentId: ID, userId: OTHER, submittedAt: hoursAgo(1), assignment: { title: "a", week: 1, cohortId: ID }, studentName: "s" };
+  const reports = chatReportItems([{ id: ID, channelId: ID, partyIds: [], messageId: null, status: "open", createdAt: hoursAgo(1) }], new Map(), ME, NOW);
+  const follow = followUpItems([{ id: ID, studentId: OTHER, studentName: "s", ownerId: null, ownerName: null, nextCheckOn: TODAY, status: "open" }], ME, TODAY);
+  // Where a row's one action goes, given who's looking (the feedback link
+  // depends on whether they review program-wide).
+  const hrefs: Record<AttentionSourceKey, (c: ReturnType<typeof caps>) => string[]> = {
+    support: () => [...support.map((r) => r.action.href), "/admin/support"],
+    feedback: (c) => feedbackItems([sub], { userId: ME, manager: can(c, "assignments.manage") }, new Map(), NOW).map((r) => r.action.href),
+    chat_reports: () => [...reports.map((r) => r.action.href), "/admin/chat"],
+    followups: () => [...follow.map((r) => r.action.href), "/admin/progress"],
+  };
+  const opens = (c: ReturnType<typeof caps>, href: string) => {
+    const path = href.split(/[?#]/)[0];
+    return path.startsWith("/admin") ? canViewAdminPath(c, path) : path.startsWith("/mentor") ? can(c, "mentor.panel") : false;
+  };
+  const roles: string[][] = [];
+  for (const a of ALL_PERMISSIONS) {
+    roles.push([a]);
+    for (const b of ALL_PERMISSIONS) if (a < b) roles.push([a, b]);
+  }
+  for (const perms of roles) {
+    const c = caps(...perms);
+    for (const key of Object.keys(ATTENTION_PERMITTED) as AttentionSourceKey[]) {
+      if (!ATTENTION_PERMITTED[key](c)) continue;
+      for (const href of hrefs[key](c)) assert.ok(opens(c, href), `${perms.join("+")} sees ${key} but can't open ${href}`);
+    }
+  }
 });
 
 function item(source: AttentionSourceKey, n: number, over: Partial<AttentionItem> = {}): AttentionItem {
@@ -114,6 +154,23 @@ test("a failing source is named, not shown as empty; one not set up yet is just 
   assert.deepEqual(r.failed, ["support"]);
   assert.deepEqual(r.sources.map((s) => s.key), ["chat_reports"]);
   assert.equal(r.rows.length, 1);
+});
+
+test("'nothing waiting' only when every source that loaded is empty and none failed", () => {
+  const result = (sources: AttentionSource[], failed: AttentionSourceKey[] = []) => ({
+    sources,
+    rows: pickAttention(sources.flatMap((s) => s.items)),
+    failed,
+  });
+  assert.equal(attentionEmptyText(result([source("support", []), source("followups", [])])), "Nothing is waiting on the team.");
+  // Two confidential requests, counted but never rows: something IS waiting.
+  const confidential = { ...source("support", [], 2), note: { text: "2 confidential requests need a reply.", href: "/admin/support" } };
+  assert.equal(attentionEmptyText(result([confidential, source("followups", [])])), null);
+  // A source that couldn't be read may have work in it.
+  assert.equal(attentionEmptyText(result([source("followups", [])], ["feedback"])), "Nothing waiting in the lists that loaded.");
+  // Rows to show, or no source at all: the list says nothing of the kind.
+  assert.equal(attentionEmptyText(result([source("followups", [item("followups", 1)])])), null);
+  assert.equal(attentionEmptyText(result([], ["support"])), null);
 });
 
 test("a provider can't slip rows in under another source's name", async () => {
@@ -275,6 +332,17 @@ test("chat reports: where, never who reported or why; a report about the viewer 
   assert.equal(rows[0].urgency, "due");
   // Actioning or dismissing it takes the row off.
   assert.equal(chatReportItems([report({ status: "actioned" }), report({ status: "dismissed" })], channels, ME, NOW).length, 0);
+});
+
+test("chat reports: a report the viewer filed is left for another moderator", () => {
+  const channels = new Map([["ch1", { kind: "channel" as const, name: "help" }]]);
+  const rows = chatReportItems(
+    [report({ id: "mine", reporterId: ME }), report({ id: "theirs", reporterId: OTHER }), report({ id: "gone", reporterId: null })],
+    channels,
+    ME,
+    NOW,
+  );
+  assert.deepEqual(rows.map((r) => r.key), ["chat_reports:theirs", "chat_reports:gone"]);
 });
 
 const followUp = (over: Partial<FollowUpLike> = {}): FollowUpLike => ({

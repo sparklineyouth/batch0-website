@@ -16,6 +16,9 @@ type Call = { fn: string; args: any[] };
 const state: {
   calls: Call[];
   missing: Set<string>;
+  /** Sources whose read fails for a reason other than a missing table. */
+  broken: Set<string>;
+  countsAvailable: boolean;
   tickets: any[];
   ticketTotal: number;
   needsReply: number;
@@ -27,6 +30,8 @@ const state: {
 } = {
   calls: [],
   missing: new Set(),
+  broken: new Set(),
+  countsAvailable: true,
   tickets: [],
   ticketTotal: 0,
   needsReply: 0,
@@ -37,6 +42,7 @@ const state: {
   dueTotal: 0,
 };
 const MISSING = { code: "PGRST205", message: "Could not find the table in the schema cache" };
+const TIMEOUT = { code: "57014", message: "canceling statement due to statement timeout" };
 const record = (fn: string, args: any[]) => state.calls.push({ fn, args });
 
 /** Just enough of supabase-js for mentorsOf() (empty) and the open-report count. */
@@ -51,6 +57,12 @@ const db = {
         record(`db:${table}`, []);
         if (table === "chat_reports" && state.missing.has("chat")) {
           return Promise.resolve({ data: null, count: null, error: MISSING }).then(ok);
+        }
+        if (table === "mentor_assignments" && state.broken.has("mentors")) {
+          return Promise.resolve({ data: null, count: null, error: TIMEOUT }).then(ok);
+        }
+        if (table === "mentor_assignments" && state.feedback.length) {
+          return Promise.resolve({ data: [], count: null, error: null }).then(ok);
         }
         const count = table === "chat_reports" ? state.reports.length : null;
         return Promise.resolve({ data: [], count, error: null }).then(ok);
@@ -81,7 +93,7 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
            if(t.state.missing.has('support'))return{tickets:[],total:0,page:1,pageSize:8,error:t.MISSING};
            return{tickets:t.state.tickets,total:t.state.ticketTotal,page:1,pageSize:8,error:null};};
          export const countTicketsForStaff=async(s,f,now)=>{t.record('countTicketsForStaff',[s,f,now]);
-           return{needs_reply:t.state.needsReply,available:true};};`,
+           return t.state.countsAvailable?{needs_reply:t.state.needsReply,available:true}:{needs_reply:0,available:false};};`,
       "@/lib/chat":
         g +
         `export const getChatViewer=async(u,c)=>{t.record('getChatViewer',[u]);
@@ -92,13 +104,17 @@ const fake = (source: string) => `data:text/javascript,${encodeURIComponent(sour
       "@/lib/assignments-server":
         g +
         `export const loadFeedbackQueue=async(a,scope,o)=>{t.record('loadFeedbackQueue',[scope,o]);
-           return{ready:!t.state.missing.has('feedback'),total:t.state.feedbackTotal,items:t.state.feedback};};`,
+           if(t.state.broken.has('feedback'))return{ready:false,failed:true,total:0,items:[]};
+           if(t.state.missing.has('feedback'))return{ready:false,failed:false,total:0,items:[]};
+           return{ready:true,failed:false,total:t.state.feedbackTotal,items:t.state.feedback};};`,
       "@/lib/mentor-scope":
         g + "export const mentorScope=async(a,id)=>{t.record('mentorScope',[id]);return{cohortIds:['c1'],studentIds:[]};};",
       "@/lib/student-followups-server":
         g +
         `export const listDueFollowUps=async(a)=>{t.record('listDueFollowUps',[a]);
-           return{ready:!t.state.missing.has('followups'),total:t.state.dueTotal,rows:t.state.dueFollowUps};};`,
+           if(t.state.broken.has('followups'))return{ready:false,failed:true,total:0,rows:[]};
+           if(t.state.missing.has('followups'))return{ready:false,failed:false,total:0,rows:[]};
+           return{ready:true,failed:false,total:t.state.dueTotal,rows:t.state.dueFollowUps};};`,
     };
     if (doubles[specifier]) return { url: fake(doubles[specifier]), shortCircuit: true };
     if (specifier.startsWith("@/")) return next(pathToFileURL(path.join(root, specifier.slice(2) + ".ts")).href, context);
@@ -116,6 +132,8 @@ const call = (fn: string) => state.calls.find((c) => c.fn === fn);
 function reset() {
   state.calls = [];
   state.missing = new Set();
+  state.broken = new Set();
+  state.countsAvailable = true;
   state.tickets = [];
   state.ticketTotal = 0;
   state.needsReply = 0;
@@ -163,7 +181,7 @@ test("support rows come from a scope that can't see confidential requests; the c
   state.tickets = [ticket("t1"), ticket("t2")];
   state.ticketTotal = 5;
   state.needsReply = 7;
-  const r = await loadAttention({ userId: ME, caps: caps("support.manage", "support.sensitive"), now: NOW });
+  const r = await loadAttention({ userId: ME, caps: caps("support.view", "support.manage", "support.sensitive"), now: NOW });
   const [filter, listedScope] = call("listTicketsForStaff")!.args;
   assert.deepEqual(filter, { view: "needs_reply", pageSize: 8 });
   assert.deepEqual(listedScope, { userId: ME, canView: true, canManage: true, canSeeSensitive: false });
@@ -225,6 +243,72 @@ test("feedback: program-wide for assignments.manage, the mentor's own scope othe
   assert.deepEqual(call("mentorScope")!.args, [ME]);
   assert.deepEqual(call("loadFeedbackQueue")!.args[0], { cohortIds: ["c1"], studentIds: [] });
   assert.equal(r.sources.find((s) => s.key === "feedback")!.href, "/mentor/assignments");
+});
+
+test("a feedback or follow-up read that fails for any other reason is named under the list, not dropped", async () => {
+  reset();
+  state.broken = new Set(["feedback", "followups"]);
+  const r = await loadAttention({ userId: ME, caps: caps("*"), now: NOW });
+  assert.deepEqual([...r.failed].sort(), ["feedback", "followups"]);
+  assert.ok(!r.sources.some((s) => s.key === "feedback" || s.key === "followups"));
+  // A people.view-only viewer: the section stays, saying it couldn't load,
+  // rather than vanishing as if nothing were due.
+  reset();
+  state.broken = new Set(["followups"]);
+  const only = await loadAttention({ userId: ME, caps: caps("people.view"), now: NOW });
+  assert.deepEqual(only, { sources: [], rows: [], failed: ["followups"] });
+});
+
+test("feedback: a failed mentor read fails the source rather than calling everyone 'Any reviewer'", async () => {
+  reset();
+  state.broken = new Set(["mentors"]);
+  state.feedback = [
+    { id: "s1", assignmentId: "a1", userId: "u1", submittedAt: "2026-10-16T10:00:00.000Z", late: false, assignment: { title: "Weekly update", week: 2, cohortId: "c1" }, studentName: "Ada" },
+  ];
+  state.feedbackTotal = 1;
+  const r = await loadAttention({ userId: ME, caps: caps("assignments.manage"), now: NOW });
+  assert.deepEqual(r.failed, ["feedback"]);
+  assert.deepEqual(r.rows, []);
+});
+
+test("feedback: a manager without mentor.panel is sent to the list on /admin/assignments that shows the same count", async () => {
+  reset();
+  state.feedbackTotal = 3;
+  const r = await loadAttention({ userId: ME, caps: caps("assignments.manage"), now: NOW });
+  assert.equal(r.sources.find((s) => s.key === "feedback")!.href, "/admin/assignments#waiting-feedback");
+});
+
+test("support: support.manage without support.view reads nothing — its rows would bounce off /admin/support", async () => {
+  reset();
+  state.tickets = [ticket("t1")];
+  state.ticketTotal = 1;
+  const r = await loadAttention({ userId: ME, caps: caps("support.manage"), now: NOW });
+  assert.equal(call("listTicketsForStaff"), undefined);
+  assert.deepEqual(r, { sources: [], rows: [], failed: [] });
+});
+
+test("support: when the confidential count can't be read, the list says so instead of passing off a partial total", async () => {
+  reset();
+  state.tickets = [ticket("t1")];
+  state.ticketTotal = 1;
+  state.countsAvailable = false;
+  const r = await loadAttention({ userId: ME, caps: caps("support.view", "support.sensitive"), now: NOW });
+  const support = r.sources.find((s) => s.key === "support")!;
+  assert.equal(support.total, 1);
+  assert.match(support.note!.text, /Couldn't count confidential requests/);
+});
+
+test("chat reports: one the moderator filed is counted with the queue but left for someone else", async () => {
+  reset();
+  state.reports = [
+    { id: "r2", channelId: "ch1", partyIds: [], reporterId: ME, messageId: "m", status: "open", createdAt: "2026-10-17T12:00:00.000Z" },
+    { id: "r1", channelId: "ch1", partyIds: [], reporterId: "someone-else", messageId: "m", status: "open", createdAt: "2026-10-17T11:00:00.000Z" },
+  ];
+  const r = await loadAttention({ userId: ME, caps: caps("chat.manage"), now: NOW });
+  const chat = r.sources.find((s) => s.key === "chat_reports")!;
+  assert.equal(chat.total, 2, "the same number /admin/chat shows");
+  assert.deepEqual(chat.items.map((x) => x.key), ["chat_reports:r1"]);
+  assert.equal(chat.note?.text, "A report you filed is left for another moderator.");
 });
 
 test("a source whose migration hasn't run is left out, not reported as failing", async () => {

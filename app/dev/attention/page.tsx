@@ -20,7 +20,8 @@ import {
  * renders the same component, so the layout — reasons, owners, ages, the one
  * action per row, the confidential note, a failed source — can be reviewed
  * without any of that. `?empty=1` shows the clear state, `?failed=1` a source
- * whose read failed. Saving in the drawer calls the real server action, which
+ * whose read failed, `?confidential=1` a queue whose only waiting requests
+ * are confidential (counted, never rows, and not "nothing waiting"). Saving in the drawer calls the real server action, which
  * refuses without an admin session.
  *
  * Gated on VERCEL_ENV (not NODE_ENV, which is "production" on every Vercel
@@ -104,16 +105,29 @@ function withFailed(full: AttentionResult, key: AttentionSource["key"]): Attenti
   return { sources, rows: pickAttention(sources.flatMap((s) => s.items)), failed: [key] };
 }
 
-export default async function AttentionPreviewPage(props: { searchParams: Promise<{ empty?: string; failed?: string }> }) {
+export default async function AttentionPreviewPage(props: {
+  searchParams: Promise<{ empty?: string; failed?: string; confidential?: string }>;
+}) {
   if (process.env.VERCEL_ENV === "production") notFound();
   const sp = await props.searchParams;
   const full = fixture();
+  const cleared = full.sources.map((s) => ({ ...s, total: 0, items: [], note: null }));
   const attention: AttentionResult =
     sp.empty === "1"
-      ? { sources: full.sources.map((s) => ({ ...s, total: 0, items: [], note: null })), rows: [], failed: [] }
-      : sp.failed === "1"
-        ? withFailed(full, "chat_reports")
-        : full;
+      ? { sources: cleared, rows: [], failed: [] }
+      : sp.confidential === "1"
+        ? {
+            sources: cleared.map((s) =>
+              s.key === "support"
+                ? { ...s, total: 2, note: { text: "2 confidential requests need a reply. They're listed in Support only.", href: "/admin/support" } }
+                : s,
+            ),
+            rows: [],
+            failed: [],
+          }
+        : sp.failed === "1"
+          ? withFailed(full, "chat_reports")
+          : full;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">

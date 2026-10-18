@@ -6,7 +6,7 @@ import { can } from "@/lib/permissions";
 import { countTicketsNeedingReply } from "@/lib/support";
 import { countOverdueAssignments } from "@/lib/assignments-server";
 import { pendingMigrations } from "@/lib/pending-migrations-server";
-import { PENDING_MIGRATIONS_NOTICE } from "@/lib/pending-migrations";
+import { pendingMigrationsNotice } from "@/lib/pending-migrations";
 import { loadAttention } from "@/lib/attention-server";
 import { AttentionList } from "@/components/admin/attention-list";
 import { ArrowRight, Inbox, CreditCard, LifeBuoy, ClipboardList, TriangleAlert } from "lucide-react";
@@ -122,7 +122,7 @@ export default async function AdminOverview() {
           className="mt-4 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/[0.06] px-3 py-2 text-sm text-amber-700 dark:text-amber-300"
         >
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-          {PENDING_MIGRATIONS_NOTICE}
+          {pendingMigrationsNotice(missingMigrations)}
         </p>
       )}
 

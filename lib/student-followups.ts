@@ -196,6 +196,29 @@ export function followUpOwnerRoleSlugs(roles: readonly { slug: string; permissio
 }
 
 /**
+ * The drawer's Owner picker: who starts selected, and whether the current
+ * owner has to be replaced. Only people who can own follow-ups are offered,
+ * because saveFollowUp refuses anyone else. An owner whose role no longer can
+ * (followUpOwnerRoleSlugs) keeps the follow-up until someone edits it, but
+ * isn't offered or preselected: the next save hands it to someone who can
+ * update and close it, and `staleOwnerName` lets the drawer say why the
+ * picker starts empty.
+ */
+export function followUpOwnerChoice(
+  active: { ownerId: string | null; ownerName: string | null } | null,
+  owners: readonly { id: string }[],
+  viewerId: string,
+): { initialOwnerId: string; staleOwnerName: string | null } {
+  const canOwn = (id: string | null) => !!id && owners.some((o) => o.id === id);
+  if (active?.ownerId) {
+    return canOwn(active.ownerId)
+      ? { initialOwnerId: active.ownerId, staleOwnerName: null }
+      : { initialOwnerId: "", staleOwnerName: active.ownerName ?? "The current owner" };
+  }
+  return { initialOwnerId: canOwn(viewerId) ? viewerId : "", staleOwnerName: null };
+}
+
+/**
  * The unique index on open follow-ups (0107) refusing a second one. The only
  * other unique key on the table is a generated uuid, so a 23505 on insert is
  * always this one — whatever the message says.

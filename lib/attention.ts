@@ -23,7 +23,7 @@
  * permission check, a loader returning AttentionSource, and a builder like
  * the ones below.
  */
-import { can, type Capabilities } from "./permissions.ts";
+import { can, canViewAdminPath, type Capabilities } from "./permissions.ts";
 import { formatElapsed, slaState, type TicketPriority } from "./support-access.ts";
 import { easternToUtc } from "./assignments.ts";
 import { daysBetween, isFollowUpDue, type FollowUpStatus } from "./student-followups.ts";
@@ -83,25 +83,31 @@ export type AttentionProvider<Ctx> = {
   key: AttentionSourceKey;
   /** The source's own permission. Runs BEFORE anything is read. */
   permitted: (caps: Capabilities) => boolean;
-  /** Null when the source isn't set up yet (its migration hasn't run). */
+  /**
+   * Null when the source isn't set up yet (its migration hasn't run). Any
+   * other failed read throws, and the source is named in `failed`.
+   */
   load: (ctx: Ctx) => Promise<AttentionSource | null>;
 };
 
 /**
- * Who may see each source: the permission of the page its rows open, the
- * same gate that page and its actions apply.
+ * Who may see each source: whoever may open the page its rows open — the
+ * admin route gate itself (lib/permissions.ts ADMIN_ROUTE_PERMISSIONS), so
+ * a row's one action can never bounce off the layout back to the Overview.
  *
- *   support       support.view (or .manage) — /admin/support
- *   feedback      assignments.manage (program-wide) or mentor.panel (their
- *                 own cohorts and students) — the review action's rule
- *   chat_reports  chat.manage — /admin/chat
- *   followups     people.view — /admin/progress
+ *   support       /admin/support (support.view; support.manage alone
+ *                 doesn't open the page, so it doesn't open the source)
+ *   feedback      /admin/assignments (assignments.manage, program-wide), or
+ *                 mentor.panel for their own cohorts and students — the
+ *                 review action's rule
+ *   chat_reports  /admin/chat (chat.manage)
+ *   followups     /admin/progress (people.view)
  */
 export const ATTENTION_PERMITTED: Readonly<Record<AttentionSourceKey, (caps: Capabilities) => boolean>> = {
-  support: (caps) => can(caps, "support.view") || can(caps, "support.manage"),
-  feedback: (caps) => can(caps, "assignments.manage") || can(caps, "mentor.panel"),
-  chat_reports: (caps) => can(caps, "chat.manage"),
-  followups: (caps) => can(caps, "people.view"),
+  support: (caps) => canViewAdminPath(caps, "/admin/support"),
+  feedback: (caps) => canViewAdminPath(caps, "/admin/assignments") || can(caps, "mentor.panel"),
+  chat_reports: (caps) => canViewAdminPath(caps, "/admin/chat"),
+  followups: (caps) => canViewAdminPath(caps, "/admin/progress"),
 };
 
 export type AttentionResult = {
@@ -171,6 +177,19 @@ export function pickAttention(items: readonly AttentionItem[], limit: number = A
     chosen.add(it.key);
   }
   return out.sort(compareAttention);
+}
+
+/**
+ * What the list says when it has no rows, or null to say nothing. "Nothing
+ * is waiting on the team" only when every source that loaded counts zero and
+ * none failed: a source with work it doesn't itemize (confidential requests,
+ * a report the viewer filed) or one that couldn't be read means something
+ * may well be waiting, and its note or the "couldn't load" line says what.
+ */
+export function attentionEmptyText(result: AttentionResult): string | null {
+  if (result.rows.length > 0 || result.sources.length === 0) return null;
+  if (result.sources.some((s) => s.total > 0)) return null;
+  return result.failed.length > 0 ? "Nothing waiting in the lists that loaded." : "Nothing is waiting on the team.";
 }
 
 /** "3d 2h", "45m" — never "0m", so a fresh item still reads as an age. */
@@ -303,6 +322,8 @@ export type ChatReportLike = {
   channelId: string;
   partyIds: readonly string[];
   messageId: string | null;
+  /** Who filed it. Never shown; a moderator's own report isn't theirs to judge. */
+  reporterId?: string | null;
   status: string;
   createdAt: string;
 };
@@ -313,7 +334,10 @@ export type ReportChannelLike = { kind: "channel" | "dm" | "group"; name: string
  * Rows for open chat reports. Reports naming the viewer as a party were
  * already left out by the queue (lib/chat.ts listReports); they are dropped
  * here again, so no change upstream can put a report about you in your own
- * list. A row says where, never who reported or why — that's on the report.
+ * list. A report the viewer filed isn't a row either: it's in their queue,
+ * but judging your own complaint is for another moderator (the provider
+ * counts it and says so). A row says where, never who reported or why —
+ * that's on the report.
  */
 export function chatReportItems(
   reports: readonly ChatReportLike[],
@@ -322,7 +346,7 @@ export function chatReportItems(
   now: number,
 ): AttentionItem[] {
   return reports
-    .filter((r) => r.status === "open" && !r.partyIds.includes(viewerId))
+    .filter((r) => r.status === "open" && !r.partyIds.includes(viewerId) && r.reporterId !== viewerId)
     .map((r) => {
       const c = channels.get(r.channelId) ?? null;
       const where = !c ? "a deleted channel" : c.kind === "channel" ? `#${c.name ?? "channel"}` : c.kind === "dm" ? "a direct message" : "a group DM";

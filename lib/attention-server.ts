@@ -40,7 +40,12 @@ export type AttentionContext = {
   now: number;
 };
 
-/** Provider failures are logged here, then reported as "couldn't load". */
+/**
+ * Provider failures are logged here, then reported as "couldn't load". A
+ * provider returns null only when its source isn't set up (a missing table);
+ * every other failed read throws, so it lands in `failed` and is said under
+ * the list, rather than reading as "nothing waiting".
+ */
 async function logged<T>(key: string, run: () => Promise<T>): Promise<T> {
   try {
     return await run();
@@ -83,7 +88,11 @@ const support: AttentionProvider<AttentionContext> = {
                 text: `${confidential} confidential ${confidential === 1 ? "request needs" : "requests need"} a reply. They're listed in Support only.`,
                 href: "/admin/support",
               }
-            : null,
+            : counts && !counts.available
+              ? // The rows are right; only the confidential count is unknown.
+                // Say so rather than let the total pass for the whole queue.
+                { text: "Couldn't count confidential requests just now. Support has the full queue.", href: "/admin/support" }
+              : null,
       };
     }),
 };
@@ -99,20 +108,28 @@ const feedback: AttentionProvider<AttentionContext> = {
       const manager = can(caps, "assignments.manage");
       const scope = manager ? null : await mentorScope(admin, userId);
       const queue = await loadFeedbackQueue(admin, scope, { limit: ATTENTION_LIMIT });
-      if (!queue.ready) return null;
+      if (!queue.ready) {
+        if (queue.failed) throw new Error("Couldn't load the feedback queue");
+        return null;
+      }
       return {
         key: "feedback",
         label: "Feedback",
         total: queue.total,
-        // The page that shows the same count. Without mentor.panel there is
-        // no review list, only the per-cohort board.
-        href: can(caps, "mentor.panel") ? "/mentor/assignments" : "/admin/assignments",
+        // The page that shows the same count: the mentor review queue, or
+        // for a manager without mentor.panel the "Waiting for feedback" list
+        // on /admin/assignments, which reads the same loadFeedbackQueue.
+        href: can(caps, "mentor.panel") ? "/mentor/assignments" : "/admin/assignments#waiting-feedback",
         items: feedbackItems(queue.items, { userId, manager }, await mentorsOf(queue.items.map((s) => s.userId)), now),
       };
     }),
 };
 
-/** Each student's direct mentors (mentor_assignments), with names. Best-effort. */
+/**
+ * Each student's direct mentors (mentor_assignments), with names. A failed
+ * read throws: "Any reviewer" on a student who has a mentor would be a wrong
+ * owner, and the owner is what stops two people picking up the same work.
+ */
 async function mentorsOf(studentIds: readonly string[]): Promise<Map<string, { id: string; name: string }[]>> {
   const out = new Map<string, { id: string; name: string }[]>();
   const ids = Array.from(new Set(studentIds));
@@ -122,9 +139,14 @@ async function mentorsOf(studentIds: readonly string[]): Promise<Map<string, { i
     .from("mentor_assignments")
     .select("student_id, mentor_id")
     .in("student_id", ids);
-  if (error || !rows?.length) return out;
+  if (error) throw new Error(`Couldn't read mentors: ${error.message}`);
+  if (!rows?.length) return out;
   const mentorIds = Array.from(new Set(rows.map((r: any) => r.mentor_id as string).filter(Boolean)));
-  const { data: people } = await admin.from("profiles").select("id, full_name, email").in("id", mentorIds);
+  const { data: people, error: peopleError } = await admin
+    .from("profiles")
+    .select("id, full_name, email")
+    .in("id", mentorIds);
+  if (peopleError) throw new Error(`Couldn't read mentor names: ${peopleError.message}`);
   const name = new Map(
     ((people ?? []) as any[]).map((p) => [p.id as string, (p.full_name as string | null)?.trim() || displayEmail(p.email) || "Mentor"]),
   );
@@ -158,8 +180,12 @@ const chatReports: AttentionProvider<AttentionContext> = {
         // The queue /admin/chat shows, with every report naming this
         // moderator already left out (lib/chat.ts listReports).
         const open = await listReports(viewer, "open");
+        // A report this moderator filed is counted (it's in their queue) but
+        // isn't theirs to judge, so it isn't a row; the note says so.
+        const theirs = open.filter((r) => r.reporterId !== userId);
+        const filed = open.length - theirs.length;
         // Newest first from the queue; the attention list wants the oldest.
-        const oldest = open.slice(-ATTENTION_LIMIT);
+        const oldest = theirs.slice(-ATTENTION_LIMIT);
         const channels = new Map<string, ReportChannelLike>();
         await Promise.all(
           Array.from(new Set(oldest.map((r) => r.channelId))).map(async (id) => {
@@ -173,6 +199,13 @@ const chatReports: AttentionProvider<AttentionContext> = {
           total: open.length,
           href: "/admin/chat",
           items: chatReportItems(oldest, channels, userId, now),
+          note:
+            filed > 0
+              ? {
+                  text: `${filed === 1 ? "A report you filed is" : `${filed} reports you filed are`} left for another moderator.`,
+                  href: "/admin/chat",
+                }
+              : null,
         };
       } catch (err) {
         if (isMissingSchemaError(err)) return null;
@@ -188,7 +221,10 @@ const followUps: AttentionProvider<AttentionContext> = {
     logged("followups", async () => {
       const today = easternDate(new Date(now));
       const due = await listDueFollowUps({ today, limit: ATTENTION_LIMIT });
-      if (!due.ready) return null;
+      if (!due.ready) {
+        if (due.failed) throw new Error("Couldn't load due follow-ups");
+        return null;
+      }
       return {
         key: "followups",
         label: "Follow-ups due",

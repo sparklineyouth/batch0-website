@@ -75,6 +75,10 @@ export async function loadFollowUp(studentId: string): Promise<ActionResult<Foll
       canEdit ? listFollowUpOwners() : Promise.resolve([] as FollowUpOwner[]),
     ]);
     if (!profile) throw new Error("Student not found.");
+    // A failed read is an error, not "not set up yet": the drawer would
+    // otherwise tell someone the feature is missing, or offer to start a
+    // second follow-up over one it just couldn't see.
+    if (thread.failed) throw new Error("Couldn't load this follow-up just now. Close the drawer and try again.");
     return {
       ready: thread.ready,
       student: { id: profile.id, name: profile.full_name?.trim() || profile.email || "Student" },

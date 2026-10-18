@@ -461,15 +461,20 @@ export type FeedbackWaiting = {
  * The oldest `limit` submissions waiting for feedback in this scope, and how
  * many there are — the same rows, in the same order, as the review queue's
  * "To review" (loadReviewQueue), without reading anyone's work.
+ *
+ * `failed` tells the two kinds of `ready: false` apart: false when 0093 isn't
+ * applied (say nothing), true for any other error (say "couldn't load") — so
+ * a timeout never reads as an empty queue.
  */
 export async function loadFeedbackQueue(
   admin: Db,
   scope: MentorScope | null,
   opts: { limit: number },
-): Promise<{ ready: boolean; total: number; items: FeedbackWaiting[] }> {
+): Promise<{ ready: boolean; failed: boolean; total: number; items: FeedbackWaiting[] }> {
+  const failed = (error: unknown) => ({ ...fail(error), failed: !isMissingSchemaError(error), total: 0, items: [] });
   const scoped = await reviewScopeFilter(admin, scope);
-  if (!scoped.ok) return { ...fail(scoped.error), total: 0, items: [] };
-  if (scoped.filter === "none") return { ready: true, total: 0, items: [] };
+  if (!scoped.ok) return failed(scoped.error);
+  if (scoped.filter === "none") return { ready: true, failed: false, total: 0, items: [] };
   let q = admin
     .from("course_assignment_submissions")
     .select(
@@ -481,7 +486,7 @@ export async function loadFeedbackQueue(
     .limit(Math.max(1, opts.limit));
   if (scoped.filter) q = q.or(scoped.filter);
   const { data, error, count } = await q;
-  if (error) return { ...fail(error), total: 0, items: [] };
+  if (error) return failed(error);
   const items = ((data ?? []) as any[]).map((r): FeedbackWaiting => {
     const a = Array.isArray(r.assignment) ? r.assignment[0] : r.assignment;
     const st = Array.isArray(r.student) ? r.student[0] : r.student;
@@ -495,7 +500,7 @@ export async function loadFeedbackQueue(
       studentName: st?.full_name?.trim() || st?.email || null,
     };
   });
-  return { ready: true, total: count ?? items.length, items };
+  return { ready: true, failed: false, total: count ?? items.length, items };
 }
 
 // ---------------------------------------------------------------------------

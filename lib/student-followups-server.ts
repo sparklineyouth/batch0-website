@@ -17,7 +17,10 @@ import {
  *
  * Every read tolerates 0107 not being applied yet: callers get
  * `ready: false` and render "not set up yet" — production gets this code
- * before the migration runs.
+ * before the migration runs. Any other failure (a timeout, a 5xx, a names
+ * read that errored) is `ready: false, failed: true`: callers say "couldn't
+ * load", never "not set up" and never an empty list, because "nothing due"
+ * is exactly what a reader would wrongly conclude from either.
  */
 
 type Db = ReturnType<typeof createAdminClient>;
@@ -31,9 +34,18 @@ function chunks<T>(items: readonly T[]): T[][] {
   return out;
 }
 
-function failed(where: string, error: unknown): { ready: false } {
-  if (!isMissingSchemaError(error)) console.error(`[followups] ${where}`, (error as any)?.message ?? error);
-  return { ready: false };
+/**
+ * Why a read came back empty-handed. `failed: false` is "0107 isn't applied
+ * here"; `failed: true` is any other error, which the page must say out loud.
+ */
+export type FollowUpReadState = { ready: true; failed: false } | { ready: false; failed: boolean };
+
+const READY: FollowUpReadState = { ready: true, failed: false };
+
+function notReady(where: string, error: unknown): FollowUpReadState {
+  const missing = isMissingSchemaError(error);
+  if (!missing) console.error(`[followups] ${where}`, (error as any)?.message ?? error);
+  return { ready: false, failed: !missing };
 }
 
 function personName(p: { full_name: string | null; email: string | null } | undefined): string | null {
@@ -41,7 +53,11 @@ function personName(p: { full_name: string | null; email: string | null } | unde
   return p.full_name?.trim() || displayEmail(p.email) || null;
 }
 
-/** Names for every person the rows mention, in one round trip per chunk. */
+/**
+ * Names for every person the rows mention, in one round trip per chunk.
+ * Throws when a read fails: a live student shown as "Deleted account", or an
+ * owner as "Someone on the team", is a wrong answer, not a degraded one.
+ */
 async function names(admin: Db, rows: readonly FollowUpRow[]): Promise<Map<string, string | null>> {
   const ids = Array.from(
     new Set(rows.flatMap((r) => [r.student_id, r.owner_id, r.created_by, r.closed_by]).filter((x): x is string => !!x)),
@@ -50,7 +66,7 @@ async function names(admin: Db, rows: readonly FollowUpRow[]): Promise<Map<strin
   await Promise.all(
     chunks(ids).map(async (part) => {
       const { data, error } = await admin.from("profiles").select("id, full_name, email").in("id", part);
-      if (error) console.error("[followups] names", error.message);
+      if (error) throw error;
       for (const p of (data ?? []) as any[]) out.set(p.id, personName(p));
     }),
   );
@@ -85,48 +101,57 @@ async function views(admin: Db, rows: FollowUpRow[]): Promise<FollowUpView[]> {
 /** The open follow-up of each of these students (the roster's column). */
 export async function listActiveFollowUps(
   studentIds: readonly string[],
-): Promise<{ ready: boolean; byStudent: Map<string, FollowUpView> }> {
+): Promise<FollowUpReadState & { byStudent: Map<string, FollowUpView> }> {
   const admin = createAdminClient();
-  const byStudent = new Map<string, FollowUpView>();
   const ids = Array.from(new Set(studentIds));
-  if (ids.length === 0) {
-    // Still ask, so an empty roster can tell "none yet" from "not set up".
-    const { error } = await admin.from("student_followups").select("id").limit(0);
-    return error ? { ...failed("listActiveFollowUps", error), byStudent } : { ready: true, byStudent };
+  try {
+    if (ids.length === 0) {
+      // Still ask, so an empty roster can tell "none yet" from "not set up".
+      const { error } = await admin.from("student_followups").select("id").limit(0);
+      if (error) throw error;
+      return { ...READY, byStudent: new Map() };
+    }
+    const rows: FollowUpRow[] = [];
+    for (const part of chunks(ids)) {
+      const { data, error } = await admin
+        .from("student_followups")
+        .select(FOLLOWUP_COLUMNS)
+        .eq("status", "open")
+        .in("student_id", part);
+      if (error) throw error;
+      rows.push(...((data ?? []) as unknown as FollowUpRow[]));
+    }
+    const byStudent = new Map<string, FollowUpView>();
+    for (const v of await views(admin, rows)) byStudent.set(v.studentId, v);
+    return { ...READY, byStudent };
+  } catch (error) {
+    return { ...notReady("listActiveFollowUps", error), byStudent: new Map() };
   }
-  const rows: FollowUpRow[] = [];
-  for (const part of chunks(ids)) {
-    const { data, error } = await admin
-      .from("student_followups")
-      .select(FOLLOWUP_COLUMNS)
-      .eq("status", "open")
-      .in("student_id", part);
-    if (error) return { ...failed("listActiveFollowUps", error), byStudent };
-    rows.push(...((data ?? []) as unknown as FollowUpRow[]));
-  }
-  for (const v of await views(admin, rows)) byStudent.set(v.studentId, v);
-  return { ready: true, byStudent };
 }
 
 /** One student's open follow-up and the most recent closed ones (the drawer). */
 export async function getFollowUpThread(
   studentId: string,
   opts: { history?: number } = {},
-): Promise<{ ready: boolean; active: FollowUpView | null; history: FollowUpView[] }> {
+): Promise<FollowUpReadState & { active: FollowUpView | null; history: FollowUpView[] }> {
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("student_followups")
-    .select(FOLLOWUP_COLUMNS)
-    .eq("student_id", studentId)
-    .order("created_at", { ascending: false })
-    .limit((opts.history ?? 5) + 1);
-  if (error) return { ...failed("getFollowUpThread", error), active: null, history: [] };
-  const all = await views(admin, (data ?? []) as unknown as FollowUpRow[]);
-  return {
-    ready: true,
-    active: all.find((v) => v.status === "open") ?? null,
-    history: all.filter((v) => v.status !== "open").slice(0, opts.history ?? 5),
-  };
+  try {
+    const { data, error } = await admin
+      .from("student_followups")
+      .select(FOLLOWUP_COLUMNS)
+      .eq("student_id", studentId)
+      .order("created_at", { ascending: false })
+      .limit((opts.history ?? 5) + 1);
+    if (error) throw error;
+    const all = await views(admin, (data ?? []) as unknown as FollowUpRow[]);
+    return {
+      ...READY,
+      active: all.find((v) => v.status === "open") ?? null,
+      history: all.filter((v) => v.status !== "open").slice(0, opts.history ?? 5),
+    };
+  } catch (error) {
+    return { ...notReady("getFollowUpThread", error), active: null, history: [] };
+  }
 }
 
 /**
@@ -137,19 +162,23 @@ export async function getFollowUpThread(
 export async function listDueFollowUps(args: {
   today: string;
   limit: number;
-}): Promise<{ ready: boolean; total: number; rows: FollowUpView[] }> {
+}): Promise<FollowUpReadState & { total: number; rows: FollowUpView[] }> {
   const admin = createAdminClient();
-  const { data, error, count } = await admin
-    .from("student_followups")
-    .select(FOLLOWUP_COLUMNS, { count: "exact" })
-    .eq("status", "open")
-    .lte("next_check_on", args.today)
-    .order("next_check_on", { ascending: true })
-    .order("created_at", { ascending: true })
-    .limit(Math.max(1, args.limit));
-  if (error) return { ...failed("listDueFollowUps", error), total: 0, rows: [] };
-  const rows = await views(admin, (data ?? []) as unknown as FollowUpRow[]);
-  return { ready: true, total: count ?? rows.length, rows };
+  try {
+    const { data, error, count } = await admin
+      .from("student_followups")
+      .select(FOLLOWUP_COLUMNS, { count: "exact" })
+      .eq("status", "open")
+      .lte("next_check_on", args.today)
+      .order("next_check_on", { ascending: true })
+      .order("created_at", { ascending: true })
+      .limit(Math.max(1, args.limit));
+    if (error) throw error;
+    const rows = await views(admin, (data ?? []) as unknown as FollowUpRow[]);
+    return { ...READY, total: count ?? rows.length, rows };
+  } catch (error) {
+    return { ...notReady("listDueFollowUps", error), total: 0, rows: [] };
+  }
 }
 
 export type FollowUpOwner = { id: string; name: string };
@@ -168,6 +197,11 @@ export async function listFollowUpOwners(): Promise<FollowUpOwner[]> {
     .in("role", slugs)
     .order("full_name", { ascending: true })
     .limit(300);
-  if (error) console.error("[followups] listFollowUpOwners", error.message);
+  // Throws rather than returning nobody: an empty list would read as "no one
+  // can own follow-ups", and a save would be refused for the wrong reason.
+  if (error) {
+    console.error("[followups] listFollowUpOwners", error.message);
+    throw new Error("Couldn't load who can own follow-ups. Try again.");
+  }
   return ((data ?? []) as any[]).map((p) => ({ id: p.id as string, name: personName(p) ?? "Unnamed" }));
 }
