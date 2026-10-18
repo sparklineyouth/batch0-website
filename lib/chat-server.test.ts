@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as nodeModule from "node:module";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import path from "node:path";
+import { capabilitiesFrom } from "./permissions.ts";
 
 // The real lib/chat.ts and lib/chat-notify.ts against an in-memory database:
 // mention search past the first page of name matches, the sidebar and badge
@@ -601,4 +602,56 @@ test("a thread reply bells its followers and mentions — still readers, unblock
   state.tables.chat_thread_follows.find((f) => f.user_id === FOLLOWER)!.seen_at = new Date(now - 10 * 60_000).toISOString();
   await ring({ postedAt: new Date(now - 20 * 60_000).toISOString(), createdAt: new Date(now - 20 * 60_000).toISOString() });
   assert.ok(!state.notified.some((n) => n.userId === FOLLOWER));
+});
+
+test("the Overview's report queue reads the moderator's membership of the reported channels only — and agrees with listReports", async () => {
+  const DM_IN = channelRow(800, "dm"); // the moderator is in it, so its report isn't theirs to see
+  const DM_OUT = channelRow(801, "dm");
+  const TEXT = channelRow(802, "channel", { name: "general", audience: "everyone" });
+  const report = (n: number, channel: Row, minutes: number, extra: Row = {}): Row => ({
+    id: id(n), channel_id: channel.id, message_id: null, reporter_id: id(3), reason: "Not okay", status: "open",
+    reviewed_by: null, reviewed_at: null, party_ids: [id(2)],
+    created_at: new Date(Date.parse("2026-10-17T12:00:00.000Z") - minutes * 60_000).toISOString(), ...extra,
+  });
+  const tables = (): Record<string, Row[]> => ({
+    chat_channels: [DM_IN, DM_OUT, TEXT],
+    chat_members: [
+      { channel_id: DM_IN.id, user_id: ME },
+      { channel_id: DM_OUT.id, user_id: id(2) },
+      // Staff collect a DM with every applicant who writes in.
+      ...Array.from({ length: 2500 }, (_, i) => ({ channel_id: id(10_000 + i), user_id: ME })),
+    ],
+    chat_reports: [
+      report(900, DM_IN, 1),
+      report(901, DM_OUT, 2),
+      report(902, TEXT, 3),
+      report(903, TEXT, 4, { party_ids: [ME] }), // about the moderator
+      report(904, TEXT, 5, { status: "dismissed" }),
+    ],
+    profiles: [
+      { id: ME, full_name: "Mo Moderator", role: "admin" },
+      { id: id(3), full_name: "Ray Reporter", role: "student" },
+    ],
+  });
+  const mod = capabilitiesFrom("admin", ["*"]);
+
+  reset(tables());
+  const full = await chat.listReports(await chat.getChatViewer(ME, mod), "open");
+  assert.ok(state.log.filter((l) => l.startsWith("select chat_members")).length >= 3, "getChatViewer pages every membership");
+
+  reset(tables());
+  const narrow = await chat.listOpenReportsFor(ME, mod);
+  assert.deepEqual(narrow, full, "the same queue");
+  assert.deepEqual(narrow.map((r) => r.id), [id(901), id(902)]);
+  assert.deepEqual(
+    state.log.filter((l) => l.startsWith("select chat_members")),
+    [`select chat_members user_id=${ME} channel_id:3`],
+    "one read, of the three reported channels",
+  );
+  assert.ok(!state.log.some((l) => /enrollments|team_members|mentor_assignments|applications/.test(l)), state.log.join("\n"));
+
+  // No chat.manage: no queue, and nothing read for it.
+  reset(tables());
+  assert.deepEqual(await chat.listOpenReportsFor(ME, capabilitiesFrom("custom", ["people.view"])), []);
+  assert.deepEqual(state.log, []);
 });

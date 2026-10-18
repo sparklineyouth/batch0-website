@@ -1648,7 +1648,7 @@ async function channelKinds(ids: readonly string[]): Promise<Map<string, Channel
  * its own parties; a DM's or group's together with every report on it, so a
  * moderator named by one report on a conversation sees none of its reports.
  */
-async function visibleReportRows(viewer: ChatViewer, rows: any[]): Promise<any[]> {
+async function visibleReportRows(viewer: ReportViewer, rows: any[]): Promise<any[]> {
   if (!viewer.staff || rows.length === 0) return [];
   const channelIds = uniq(rows.map((r) => r.channel_id).filter(isUuid));
   const [kinds, parties] = await Promise.all([channelKinds(channelIds), reportPartiesByChannel(channelIds)]);
@@ -1661,6 +1661,22 @@ async function visibleReportRows(viewer: ChatViewer, rows: any[]): Promise<any[]
   });
 }
 
+/** What judging a report asks of the viewer (reportVisibleTo): who, staff, and which channels they're in. */
+type ReportViewer = Pick<ChatViewer, "userId" | "staff" | "memberOf">;
+
+/** The queue's rows, newest first: open ones in full, closed ones the newest `limit`. */
+async function reportRows(status: ReportStatus | "all", opts: { limit?: number } = {}): Promise<any[]> {
+  const admin = createAdminClient();
+  const query = () => {
+    let q = admin.from("chat_reports").select(REPORT_COLS);
+    if (status !== "all") q = q.eq("status", status);
+    return q.order("created_at", { ascending: false }).order("id", { ascending: false });
+  };
+  return opts.limit
+    ? ((must(await query().limit(Math.min(opts.limit, PAGE_ROWS)), "reports") ?? []) as any[])
+    : await pageAll<any>((from, to) => query().range(from, to), "reports");
+}
+
 /**
  * The queue, minus every report about the moderator looking at it: who
  * reported them, and why, is exactly what the person reported must not learn.
@@ -1671,16 +1687,46 @@ export async function listReports(
   status: ReportStatus | "all" = "open",
   opts: { limit?: number } = {},
 ): Promise<ChatReport[]> {
+  return hydrateReports(await visibleReportRows(viewer, await reportRows(status, opts)));
+}
+
+/**
+ * The open queue exactly as listReports(await getChatViewer(...), "open")
+ * returns it, for a caller with no ChatViewer of its own: the Overview's
+ * attention list, on every render.
+ *
+ * The one thing the rules need to know about the viewer, beyond who they are
+ * and whether they hold chat.manage, is whether they're in a reported DM or
+ * group right now (reportVisibleTo). getChatViewer answers that by reading
+ * every channel they're in — for staff, a DM with every applicant who ever
+ * wrote in, thousands of rows — along with their enrollments, teams and
+ * mentees, none of which a report asks about. This reads their membership of
+ * the reported channels and nothing else, so the answer is the same.
+ */
+export async function listOpenReportsFor(userId: string, caps: Capabilities | null): Promise<ChatReport[]> {
+  const staff = can(caps, "chat.manage");
+  if (!staff) return [];
+  const rows = await reportRows("open");
+  if (rows.length === 0) return [];
   const admin = createAdminClient();
-  const query = () => {
-    let q = admin.from("chat_reports").select(REPORT_COLS);
-    if (status !== "all") q = q.eq("status", status);
-    return q.order("created_at", { ascending: false }).order("id", { ascending: false });
-  };
-  const rows = opts.limit
-    ? ((must(await query().limit(Math.min(opts.limit, PAGE_ROWS)), "reports") ?? []) as any[])
-    : await pageAll<any>((from, to) => query().range(from, to), "reports");
-  return hydrateReports(await visibleReportRows(viewer, rows));
+  const memberOf: string[] = [];
+  await Promise.all(
+    chunks(uniq(rows.map((r) => r.channel_id).filter(isUuid))).map(async (part) => {
+      const mine = await pageAll<{ channel_id: string }>(
+        (from, to) =>
+          admin
+            .from("chat_members")
+            .select("channel_id")
+            .eq("user_id", userId)
+            .in("channel_id", part)
+            .order("channel_id")
+            .range(from, to),
+        "channels",
+      );
+      for (const r of mine) memberOf.push(r.channel_id);
+    }),
+  );
+  return hydrateReports(await visibleReportRows({ userId, staff, memberOf }, rows));
 }
 
 /** One report, or null when it doesn't exist OR this viewer may not see it — the same answer. */

@@ -315,6 +315,21 @@ export function canEditSubmission(status: SubmissionStatus | null | undefined): 
 // Submissions
 // ---------------------------------------------------------------------------
 
+/**
+ * Text as Postgres can store it: without U+0000. A `text` column refuses the
+ * NUL character outright ("unsupported Unicode escape sequence"), and one
+ * pasted into an answer (from a PDF, a terminal, a broken export) made every
+ * draft save fail — so autosave retried forever, backing off — and Submit
+ * fail with it. It carries nothing a reader could see, so it is dropped, the
+ * same way everywhere the work passes: the form as it's typed
+ * (components/assignments/submit-form.tsx), checkDraft and
+ * validateSubmission. Doing it in the form too keeps what the tab holds and
+ * what the server saved the same text, which the draft rules compare.
+ */
+export function storableText(s: string): string {
+  return s.includes("\u0000") ? s.replace(/\u0000/g, "") : s;
+}
+
 /** https only, no whitespace, sane length. Null for an empty field. */
 export function normalizeLink(raw: string | null | undefined): { ok: true; url: string | null } | { ok: false; error: string } {
   const value = (raw ?? "").trim();
@@ -348,9 +363,9 @@ export function validateSubmission(args: {
   body?: string | null;
   link?: string | null;
 }): { ok: true; body: string | null; link: string | null } | { ok: false; error: string } {
-  const body = (args.body ?? "").trim();
+  const body = storableText(args.body ?? "").trim();
   if (body.length > LIMITS.body) return { ok: false, error: `Keep it under ${LIMITS.body} characters.` };
-  const link = args.type === "text" ? ({ ok: true, url: null } as const) : normalizeLink(args.link);
+  const link = args.type === "text" ? ({ ok: true, url: null } as const) : normalizeLink(storableText(args.link ?? ""));
   if (!link.ok) return link;
   if (args.type === "link" && !link.url) return { ok: false, error: "Add a link." };
   if (args.type === "text" && !body) return { ok: false, error: "Write your answer." };

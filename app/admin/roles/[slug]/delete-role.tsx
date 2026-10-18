@@ -4,24 +4,36 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Label, Select } from "@/components/ui/input";
+import { AccessImpact } from "@/components/admin/role-impact";
+import { ADMIN_PAGES } from "@/lib/nav-config";
+import { FIXTURE_NOT_SENT, diffRoleAccess } from "@/lib/role-impact";
 import { deleteRole } from "../actions";
 
 /**
  * Delete a custom role. `profiles.role` is a foreign key, so everyone holding
  * it has to land somewhere — the destination is picked here rather than
  * defaulted, because silently turning three interns into students is exactly
- * the kind of thing you want to have chosen on purpose.
+ * the kind of thing you want to have chosen on purpose. What the move does to
+ * them (lib/role-impact.ts) shows under the choice.
  */
 export function DeleteRole({
   slug,
   label,
+  permissions,
+  homePath,
   members,
   targets,
+  fixture = false,
 }: {
   slug: string;
   label: string;
+  /** What the role being deleted holds, and where it lands its holders. */
+  permissions: readonly string[];
+  homePath: string | null;
   members: number;
-  targets: { slug: string; label: string }[];
+  targets: { slug: string; label: string; permissions: readonly string[]; home_path: string | null }[];
+  /** /dev/roles: Delete never calls the server (FIXTURE_NOT_SENT). */
+  fixture?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -30,9 +42,15 @@ export function DeleteRole({
     targets.find((t) => t.slug === "student")?.slug ?? targets[0]?.slug ?? "",
   );
   const [error, setError] = useState<string | undefined>();
+  const [note, setNote] = useState<string | undefined>();
+  const destination = targets.find((t) => t.slug === reassignTo);
 
   function run() {
     setError(undefined);
+    if (fixture) {
+      setNote(FIXTURE_NOT_SENT);
+      return;
+    }
     start(async () => {
       const res = await deleteRole(slug, reassignTo);
       if (!res.ok) {
@@ -84,6 +102,21 @@ export function DeleteRole({
               ))}
             </Select>
           </div>
+          {members > 0 && destination && (
+            <div>
+              <p className="mb-1.5 text-xs text-ink-faint">
+                Moved to {destination.label},{" "}
+                {members === 1 ? "the person who holds" : `the ${members} people who hold`} {label} would:
+              </p>
+              <AccessImpact
+                showPermissions
+                diff={diffRoleAccess(permissions, destination.permissions, {
+                  pages: ADMIN_PAGES,
+                  home: { before: homePath, after: destination.home_path },
+                })}
+              />
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
@@ -105,6 +138,7 @@ export function DeleteRole({
           {error && (
             <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
           )}
+          {note && <p className="text-sm text-ink-faint">{note}</p>}
         </div>
       )}
     </div>

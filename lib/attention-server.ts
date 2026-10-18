@@ -7,7 +7,7 @@ import { loadFeedbackQueue } from "@/lib/assignments-server";
 import { mentorScope } from "@/lib/mentor-scope";
 import { countTicketsForStaff, listTicketsForStaff } from "@/lib/support";
 import { supportScopeFor } from "@/lib/support-access";
-import { getChannelRow, getChatViewer, listReports } from "@/lib/chat";
+import { getChannelRow, listOpenReportsFor } from "@/lib/chat";
 import { listDueFollowUps } from "@/lib/student-followups-server";
 import { loadUnansweredQuestions } from "@/lib/chat-questions";
 import { displayEmail } from "@/lib/placeholder-email";
@@ -169,9 +169,8 @@ const chatReports: AttentionProvider<AttentionContext> = {
     logged("chat_reports", async () => {
       try {
         // Most days there is no open report at all. Say so from one count,
-        // before resolving the moderator's chat membership (thousands of DM
-        // rows for staff) that judging a report's visibility needs. A GET,
-        // not a HEAD: a HEAD's error has no body to say "does not exist".
+        // before reading anything about the reports. A GET, not a HEAD: a
+        // HEAD's error has no body to say "does not exist".
         const { count, error } = await createAdminClient()
           .from("chat_reports")
           .select("id", { count: "exact" })
@@ -179,10 +178,12 @@ const chatReports: AttentionProvider<AttentionContext> = {
           .limit(1);
         if (error) throw Object.assign(new Error(error.message || "Couldn't count chat reports"), { code: error.code });
         if (count === 0) return { key: "chat_reports", label: "Chat reports", total: 0, href: "/admin/chat", items: [] };
-        const viewer = await getChatViewer(userId, caps);
         // The queue /admin/chat shows, with every report naming this
-        // moderator already left out (lib/chat.ts listReports).
-        const open = await listReports(viewer, "open");
+        // moderator already left out. listOpenReportsFor (lib/chat.ts) is
+        // listReports without resolving the moderator's whole chat
+        // membership (thousands of DM rows for staff) on every Overview
+        // render: it reads their membership of the reported channels only.
+        const open = await listOpenReportsFor(userId, caps);
         // A report this moderator filed is counted (it's in their queue) but
         // isn't theirs to judge, so it isn't a row; the note says so.
         const theirs = open.filter((r) => r.reporterId !== userId);

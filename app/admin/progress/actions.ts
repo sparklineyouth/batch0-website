@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAllPermissions, assertPermission } from "@/lib/server-guards";
-import { runAction, type ActionResult } from "@/lib/action-result";
+import { refuse, runAction, type ActionResult } from "@/lib/action-result";
 import { logAudit } from "@/lib/audit";
 import { isMissingSchemaError } from "@/lib/schema-ready";
 import { easternDate } from "@/lib/assignments";
@@ -18,6 +18,7 @@ import {
   type FollowUpView,
 } from "@/lib/student-followups";
 import {
+  getFollowUpOwner,
   getFollowUpThread,
   listFollowUpOwners,
   type FollowUpOwner,
@@ -111,17 +112,19 @@ export async function saveFollowUp(input: {
     if (!isUuid(input.studentId)) throw new Error("Student not found.");
     const today = easternDate(new Date());
     const parsed = parseFollowUpInput(input, today);
-    if (!parsed.ok) throw new Error(parsed.error);
+    if (!parsed.ok) refuse(parsed.error);
     const { ownerId, nextCheckOn, note } = parsed.value;
 
     const admin = createAdminClient();
-    const [{ data: student }, owners] = await Promise.all([
+    const [{ data: student }, owner] = await Promise.all([
       admin.from("profiles").select("id").eq("id", input.studentId).maybeSingle(),
-      listFollowUpOwners(),
+      // By id: checking against the drawer's list refused anyone past its
+      // first 300 people.
+      getFollowUpOwner(ownerId),
     ]);
     if (!student) throw new Error("Student not found.");
     // The owner must be someone who can update and close it.
-    if (!owners.some((o) => o.id === ownerId)) throw new Error("That person can't own follow-ups.");
+    if (!owner) refuse("That person can't own follow-ups.");
 
     let id: string;
     if (!input.followUpId) {
@@ -145,7 +148,11 @@ export async function saveFollowUp(input: {
           .eq("student_id", input.studentId)
           .eq("status", "open")
           .maybeSingle();
-        const ownerName = open?.owner_id ? owners.find((o) => o.id === open.owner_id)?.name : null;
+        const ownerName = open?.owner_id
+          ? open.owner_id === owner.id
+            ? owner.name
+            : ((await getFollowUpOwner(open.owner_id).catch(() => null))?.name ?? null)
+          : null;
         throw new Error(
           `${ownerName ?? "Someone on the team"} already has an open follow-up for this student. Close the drawer and open it again to see it.`,
         );

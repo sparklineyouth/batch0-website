@@ -12,11 +12,15 @@ import {
   parseDraftStateResponse,
   reconcileDraft,
   sameWork,
+  staleVerdict,
   startingWork,
   submitConflict,
+  UNCONFIRMED_MAX,
+  withUnconfirmed,
   type DraftFailure,
   type DraftRow,
 } from "./assignment-drafts.ts";
+import { storableText, validateSubmission } from "./assignments.ts";
 
 // Run with `npm test`. The SQL half (versions, access, privacy) is
 // lib/assignment-drafts-migration-db.test.ts.
@@ -301,7 +305,7 @@ test("a save or submit whose answer was lost is recognised, not reported as anot
   // A save of "draft, more" landed as v4 without an answer; the tab kept typing.
   assert.deepEqual(
     reconcileDraft(
-      { version: 3, base, work: { body: "draft, more, and more", link: "" }, unconfirmed: { body: "draft, more", link: "" } },
+      { version: 3, base, work: { body: "draft, more, and more", link: "" }, unconfirmed: [{ body: "draft, more", link: "" }] },
       { draft: row({ body: "draft, more", version: 4, updated_at: "T4" }), submission: null },
     ),
     { kind: "landed", version: 4, savedAt: "T4", text: { body: "draft, more", link: "" } },
@@ -393,8 +397,143 @@ test("the form never says saved while an edit is waiting, and sends one as the p
   // beforeunload sends the unsaved text (a keepalive request) or asks first.
   assert.match(form, /if \(atRisk \|\| inFlightRef\.current\) ask = true;\s*else void saveRef\.current\(\);/);
   // Re-read on mount (Back/Forward) and on a stale answer before stopping.
-  assert.match(form, /result\.reason === "stale" && \(await catchUp\(\)\)/);
+  assert.match(form, /if \(result\.reason === "stale"\) \{\s*const caught = await catchUp\(\);/);
   assert.match(form, /if \(r\.kind === "adopt"\) adopt\(r\.start, r\.handedIn\);/);
   // A stale submit asks, and only a yes sends force.
-  assert.match(form, /if \(!force && window\.confirm\(STALE_CONFIRM\)\) \{\s*force = true;\s*continue;/);
+  assert.match(
+    form,
+    /if \(!force && window\.confirm\(verdict === "unread" \? STALE_UNKNOWN_CONFIRM : STALE_CONFIRM\)\) \{\s*force = true;\s*continue;/,
+  );
+});
+
+test("a NUL character is dropped wherever the work passes, so a save can't fail on it forever", () => {
+  // Postgres can't store U+0000: every save of a body holding one errored,
+  // the form retried with a backoff for ever, and Submit failed too.
+  const pasted = "Week 3\u0000 notes\u0000";
+  assert.equal(storableText(pasted), "Week 3 notes");
+  assert.equal(storableText("plain"), "plain");
+  assert.deepEqual(checkDraft({ body: pasted, link: "https://docs.google.com/d/1\u0000" }), {
+    ok: true,
+    body: "Week 3 notes",
+    link: "https://docs.google.com/d/1",
+  });
+  // Only NULs: nothing left to save, the same as an empty field.
+  assert.deepEqual(checkDraft({ body: "\u0000\u0000" }), { ok: true, body: null, link: null });
+  assert.deepEqual(validateSubmission({ type: "text_or_link", body: pasted, link: "https://a.co/x\u0000" }), {
+    ok: true,
+    body: "Week 3 notes",
+    link: "https://a.co/x",
+  });
+  assert.equal(validateSubmission({ type: "text", body: "\u0000" }).ok, false, "a NUL alone is no answer");
+  // The form drops it as it's typed, so the tab holds exactly what the server
+  // saves — the draft rules compare the two, and a tab still holding the NUL
+  // would never read as in step.
+  const form = readFileSync(new URL("../components/assignments/submit-form.tsx", import.meta.url), "utf8");
+  assert.match(form, /next\.body = storableText\(raw\.body\)/);
+  assert.match(form, /next\.link = storableText\(raw\.link\)/);
+});
+
+test("told 'stale', a tab calls it another tab's work only when the read-back says so", () => {
+  const base = { body: "draft", link: "" };
+  const landed = reconcileDraft(
+    { version: 3, base, work: { body: "draft, and more", link: "" }, unconfirmed: [{ body: "draft, more", link: "" }] },
+    { draft: row({ body: "draft, more", version: 4 }), submission: null },
+  );
+  assert.equal(staleVerdict(landed), "synced");
+  assert.equal(staleVerdict(landed, true), "synced", "a submit can build on its own landed save");
+  assert.equal(staleVerdict({ kind: "submitted", version: 4 }, true), "synced");
+  const adopt = reconcileDraft({ version: 3, base, work: base }, { draft: row({ body: "phone", version: 4 }), submission: null });
+  assert.equal(adopt.kind, "adopt");
+  assert.equal(staleVerdict(adopt), "synced");
+  assert.equal(staleVerdict(adopt, true), "conflict", "never swap in another tab's text for the one being submitted");
+  assert.equal(staleVerdict({ kind: "conflict", version: 4 }), "conflict");
+  // A failed read, or one that disagrees with the refusal: nothing is known.
+  assert.equal(staleVerdict(null), "unread");
+  assert.equal(staleVerdict({ kind: "current" }), "unread");
+});
+
+test("Submit after a save that landed with its answer lost: no 'another tab' question", () => {
+  // The tab saved "draft, more" on v3; it landed as v4 but the answer was
+  // lost, so the tab still holds v3. It typed on, then pressed Submit.
+  const typed = { body: "draft, more, done", link: "" };
+  const draft = row({ body: "draft, more", version: 4 });
+  // As sent, the server can't tell this tab from another device: stale.
+  assert.deepEqual(submitConflict({ known: 3, draft, submission: null, input: typed }), { stale: true, upTo: 3 });
+  // The form reads the draft back first; the newer version is its own text…
+  const r = reconcileDraft(
+    { version: 3, base: { body: "draft", link: "" }, work: typed, unconfirmed: [{ body: "draft, more", link: "" }] },
+    { draft, submission: null },
+  );
+  assert.equal(staleVerdict(r, true), "synced");
+  assert.equal(r.kind === "landed" && r.version, 4);
+  // …so it sends again on v4, which goes through and clears up to it.
+  assert.deepEqual(submitConflict({ known: 4, draft, submission: null, input: typed }), { stale: false, upTo: 4 });
+
+  const form = readFileSync(new URL("../components/assignments/submit-form.tsx", import.meta.url), "utf8");
+  const stale = form.slice(form.indexOf('res.data?.outcome === "stale"'));
+  const readBack = stale.indexOf("await catchUpRef.current(true)");
+  const confirm = stale.indexOf("window.confirm(");
+  assert.ok(readBack > 0 && readBack < confirm, "the draft is read back before the student is asked");
+  assert.match(stale, /if \(verdict === "synced"\) continue;/);
+  // And a stale autosave whose read-back failed retries instead of stopping
+  // as "changed in another tab".
+  assert.match(form, /if \(caught === "unread"\) result = \{ ok: false, reason: "error" \};/);
+});
+
+test("two unanswered saves in a row, only the first of which landed: still this tab's own, not another device's", () => {
+  // The tab is on v1. "A" reaches the server and lands as v2, but its answer
+  // is lost. The student types on, offline: the retry of "AB" fails before it
+  // leaves. Back online, "ABC" (still naming v1) is refused as stale, and the
+  // read-back says v2 = "A". Remembering only the latest unanswered save
+  // ("AB") read that as another device's work, and Submit asked "Newer work
+  // was saved … in another tab or on another device" about this tab's own.
+  const base = { body: "", link: "" };
+  let unconfirmed = withUnconfirmed([], { body: "A", link: "" });
+  unconfirmed = withUnconfirmed(unconfirmed, { body: "AB", link: "" });
+  assert.deepEqual(unconfirmed, [{ body: "A", link: "" }, { body: "AB", link: "" }], "both kept, oldest first");
+  const remote = { draft: row({ body: "A", version: 2, updated_at: "T2" }), submission: null };
+  const r = reconcileDraft({ version: 1, base, work: { body: "ABC", link: "" }, unconfirmed }, remote);
+  assert.deepEqual(r, { kind: "landed", version: 2, savedAt: "T2", text: { body: "A", link: "" } });
+  assert.equal(staleVerdict(r), "synced");
+  assert.equal(staleVerdict(r, true), "synced", "a submit sends again on v2, no question");
+  // The old rule, for the record: only the latest remembered → a false conflict.
+  assert.equal(
+    reconcileDraft({ version: 1, base, work: { body: "ABC", link: "" }, unconfirmed: [{ body: "AB", link: "" }] }, remote).kind,
+    "conflict",
+  );
+  // Text this tab never sent is still another device's.
+  assert.equal(
+    reconcileDraft(
+      { version: 1, base, work: { body: "ABC", link: "" }, unconfirmed },
+      { draft: row({ body: "from the phone", version: 2 }), submission: null },
+    ).kind,
+    "conflict",
+  );
+});
+
+test("unanswered saves are remembered once each, and a long offline stretch can't grow the list without bound", () => {
+  const a = { body: "A", link: "" };
+  assert.deepEqual(withUnconfirmed([a], { body: "A", link: "" }), [a], "a retry of the same text adds nothing");
+  assert.deepEqual(withUnconfirmed([a], { body: "A", link: "https://x.co" }).length, 2, "the link counts too");
+  let list: { body: string; link: string }[] = [];
+  for (let i = 0; i < 200; i++) list = withUnconfirmed(list, { body: `v${i}`, link: "" });
+  assert.equal(list.length, UNCONFIRMED_MAX);
+  // The first is the likeliest to have landed (its answer lost as the
+  // connection went), so it's the one kept when the middle goes.
+  assert.equal(list[0].body, "v0");
+  assert.equal(list.at(-1)!.body, "v199");
+  assert.equal(list[1].body, `v${200 - UNCONFIRMED_MAX + 1}`);
+});
+
+test("the form adds each unanswered save to the list rather than replacing it, and clears it once in step", () => {
+  const form = readFileSync(new URL("../components/assignments/submit-form.tsx", import.meta.url), "utf8");
+  assert.match(form, /useRef<SentWork\[\]>\(\[\]\)/);
+  assert.match(
+    form,
+    /if \(result\.reason === "error"\) unconfirmedRef\.current = withUnconfirmed\(unconfirmedRef\.current, snapshot\);/,
+  );
+  assert.doesNotMatch(form, /unconfirmedRef\.current = snapshot/);
+  assert.doesNotMatch(form, /unconfirmedRef\.current = null/);
+  // Both read-backs (mount and stale) pass the whole list.
+  assert.equal(form.match(/unconfirmed: unconfirmedRef\.current,/g)?.length, 2);
 });

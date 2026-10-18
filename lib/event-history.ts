@@ -173,6 +173,24 @@ export function recordingLink(
 }
 
 /**
+ * The sessions /dashboard/events leads with — live now, then still ahead —
+ * or null on a later page of history, which shows neither. "Upcoming" already
+ * stopped at page one; "Live now" didn't, so a session running today headed
+ * page 4 of last spring's, above a "Past · Page 4" it has nothing to do with.
+ * `rows` are the last day's sessions with their studentEventStatus.
+ */
+export function currentSessions<T extends { s: string }>(
+  page: number,
+  rows: readonly T[],
+): { live: T[]; upcoming: T[] } | null {
+  if (page !== 1) return null;
+  return {
+    live: rows.filter((x) => x.s === "live"),
+    upcoming: rows.filter((x) => x.s === "upcoming" || x.s === "open"),
+  };
+}
+
+/**
  * One page of /dashboard/events' past list, before the recordings filter.
  * Page one leads with the last day's ended sessions (the upcoming query read
  * those; pass them newest first), then that page of older history. Later

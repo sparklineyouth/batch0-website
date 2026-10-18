@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Search, X, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { SEARCH_QUERY_MAX } from "@/lib/support-access";
+import { askedFor, pageRendered, startQuerySync } from "@/lib/search-url-sync";
 
 /**
  * Search-as-you-type box for the support queue — the People search
@@ -41,27 +42,30 @@ export function SupportSearch({
     paramsRef.current = params;
   }, [params]);
 
-  // The query the URL holds as far as this box knows: the one it last asked
-  // for, or the one the page last rendered with. Typing navigates only when
-  // it would change that — which is also what stops landing on the page from
-  // re-navigating.
-  const shown = useRef(initialQuery);
+  // The query the URL holds as far as this box knows (`shown`: the one it
+  // last asked for, or the one the page last rendered with), and the searches
+  // it has asked for that haven't rendered yet (lib/search-url-sync.ts).
+  // Typing navigates only when it would change `shown` — which is also what
+  // stops landing on the page from re-navigating.
+  const sync = useRef(startQuerySync(initialQuery));
 
   // The URL's ?q= can change without the box: Back, or the empty state's
   // "Clear search". Follow it, or the box keeps saying "smith" over a list
   // that isn't filtered. The echo of the box's own navigation is ignored —
-  // it arrives while the person may already have typed further.
+  // it arrives while the person may already have typed further — and that
+  // includes an older search's render landing after a newer one was sent,
+  // which used to put "smi" back over "smith" mid-word.
   useEffect(() => {
-    if (initialQuery === shown.current) return;
-    shown.current = initialQuery;
-    setValue(initialQuery);
+    const next = pageRendered(sync.current, initialQuery);
+    sync.current = next.sync;
+    if (next.follow) setValue(initialQuery);
   }, [initialQuery]);
 
   useEffect(() => {
     const q = value.trim();
-    if (q === shown.current) return;
+    if (q === sync.current.shown) return;
     const t = setTimeout(() => {
-      shown.current = q;
+      sync.current = askedFor(sync.current, q);
       const next = new URLSearchParams(paramsRef.current);
       if (q) next.set("q", q);
       else next.delete("q");
