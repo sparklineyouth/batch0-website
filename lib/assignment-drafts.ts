@@ -7,6 +7,13 @@
  * nothing staff see reads it, and Submit stays the one explicit way to hand
  * work in. Every save names the version it was typed on top of, so a tab left
  * open on an older copy is told it's stale instead of overwriting newer text.
+ * The version only ever goes up: a submit empties the row (`cleared_at`)
+ * rather than deleting it, so an old number can never match a newer draft.
+ *
+ * Saves go over a plain route (app/api/assignments/[id]/draft), not a server
+ * action, so a save sent as the page closes is a keepalive request the
+ * browser finishes after the page is gone, and a signed-out session is a 401
+ * the form can name rather than a redirect it can't tell from an outage.
  */
 import { LIMITS, normalizeLink } from "./assignments.ts";
 
@@ -21,7 +28,21 @@ export type DraftRow = {
   link_url: string | null;
   version: number;
   updated_at: string;
+  /** Set when a submit cleared it: no draft, though the version still counts. */
+  cleared_at?: string | null;
 };
+
+/** The submission as the form compares against it. */
+export type SubmissionSnapshot = {
+  body: string | null;
+  link_url: string | null;
+  submitted_at: string | null;
+};
+
+/** What GET /api/assignments/<id>/draft answers: the draft and submission as they stand now. */
+export type DraftState =
+  | { state: "ready"; draft: DraftRow | null; submission: SubmissionSnapshot | null }
+  | { state: "not_ready" };
 
 /** What the pages pass the form: whether drafts work here, and the row if any. */
 export type DraftLoad =
@@ -42,6 +63,18 @@ export type DraftFailure =
   | "too_long"
   | "rate_limited"
   | "error";
+
+const DRAFT_FAILURES: readonly DraftFailure[] = [
+  "stale",
+  "closed",
+  "forbidden",
+  "locked",
+  "signed_out",
+  "not_ready",
+  "too_long",
+  "rate_limited",
+  "error",
+];
 
 export type DraftSaveResult =
   | { ok: true; version: number; savedAt: string }
@@ -100,6 +133,75 @@ export function interpretDraftSave(data: unknown): DraftSaveResult {
   }
 }
 
+const isVersion = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
+
+/**
+ * The draft route's answer to a save → a result. 401 is the one way to be
+ * told "signed out" (the route says it only when Auth rejected the session,
+ * not when Auth was unreachable); any other non-200, or a body that isn't
+ * the route's (a proxy's error page), is an error worth retrying.
+ */
+export function parseDraftSaveResponse(status: number, data: unknown): DraftSaveResult {
+  if (status === 401) return { ok: false, reason: "signed_out" };
+  if (status !== 200 || !data || typeof data !== "object") return { ok: false, reason: "error" };
+  const r = data as { ok?: unknown; version?: unknown; savedAt?: unknown; reason?: unknown };
+  if (r.ok === true) {
+    return isVersion(r.version) && r.version > 0 && typeof r.savedAt === "string"
+      ? { ok: true, version: r.version, savedAt: r.savedAt }
+      : { ok: false, reason: "error" };
+  }
+  if (r.ok === false && DRAFT_FAILURES.includes(r.reason as DraftFailure)) {
+    const out: { ok: false; reason: DraftFailure; version?: number | null } = {
+      ok: false,
+      reason: r.reason as DraftFailure,
+    };
+    if (r.version === null || isVersion(r.version)) out.version = r.version;
+    return out;
+  }
+  return { ok: false, reason: "error" };
+}
+
+/** The draft route's answer to a read → the state, or null when it couldn't say. */
+export function parseDraftStateResponse(status: number, data: unknown): DraftState | null {
+  if (status !== 200 || !data || typeof data !== "object") return null;
+  const r = data as { state?: unknown; draft?: unknown; submission?: unknown };
+  if (r.state === "not_ready") return { state: "not_ready" };
+  if (r.state !== "ready") return null;
+  const str = (v: unknown) => (typeof v === "string" ? v : null);
+  let draft: DraftRow | null = null;
+  if (r.draft) {
+    const d = r.draft as Record<string, unknown>;
+    if (!isVersion(d.version) || d.version < 1 || typeof d.updated_at !== "string") return null;
+    draft = {
+      body: str(d.body),
+      link_url: str(d.link_url),
+      version: d.version,
+      updated_at: d.updated_at,
+      cleared_at: str(d.cleared_at),
+    };
+  }
+  let submission: SubmissionSnapshot | null = null;
+  if (r.submission) {
+    const sub = r.submission as Record<string, unknown>;
+    submission = { body: str(sub.body), link_url: str(sub.link_url), submitted_at: str(sub.submitted_at) };
+  }
+  return { state: "ready", draft, submission };
+}
+
+/**
+ * Whether a failed Auth check means the session is gone (sign in again) or
+ * only that Auth couldn't answer (retry). supabase-js returns, rather than
+ * throws, both: a 401/403 or a missing session is the first; a network
+ * failure or a 5xx is the second, and calling that "signed out" would stop
+ * autosave for the rest of the visit over one dropped request. The same rule
+ * as app/apply/actions.ts.
+ */
+export function authRejectedSession(error: unknown): boolean {
+  if (!error || typeof error !== "object") return true;
+  const e = error as { status?: unknown; name?: unknown };
+  return e.status === 401 || e.status === 403 || e.name === "AuthSessionMissingError";
+}
+
 type Work = { body: string | null | undefined; link: string | null | undefined };
 
 /** A link the way submitAssignment would store it, so "https://x.co" and "https://x.co/" agree. */
@@ -140,7 +242,7 @@ export type StartingWork = {
  * One saved before the last submit was overtaken by it (submitted from another
  * tab that didn't know about it, say): the submission is what the student last
  * chose, so it shows instead. Compared with submitted_at, not updated_at,
- * which moves when a reviewer returns the work.
+ * which moves when a reviewer returns the work. A cleared draft is no draft.
  */
 export function startingWork(args: {
   submission: { body: string | null; link_url: string | null; submitted_at: string | null } | null;
@@ -155,7 +257,8 @@ export function startingWork(args: {
     restoredAt: null,
     unsubmitted: false,
   };
-  if (!d) return fromSubmission;
+  // A cleared row is what a submit left behind: the submission is the text.
+  if (!d || d.cleared_at) return fromSubmission;
   const draftAt = Date.parse(d.updated_at);
   const submittedAt = s?.submitted_at ? Date.parse(s.submitted_at) : NaN;
   if (s && Number.isFinite(submittedAt) && !(draftAt > submittedAt)) return fromSubmission;
@@ -165,6 +268,127 @@ export function startingWork(args: {
   // in) restores nothing worth announcing.
   if (!unsubmitted) return { ...fromSubmission, ...work };
   return { ...work, version, restoredAt: d.updated_at, unsubmitted };
+}
+
+/** The form's text as a save sends it: the link is "" on a text-only assignment. */
+export type SentWork = { body: string; link: string };
+
+export type Reconciled =
+  /** The server is where this tab thinks it is. */
+  | { kind: "current" }
+  /**
+   * It moved on, to text this tab sent: the form's own text, or a save whose
+   * answer was lost. Build on it — `text` is now what the server holds.
+   */
+  | { kind: "landed"; version: number; savedAt: string; text: SentWork }
+  /** A submit from this tab whose answer was lost went through. */
+  | { kind: "submitted"; version: number }
+  /** It moved on and this tab has no edits of its own: show the newer text. */
+  | { kind: "adopt"; start: StartingWork; handedIn: SentWork | null }
+  /** It moved on, and this tab has edits that would overwrite it. */
+  | { kind: "conflict"; version: number };
+
+/**
+ * Bring a tab up to date with the draft as it stands now.
+ *
+ * The page's props can be old. Next's Back/Forward restores the page from the
+ * router cache — the payload from the first visit — so a student who typed a
+ * paragraph, followed a link and pressed Back gets the form as it was before
+ * they typed: empty, at the old version. And a save or submit can land without
+ * its answer arriving (a dropped connection), leaving the tab a version behind
+ * its own write. The form reads the draft again on mount and on a "stale"
+ * answer, and this decides what to do:
+ *
+ *   - a submit of ours that got no answer, and the submission now says
+ *     exactly that → it went through;
+ *   - the draft hasn't moved past this tab → nothing to do;
+ *   - it moved on to text this tab sent (now, or in a save that got no
+ *     answer) → take its version and carry on;
+ *   - this tab hasn't typed anything since it last synced (Back) → show the
+ *     newer text;
+ *   - otherwise this tab's edits would overwrite newer work → conflict, the
+ *     student's call.
+ */
+export function reconcileDraft(
+  local: {
+    version: number;
+    base: SentWork;
+    work: SentWork;
+    unconfirmed?: SentWork | null;
+    pendingSubmit?: SentWork | null;
+  },
+  remote: { draft: DraftRow | null; submission: SubmissionSnapshot | null },
+): Reconciled {
+  const d = remote.draft;
+  const s = remote.submission;
+  const version = d && Number.isInteger(d.version) && d.version > 0 ? d.version : 0;
+  if (
+    local.pendingSubmit &&
+    s &&
+    sameWork(local.pendingSubmit, { body: s.body, link: s.link_url }) &&
+    (!d || d.cleared_at || version <= local.version)
+  ) {
+    return { kind: "submitted", version: d?.cleared_at ? version : local.version };
+  }
+  if (version <= local.version) return { kind: "current" };
+  if (d && !d.cleared_at) {
+    const text = { body: d.body ?? "", link: d.link_url ?? "" };
+    for (const mine of [local.work, local.unconfirmed]) {
+      if (mine && mine.body === text.body && mine.link === text.link) {
+        return { kind: "landed", version, savedAt: d.updated_at, text };
+      }
+    }
+  }
+  if (local.work.body === local.base.body && local.work.link === local.base.link) {
+    return {
+      kind: "adopt",
+      start: startingWork({ submission: s, draft: d }),
+      handedIn: s ? { body: s.body ?? "", link: s.link_url ?? "" } : null,
+    };
+  }
+  return { kind: "conflict", version };
+}
+
+/** submitAssignment's answer when it ran (the ActionResult's data). */
+export type SubmitOutcome =
+  | { outcome: "submitted"; draftVersion: number }
+  /**
+   * Nothing was handed in: since this tab last saved, newer text was saved,
+   * or another one was submitted, in another tab or on another device. Ask,
+   * then send again with `force`.
+   */
+  | { outcome: "stale" };
+
+/**
+ * Whether a submit would hand in over text this tab never saw, and how far
+ * the draft it leaves behind may be cleared.
+ *
+ * `known` is the draft version the submitting tab last saved or loaded (null:
+ * autosave isn't running there, so there's nothing to compare — the form
+ * behaves as it did before drafts). A draft that has moved past it was saved
+ * from somewhere else — unless it holds exactly the text being submitted, or
+ * is a clear whose submission is this text (the same submit, sent again after
+ * its answer was lost); neither is overwriting anything. `force` is the
+ * student having been asked and said yes. Clearing goes up to the newest
+ * version this submit accounts for, so a draft saved after it is left alone.
+ */
+export function submitConflict(args: {
+  known: number | null;
+  draft: DraftRow | null;
+  submission: SubmissionSnapshot | null;
+  input: SentWork;
+  force?: boolean;
+}): { stale: boolean; upTo: number } {
+  if (args.known === null) return { stale: false, upTo: 0 };
+  const known = Math.max(0, args.known);
+  const d = args.draft;
+  const current = d && d.version > 0 ? d.version : 0;
+  if (current <= known) return { stale: false, upTo: known };
+  const same = d!.cleared_at
+    ? !!args.submission && sameWork(args.input, { body: args.submission.body, link: args.submission.link_url })
+    : sameWork(args.input, { body: d!.body, link: d!.link_url });
+  if (args.force || same) return { stale: false, upTo: current };
+  return { stale: true, upTo: known };
 }
 
 /** What the small line under the form says. */

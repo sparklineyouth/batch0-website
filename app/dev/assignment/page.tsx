@@ -14,6 +14,8 @@ import { AssignmentDraftHarness, type Scenario } from "./harness";
  *                      A, then in B — B is refused as stale and says so
  *   ?scenario=fresh    nothing handed in, no draft
  *   ?scenario=flaky    the first two saves fail, then it recovers
+ *   ?scenario=lost     the first save lands but its answer is lost; the
+ *                      retry is recognised as that same save, not "stale"
  *   ?scenario=revoked  the student lost access: saving stops at once
  *   ?scenario=off      before 0105 runs: no autosave, as before drafts
  */
@@ -22,7 +24,7 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-const SCENARIOS: readonly Scenario[] = ["tabs", "fresh", "flaky", "revoked", "off"];
+const SCENARIOS: readonly Scenario[] = ["tabs", "fresh", "flaky", "lost", "revoked", "off"];
 
 export default async function AssignmentDraftPreviewPage(props: {
   searchParams: Promise<{ scenario?: string }>;

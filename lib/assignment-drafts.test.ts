@@ -2,14 +2,20 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  authRejectedSession,
   checkDraft,
   draftRetryDelay,
   draftStatusLine,
   interpretDraftSave,
   isFinalDraftFailure,
+  parseDraftSaveResponse,
+  parseDraftStateResponse,
+  reconcileDraft,
   sameWork,
   startingWork,
+  submitConflict,
   type DraftFailure,
+  type DraftRow,
 } from "./assignment-drafts.ts";
 
 // Run with `npm test`. The SQL half (versions, access, privacy) is
@@ -149,7 +155,7 @@ test("the status line says what's true", () => {
 
 test("drafts stay out of everything staff see", () => {
   // The submissions the staff surfaces read are a different table, and the
-  // only reader of the drafts table is the student's own page.
+  // only readers of the drafts table are the student's own page and route.
   for (const p of [
     "lib/assignments-server.ts",
     "app/admin/assignments/actions.ts",
@@ -163,19 +169,232 @@ test("drafts stay out of everything staff see", () => {
   }
   const server = readFileSync(new URL("../lib/assignments-server.ts", import.meta.url), "utf8");
   assert.match(server, /export async function loadAssignmentDraft\(db: Db, userId: string, assignmentId: string\)/);
-  const actions = readFileSync(new URL("../app/dashboard/assignments/actions.ts", import.meta.url), "utf8");
-  const saver = actions.slice(actions.indexOf("export async function saveAssignmentDraft"));
+  // Code only: the comments say what it doesn't do.
+  const saver = readFileSync(new URL("../lib/assignment-drafts-server.ts", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
   // Autosave never writes a submission, bells anyone, or redirects.
   assert.doesNotMatch(saver, /course_assignment_submissions|notify|revalidatePath|redirect\(/);
   assert.match(saver, /rpc\("save_course_assignment_draft"/);
-  // Submitting clears only the draft versions this tab knew about.
-  assert.match(actions, /\.lte\("version", knownDraft\)/);
+  const actions = readFileSync(new URL("../app/dashboard/assignments/actions.ts", import.meta.url), "utf8");
+  // Submitting empties the draft (never deletes it, which would restart its
+  // version) and only up to what this submit accounted for.
+  assert.doesNotMatch(actions, /\.delete\(\)/);
+  assert.match(actions, /rpc\("clear_course_assignment_draft"/);
+  assert.match(actions, /p_up_to_version: conflict\.upTo/);
+  assert.match(actions, /if \(conflict\.stale\) return \{ outcome: "stale" as const \};/);
+  // The stale check runs before the submission is written.
+  assert.ok(actions.indexOf("conflict.stale") < actions.indexOf('from("course_assignment_submissions").upsert('));
+});
+
+test("the draft route: same-origin writes, the user from the session, 401 only for a rejected session", () => {
+  const route = readFileSync(new URL("../app/api/assignments/[id]/draft/route.ts", import.meta.url), "utf8");
+  assert.match(route, /if \(!sameOrigin\(req\)\)/);
+  assert.match(route, /const who = await draftAuthor\(\);/);
+  assert.match(route, /who\.code === "signed_out"[\s\S]*?401\)[\s\S]*?503\)/);
+  assert.match(route, /saveDraftAs\(who\.userId, \{\s*assignmentId: id,/);
+  assert.match(route, /private, no-store/);
+  // Reads through the student's own client (the owner-only policy decides).
+  assert.match(route, /loadAssignmentDraft\(supabase, user\.id, id\)/);
+  assert.doesNotMatch(route, /createAdminClient/);
+  // /api isn't behind middleware's sign-in redirect, which turned a signed-out
+  // server-action save into an unreadable response.
+  const mw = readFileSync(new URL("../lib/supabase/middleware.ts", import.meta.url), "utf8");
+  const protectedBlock = mw.slice(mw.indexOf("const protectedPath ="), mw.indexOf("const authPath ="));
+  assert.doesNotMatch(protectedBlock, /"\/api/);
+  const server = readFileSync(new URL("../lib/assignment-drafts-server.ts", import.meta.url), "utf8");
+  assert.match(server, /if \(authRejectedSession\(error\)\) return \{ code: "signed_out" \};/);
+});
+
+test("signed out means Auth rejected the session — not that Auth was unreachable", () => {
+  assert.equal(authRejectedSession({ name: "AuthSessionMissingError", status: 400 }), true);
+  assert.equal(authRejectedSession({ name: "AuthApiError", status: 401 }), true);
+  assert.equal(authRejectedSession({ name: "AuthApiError", status: 403 }), true);
+  assert.equal(authRejectedSession(null), true);
+  // A network failure or a GoTrue 5xx is retried, not reported as a sign-out.
+  assert.equal(authRejectedSession({ name: "AuthRetryableFetchError", status: 0 }), false);
+  assert.equal(authRejectedSession({ name: "AuthRetryableFetchError", status: 503 }), false);
+  assert.equal(authRejectedSession({ name: "AuthUnknownError" }), false);
+});
+
+test("the route's answers, as the form reads them", () => {
+  assert.deepEqual(parseDraftSaveResponse(200, { ok: true, version: 3, savedAt: "T" }), { ok: true, version: 3, savedAt: "T" });
+  assert.deepEqual(parseDraftSaveResponse(200, { ok: false, reason: "stale", version: 4 }), { ok: false, reason: "stale", version: 4 });
+  assert.deepEqual(parseDraftSaveResponse(200, { ok: false, reason: "forbidden" }), { ok: false, reason: "forbidden" });
+  assert.deepEqual(parseDraftSaveResponse(401, { ok: false, reason: "signed_out" }), { ok: false, reason: "signed_out" });
+  // 401 is signed out whatever the body; anything else unexpected retries.
+  assert.deepEqual(parseDraftSaveResponse(401, null), { ok: false, reason: "signed_out" });
+  assert.deepEqual(parseDraftSaveResponse(503, { ok: false, reason: "error" }), { ok: false, reason: "error" });
+  assert.deepEqual(parseDraftSaveResponse(502, "<html>Bad gateway</html>"), { ok: false, reason: "error" });
+  assert.deepEqual(parseDraftSaveResponse(200, { ok: true, version: 0, savedAt: "T" }), { ok: false, reason: "error" });
+  assert.deepEqual(parseDraftSaveResponse(200, { ok: false, reason: "made_up" }), { ok: false, reason: "error" });
+  // A 200 can't say "signed_out" is anything but what it says, either.
+  assert.deepEqual(parseDraftSaveResponse(200, { ok: false, reason: "signed_out" }), { ok: false, reason: "signed_out" });
+
+  const row = { body: "b", link_url: null, version: 2, updated_at: "T", cleared_at: null };
+  assert.deepEqual(parseDraftStateResponse(200, { state: "ready", draft: row, submission: null }), {
+    state: "ready",
+    draft: row,
+    submission: null,
+  });
+  assert.deepEqual(parseDraftStateResponse(200, { state: "not_ready" }), { state: "not_ready" });
+  assert.equal(parseDraftStateResponse(503, { error: "unavailable" }), null);
+  assert.equal(parseDraftStateResponse(200, { state: "ready", draft: { version: "2" } }), null);
+  assert.equal(parseDraftStateResponse(200, null), null);
+});
+
+const row = (r: Partial<DraftRow>): DraftRow => ({
+  body: null,
+  link_url: null,
+  version: 1,
+  updated_at: "2026-10-17T16:00:00Z",
+  cleared_at: null,
+  ...r,
+});
+
+test("reload after a submit: a cleared draft shows the submission and keeps counting", () => {
+  assert.deepEqual(
+    startingWork({ submission: SUBMITTED, draft: row({ version: 7, updated_at: "2026-10-17T15:00:01Z", cleared_at: "2026-10-17T15:00:01Z" }) }),
+    { body: "handed in", link: "", version: 7, restoredAt: null, unsubmitted: false },
+  );
+});
+
+test("Back shows the first visit's copy: the form takes the newer draft if nothing was typed", () => {
+  const empty = { body: "", link: "" };
+  // Opened with no draft, typed a paragraph (saved as v2), left, pressed Back.
+  const back = reconcileDraft(
+    { version: 0, base: empty, work: empty },
+    { draft: row({ body: "a paragraph", version: 2 }), submission: null },
+  );
+  assert.equal(back.kind, "adopt");
+  assert.deepEqual(back.kind === "adopt" && back.start, {
+    body: "a paragraph",
+    link: "",
+    version: 2,
+    restoredAt: "2026-10-17T16:00:00Z",
+    unsubmitted: true,
+  });
+  // Typed already in this copy: that's a conflict for the student, never a silent overwrite.
+  assert.deepEqual(
+    reconcileDraft(
+      { version: 0, base: empty, work: { body: "new words", link: "" } },
+      { draft: row({ body: "a paragraph", version: 2 }), submission: null },
+    ),
+    { kind: "conflict", version: 2 },
+  );
+  // Submitted elsewhere since: the cleared draft means the submission is the text.
+  const submitted = reconcileDraft(
+    { version: 2, base: { body: "a paragraph", link: "" }, work: { body: "a paragraph", link: "" } },
+    { draft: row({ version: 3, cleared_at: "2026-10-17T16:01:00Z" }), submission: { ...SUBMITTED, body: "a paragraph" } },
+  );
+  assert.equal(submitted.kind === "adopt" && submitted.start.body, "a paragraph");
+  assert.deepEqual(submitted.kind === "adopt" && submitted.handedIn, { body: "a paragraph", link: "" });
+  // Fresh page: nothing to do.
+  assert.deepEqual(
+    reconcileDraft({ version: 2, base: empty, work: empty }, { draft: row({ version: 2 }), submission: null }),
+    { kind: "current" },
+  );
+});
+
+test("a save or submit whose answer was lost is recognised, not reported as another tab", () => {
+  const base = { body: "draft", link: "" };
+  // A save of "draft, more" landed as v4 without an answer; the tab kept typing.
+  assert.deepEqual(
+    reconcileDraft(
+      { version: 3, base, work: { body: "draft, more, and more", link: "" }, unconfirmed: { body: "draft, more", link: "" } },
+      { draft: row({ body: "draft, more", version: 4, updated_at: "T4" }), submission: null },
+    ),
+    { kind: "landed", version: 4, savedAt: "T4", text: { body: "draft, more", link: "" } },
+  );
+  // …or holds exactly what the form shows.
+  assert.equal(
+    reconcileDraft(
+      { version: 3, base, work: { body: "draft, more", link: "" } },
+      { draft: row({ body: "draft, more", version: 4 }), submission: null },
+    ).kind,
+    "landed",
+  );
+  // A submit with no answer: the draft was cleared for exactly this text.
+  assert.deepEqual(
+    reconcileDraft(
+      { version: 3, base, work: base, pendingSubmit: { body: "draft", link: "" } },
+      { draft: row({ version: 4, cleared_at: "C" }), submission: { ...SUBMITTED, body: "draft" } },
+    ),
+    { kind: "submitted", version: 4 },
+  );
+  // With no draft to clear, the submission saying exactly this is enough.
+  assert.deepEqual(
+    reconcileDraft(
+      { version: 0, base: { body: "", link: "" }, work: base, pendingSubmit: base },
+      { draft: null, submission: { ...SUBMITTED, body: "draft" } },
+    ),
+    { kind: "submitted", version: 0 },
+  );
+  // A different submission isn't ours.
+  assert.notEqual(
+    reconcileDraft(
+      { version: 3, base, work: { body: "edited", link: "" }, pendingSubmit: { body: "edited", link: "" } },
+      { draft: row({ version: 4, cleared_at: "C" }), submission: { ...SUBMITTED, body: "from the phone" } },
+    ).kind,
+    "submitted",
+  );
+});
+
+test("Submit from a tab that's behind is refused unless it's the same text or the student says so", () => {
+  const input = { body: "laptop text", link: "" };
+  // No autosave in that tab: nothing to compare, nothing cleared.
+  assert.deepEqual(submitConflict({ known: null, draft: row({ version: 9 }), submission: null, input }), { stale: false, upTo: 0 });
+  // In step.
+  assert.deepEqual(submitConflict({ known: 3, draft: row({ version: 3 }), submission: null, input }), { stale: false, upTo: 3 });
+  assert.deepEqual(submitConflict({ known: 0, draft: null, submission: null, input }), { stale: false, upTo: 0 });
+  // The phone saved v4 since: stale…
+  assert.deepEqual(
+    submitConflict({ known: 3, draft: row({ version: 4, body: "phone text" }), submission: null, input }),
+    { stale: true, upTo: 3 },
+  );
+  // …or submitted it (cleared, v5).
+  assert.deepEqual(
+    submitConflict({ known: 3, draft: row({ version: 5, cleared_at: "C" }), submission: { ...SUBMITTED, body: "phone text" }, input }),
+    { stale: true, upTo: 3 },
+  );
+  // Asked and confirmed: hand it in and clear up to what it overrode.
+  assert.deepEqual(
+    submitConflict({ known: 3, draft: row({ version: 4, body: "phone text" }), submission: null, input, force: true }),
+    { stale: false, upTo: 4 },
+  );
+  // The same submit sent again after its answer was lost.
+  assert.deepEqual(
+    submitConflict({ known: 3, draft: row({ version: 4, cleared_at: "C" }), submission: { ...SUBMITTED, body: "laptop text" }, input }),
+    { stale: false, upTo: 4 },
+  );
+  // A newer draft holding exactly this text overwrites nothing.
+  assert.deepEqual(
+    submitConflict({ known: 3, draft: row({ version: 4, body: "laptop text\n" }), submission: null, input }),
+    { stale: false, upTo: 4 },
+  );
 });
 
 test("before 0105 runs, the form behaves as it did without drafts", () => {
   const form = readFileSync(new URL("../components/assignments/submit-form.tsx", import.meta.url), "utf8");
   assert.match(form, /const enabled = autosave === "on";/);
   assert.match(form, /if \(!enabled \|\| stoppedRef\.current \|\| submittingRef\.current\) return;/);
+  // No version is sent, so Submit compares and clears nothing (as before).
+  assert.match(form, /draftVersion: enabled \? versionRef\.current : null,/);
+  // And no unload prompt the old form didn't have.
+  assert.match(form, /if \(autosave === "off"\) return;/);
   const detail = readFileSync(new URL("../components/assignments/assignment-detail.tsx", import.meta.url), "utf8");
   assert.match(detail, /autosave=\{draft\.state === "ready" \? "on" : draft\.state === "failed" \? "failed" : "off"\}/);
+});
+
+test("the form never says saved while an edit is waiting, and sends one as the page closes", () => {
+  const form = readFileSync(new URL("../components/assignments/submit-form.tsx", import.meta.url), "utf8");
+  // Dirty text reads "Saving draft…", not the last save's time.
+  assert.match(form, /enabled && dirty && \(status\.kind === "idle" \|\| status\.kind === "restored" \|\| status\.kind === "saved"\)/);
+  // beforeunload sends the unsaved text (a keepalive request) or asks first.
+  assert.match(form, /if \(atRisk \|\| inFlightRef\.current\) ask = true;\s*else void saveRef\.current\(\);/);
+  // Re-read on mount (Back/Forward) and on a stale answer before stopping.
+  assert.match(form, /result\.reason === "stale" && \(await catchUp\(\)\)/);
+  assert.match(form, /if \(r\.kind === "adopt"\) adopt\(r\.start, r\.handedIn\);/);
+  // A stale submit asks, and only a yes sends force.
+  assert.match(form, /if \(!force && window\.confirm\(STALE_CONFIRM\)\) \{\s*force = true;\s*continue;/);
 });

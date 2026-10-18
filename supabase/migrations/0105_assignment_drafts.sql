@@ -16,14 +16,22 @@
 -- assignment table. Submitting copies the text into
 -- course_assignment_submissions (the server action), then clears the draft.
 --
--- Writes go through save_course_assignment_draft(), called by the service-role
--- server action only. It re-checks, on every save, everything submitAssignment
--- checks: the assignment is published and open, the student is enrolled in its
--- cohort (and targeted, for a students-only one), the cohort has started, and
--- the work hasn't been reviewed or excused. Losing any of those stops the
--- saves at once. It also refuses a save that doesn't name the version it was
--- typed on top of, so a tab left open on an older copy can't overwrite newer
--- text written in another tab or on another device.
+-- Writes go through two functions, called by the service role only:
+--
+--   save_course_assignment_draft()    every autosave. Re-checks, on every
+--       save, everything submitAssignment checks: the assignment is published
+--       and open, the student is enrolled in its cohort (and targeted, for a
+--       students-only one), the cohort has started, and the work hasn't been
+--       reviewed or excused. Losing any of those stops the saves at once. It
+--       also refuses a save that doesn't name the version it was typed on top
+--       of, so a tab left open on an older copy can't overwrite newer text
+--       written in another tab or on another device.
+--   clear_course_assignment_draft()   after a submit.
+--
+-- The version only ever goes up. Clearing a submitted draft empties the row
+-- and bumps it rather than deleting it: a deleted row would come back at
+-- version 1 on the next save, and a tab still holding an old "1" would then
+-- match text it never saw.
 --
 -- Run in Supabase SQL Editor. Idempotent / safe to re-run.
 -- Assumes 0001..0102 (0093: the assignment tables) are applied.
@@ -36,12 +44,18 @@ create table if not exists public.course_assignment_drafts (
   -- (a half-typed URL is a normal draft). Same length caps as a submission.
   body text check (body is null or char_length(body) <= 10000),
   link_url text check (link_url is null or char_length(link_url) <= 2048),
-  -- Bumped by every save; a save names the version it started from.
+  -- Bumped by every write; a save names the version it started from.
   version integer not null default 1 check (version >= 1),
+  -- Set when a submit cleared it: the row is then "no draft", kept only so
+  -- its version keeps counting up. The next save unsets it.
+  cleared_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   primary key (assignment_id, user_id)
 );
+
+-- A database that ran an earlier draft of this file (a branch preview).
+alter table public.course_assignment_drafts add column if not exists cleared_at timestamptz;
 
 create index if not exists course_assignment_drafts_user_idx
   on public.course_assignment_drafts (user_id);
@@ -69,11 +83,16 @@ revoke insert, update, delete on public.course_assignment_drafts from anon, auth
 --
 --   {"outcome": "saved",     "version": n, "saved_at": t}
 --   {"outcome": "stale",     "version": n | null, "saved_at": t | null}
---                            a newer draft exists, or the one named is gone
---                            (submitted from another tab); nothing written
+--                            a newer draft exists, or a submit from another
+--                            tab cleared the one named; nothing written
 --   {"outcome": "closed"}    not published, not open yet, or cohort not started
 --   {"outcome": "forbidden"} not enrolled in its cohort / not targeted
 --   {"outcome": "locked"}    the submission was reviewed or excused
+--
+-- A save whose version moved on but which holds exactly the text sent is
+-- "saved", not "stale": that's this same save arriving twice (its first
+-- answer was lost on a dropped connection, and the form retried), and
+-- refusing it would stop autosave over a write that already happened.
 --
 -- The same rules as app/dashboard/assignments/actions.ts submitAssignment and
 -- lib/pre-cohort.ts cohortHasStarted (today is the UTC date there too).
@@ -95,6 +114,7 @@ declare
   v_submission_status text;
   v_version integer;
   v_saved_at timestamptz;
+  v_current public.course_assignment_drafts%rowtype;
 begin
   if p_user_id is null or p_assignment_id is null then
     return jsonb_build_object('outcome', 'forbidden');
@@ -148,10 +168,12 @@ begin
     returning version, updated_at into v_version, v_saved_at;
   else
     -- Compare-and-set: a concurrent save of the same version waits for this
-    -- one, re-reads the row, no longer matches, and comes back stale.
+    -- one, re-reads the row, no longer matches, and comes back stale. Saving
+    -- over a cleared (submitted) row is a draft again.
     update public.course_assignment_drafts d
     set body = p_body,
         link_url = p_link_url,
+        cleared_at = null,
         version = d.version + 1,
         updated_at = now()
     where d.assignment_id = v_assignment.id
@@ -161,10 +183,16 @@ begin
   end if;
 
   if v_version is null then
-    select d.version, d.updated_at into v_version, v_saved_at
+    select * into v_current
     from public.course_assignment_drafts d
     where d.assignment_id = v_assignment.id and d.user_id = p_user_id;
-    return jsonb_build_object('outcome', 'stale', 'version', v_version, 'saved_at', v_saved_at);
+    if found
+       and v_current.cleared_at is null
+       and v_current.body is not distinct from p_body
+       and v_current.link_url is not distinct from p_link_url then
+      return jsonb_build_object('outcome', 'saved', 'version', v_current.version, 'saved_at', v_current.updated_at);
+    end if;
+    return jsonb_build_object('outcome', 'stale', 'version', v_current.version, 'saved_at', v_current.updated_at);
   end if;
 
   return jsonb_build_object('outcome', 'saved', 'version', v_version, 'saved_at', v_saved_at);
@@ -178,7 +206,69 @@ revoke execute on function public.save_course_assignment_draft(uuid, uuid, text,
 grant execute on function public.save_course_assignment_draft(uuid, uuid, text, text, integer)
   to service_role;
 
+-- ----------------------------------------------------------------------------
+-- clear_course_assignment_draft(user, assignment, up_to_version)
+--
+-- After a submit: empties the draft and bumps its version, but only if it is
+-- no newer than up_to_version (what the submitting tab last saved, or saw and
+-- chose to overwrite). A newer one was written in another tab since, isn't
+-- the text just handed in, and is left alone. Returns
+--
+--   {"cleared": true,  "version": n}   cleared (or already clear, or no row:
+--                                      version 0) — the next save names n
+--   {"cleared": false, "version": n}   a newer draft exists; nothing changed
+--
+-- No access checks: it only ever empties the caller's own row, which the
+-- submit that precedes it has just checked.
+-- ----------------------------------------------------------------------------
+create or replace function public.clear_course_assignment_draft(
+  p_user_id uuid,
+  p_assignment_id uuid,
+  p_up_to_version integer
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_version integer;
+  v_cleared_at timestamptz;
+begin
+  update public.course_assignment_drafts d
+  set body = null,
+      link_url = null,
+      cleared_at = now(),
+      version = d.version + 1,
+      updated_at = now()
+  where d.assignment_id = p_assignment_id
+    and d.user_id = p_user_id
+    and d.version <= coalesce(p_up_to_version, 0)
+    and d.cleared_at is null
+  returning d.version into v_version;
+  if v_version is not null then
+    return jsonb_build_object('cleared', true, 'version', v_version);
+  end if;
+
+  select d.version, d.cleared_at into v_version, v_cleared_at
+  from public.course_assignment_drafts d
+  where d.assignment_id = p_assignment_id and d.user_id = p_user_id;
+  if v_version is null then
+    return jsonb_build_object('cleared', true, 'version', 0);
+  end if;
+  return jsonb_build_object(
+    'cleared', v_cleared_at is not null and v_version <= coalesce(p_up_to_version, 0),
+    'version', v_version
+  );
+end;
+$$;
+
+revoke execute on function public.clear_course_assignment_draft(uuid, uuid, integer)
+  from public, anon, authenticated;
+grant execute on function public.clear_course_assignment_draft(uuid, uuid, integer)
+  to service_role;
+
 comment on table public.course_assignment_drafts is
-  'Unsubmitted assignment work (0105). Owner-read only; writes via save_course_assignment_draft() from the service role.';
+  'Unsubmitted assignment work (0105). Owner-read only; writes via save_/clear_course_assignment_draft() from the service role.';
 
 notify pgrst, 'reload schema';

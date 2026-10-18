@@ -161,13 +161,15 @@ export async function loadStudentAssignments(
 /**
  * The student's own unsubmitted draft of one assignment (migration 0105).
  * Pass the student's RLS client: the policy is owner-only, which is the
- * point — no staff surface ever calls this. Before 0105 runs the table is
- * missing and the form simply works without autosave, as it did before.
+ * point — no staff surface ever calls this (the assignment pages and the
+ * draft route, app/api/assignments/[id]/draft, do). Before 0105 runs the
+ * table is missing and the form simply works without autosave, as it did
+ * before.
  */
 export async function loadAssignmentDraft(db: Db, userId: string, assignmentId: string): Promise<DraftLoad> {
   const { data, error } = await db
     .from("course_assignment_drafts")
-    .select("body, link_url, version, updated_at")
+    .select("body, link_url, version, updated_at, cleared_at")
     .eq("user_id", userId)
     .eq("assignment_id", assignmentId)
     .maybeSingle();

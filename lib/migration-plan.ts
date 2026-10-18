@@ -93,9 +93,12 @@ where permissions @> array['ai_usage.view']::text[];`,
                  and a.attname = 'dedupe_key') as ok;`,
   "0105": `select to_regclass('public.course_assignment_drafts') is not null
    and to_regprocedure('public.save_course_assignment_draft(uuid, uuid, text, text, integer)') is not null
-   -- By oid: NULL (not an error) when the function doesn't exist yet.
+   and to_regprocedure('public.clear_course_assignment_draft(uuid, uuid, integer)') is not null
+   -- By oid: NULL (not an error) when a function doesn't exist yet.
    and not has_function_privilege('authenticated',
-         to_regprocedure('public.save_course_assignment_draft(uuid, uuid, text, text, integer)'), 'execute') as ok;`,
+         to_regprocedure('public.save_course_assignment_draft(uuid, uuid, text, text, integer)'), 'execute')
+   and not has_function_privilege('authenticated',
+         to_regprocedure('public.clear_course_assignment_draft(uuid, uuid, integer)'), 'execute') as ok;`,
 };
 
 /**

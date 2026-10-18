@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, FieldError } from "@/components/ui/input";
-import { saveAssignmentDraft, submitAssignment } from "@/app/dashboard/assignments/actions";
+import { submitAssignment } from "@/app/dashboard/assignments/actions";
 import { getActionError } from "@/lib/action-error";
 import { LIMITS, formatEastern, isGoogleLink, type SubmissionType } from "@/lib/assignments";
 import {
@@ -12,13 +12,28 @@ import {
   draftRetryDelay,
   draftStatusLine,
   isFinalDraftFailure,
+  reconcileDraft,
   sameWork,
+  type DraftFailure,
   type DraftSaveResult,
+  type DraftState,
   type DraftStatus,
+  type SentWork,
   type StartingWork,
 } from "@/lib/assignment-drafts";
+import { loadDraftOverHttp, saveDraftOverHttp, type DraftSaveInput } from "@/lib/assignment-drafts-client";
 
 type Work = { body: string; link: string };
+
+/** How the form reaches the server. The pages use the defaults; app/dev/assignment passes a stand-in. */
+export type DraftTransport = {
+  saveDraft: (input: DraftSaveInput) => Promise<DraftSaveResult>;
+  loadDraft: (assignmentId: string) => Promise<DraftState | null>;
+  submit: typeof submitAssignment;
+};
+
+const STALE_CONFIRM =
+  "Newer work was saved or submitted in another tab or on another device. Submit what's in this tab instead?";
 
 const savedTime = (iso: string) =>
   new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -28,10 +43,18 @@ const savedTime = (iso: string) =>
  *
  * What's typed autosaves as a private draft (lib/assignment-drafts.ts,
  * migration 0105) a couple of seconds after the typing pauses, and when the
- * tab is hidden or closed, so a reload or a dropped phone page restores it.
- * Submit stays the only way to hand work in. The line under the form says
- * what's actually true — saving, saved, failing and retrying, or stopped and
- * why — rather than implying text is safe when it isn't.
+ * tab is hidden, closed or navigated away from — as a keepalive request, which
+ * the browser finishes after the page is gone — so a reload or a dropped
+ * phone page restores it. Submit stays the only way to hand work in. The line
+ * under the form says what's actually true — saving, saved, failing and
+ * retrying, or stopped and why — rather than implying text is safe when it
+ * isn't: an edit not yet saved reads "Saving draft…", never "Draft saved".
+ *
+ * The props can be out of date. Back/Forward renders this page from the
+ * router cache, so the form re-reads the draft once it mounts and takes the
+ * newer text if nothing has been typed here yet (reconcileDraft). A "stale"
+ * answer re-reads it too before giving up: that can be this tab's own save
+ * or submit whose answer was lost on a dropped connection.
  *
  * `autosave` is "off" before 0105 runs: the form then behaves exactly as it
  * did before drafts existed. `actions` exists for app/dev/assignment, whose
@@ -54,9 +77,10 @@ export function SubmitForm({
   start: StartingWork;
   autosave: "on" | "off" | "failed";
   pastDue: boolean;
-  actions?: { saveDraft: typeof saveAssignmentDraft; submit: typeof submitAssignment };
+  actions?: DraftTransport;
 }) {
-  const saveDraft = actions?.saveDraft ?? saveAssignmentDraft;
+  const saveDraft = actions?.saveDraft ?? saveDraftOverHttp;
+  const loadDraft = actions?.loadDraft ?? loadDraftOverHttp;
   const submitWork = actions?.submit ?? submitAssignment;
   const router = useRouter();
   const [body, setBody] = useState(start.body);
@@ -76,32 +100,110 @@ export function SubmitForm({
           ? { kind: "restored", at: start.restoredAt }
           : { kind: "idle" },
   );
+  /** The text differs from what the server holds: a save is due or on its way. */
+  const [dirty, setDirty] = useState(false);
   const showLink = type !== "text";
   const enabled = autosave === "on";
+
+  /** The form's text as a save or submit sends it. */
+  const sent = (w: Work): SentWork => ({ body: w.body, link: showLink ? w.link : "" });
 
   // Everything the save loop reads lives in refs, so a timer set during one
   // render still acts on the latest text and version.
   const workRef = useRef<Work>({ body: start.body, link: start.link });
   /** What the server holds for this form: the last saved draft, else what it opened with. */
-  const serverRef = useRef<Work>({ body: start.body, link: start.link });
+  const serverRef = useRef<SentWork>(sent({ body: start.body, link: start.link }));
   /** The draft version the next save names (0 = none yet). */
   const versionRef = useRef(start.version);
-  const stoppedRef = useRef(false);
+  const stoppedRef = useRef<DraftFailure | null>(null);
   const failingRef = useRef(false);
   const submittingRef = useRef(false);
   const inFlightRef = useRef<Promise<void> | null>(null);
   const timerRef = useRef<number | null>(null);
   const dirtySinceRef = useRef<number | null>(null);
   const attemptRef = useRef(0);
+  /** A save that got no answer (it may have landed): what it sent. */
+  const unconfirmedRef = useRef<SentWork | null>(null);
+  /** A submit that got no answer (it may have gone through): what it sent. */
+  const pendingSubmitRef = useRef<SentWork | null>(null);
 
-  const isDirty = () =>
-    workRef.current.body !== serverRef.current.body || workRef.current.link !== serverRef.current.link;
+  const isDirty = () => {
+    const now = sent(workRef.current);
+    return now.body !== serverRef.current.body || now.link !== serverRef.current.link;
+  };
   const clearTimer = () => {
     if (timerRef.current !== null) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
   };
+
+  /** Show `next` as the form's text: the draft or submission as they stand now. */
+  function adopt(next: StartingWork, nextHandedIn: Work | null) {
+    const w = { body: next.body, link: next.link };
+    workRef.current = w;
+    serverRef.current = sent(w);
+    versionRef.current = next.version;
+    unconfirmedRef.current = null;
+    setBody(w.body);
+    setLink(w.link);
+    setHandedIn(nextHandedIn);
+    setDirty(false);
+    setStatus(next.restoredAt ? { kind: "restored", at: next.restoredAt } : { kind: "idle" });
+  }
+
+  /**
+   * Read the draft again and bring this tab up to date where that's safe.
+   * True when the tab is now in step and may carry on saving; false when the
+   * newer text would be overwritten (or couldn't be read), which is the
+   * student's call. After a submit with no answer (`afterSubmit`) only "it
+   * went through" or "a save of ours landed" apply: replacing the text the
+   * student just tried to hand in with another tab's would be no answer.
+   */
+  async function catchUp(afterSubmit = false): Promise<boolean> {
+    const remote = await loadDraft(assignmentId).catch(() => null);
+    if (!remote || remote.state !== "ready") return false;
+    const r = reconcileDraft(
+      {
+        version: versionRef.current,
+        base: serverRef.current,
+        work: sent(workRef.current),
+        unconfirmed: unconfirmedRef.current,
+        pendingSubmit: pendingSubmitRef.current,
+      },
+      remote,
+    );
+    switch (r.kind) {
+      case "landed":
+        // A save of ours went through after all: build on it.
+        versionRef.current = r.version;
+        serverRef.current = r.text;
+        unconfirmedRef.current = null;
+        setDirty(isDirty());
+        setStatus({ kind: "saved", at: r.savedAt });
+        return true;
+      case "submitted": {
+        const handed = pendingSubmitRef.current!;
+        pendingSubmitRef.current = null;
+        versionRef.current = r.version;
+        serverRef.current = handed;
+        setHandedIn(handed);
+        setError(null);
+        setDirty(isDirty());
+        setSaved(!isDirty());
+        if (stoppedRef.current === "stale") stoppedRef.current = null;
+        if (!stoppedRef.current) setStatus({ kind: "idle" });
+        router.refresh();
+        return true;
+      }
+      case "adopt":
+        if (afterSubmit) return false;
+        adopt(r.start, r.handedIn);
+        return true;
+      default:
+        return false;
+    }
+  }
 
   async function saveNow(): Promise<void> {
     if (!enabled || stoppedRef.current || submittingRef.current) return;
@@ -111,16 +213,19 @@ export function SubmitForm({
     if (stoppedRef.current || submittingRef.current) return;
     if (!isDirty()) {
       dirtySinceRef.current = null;
+      setDirty(false);
       return;
     }
     clearTimer();
     dirtySinceRef.current = null;
-    const snapshot = { ...workRef.current };
+    const snapshot = sent(workRef.current);
     setStatus({ kind: "saving" });
     const run = (async () => {
       let result: DraftSaveResult;
       let offline = false;
       try {
+        // Called before any await (lib/assignment-drafts-client.ts), so a
+        // save started as the page closes is already on its way.
         result = await saveDraft({
           assignmentId,
           body: snapshot.body,
@@ -128,23 +233,36 @@ export function SubmitForm({
           baseVersion: versionRef.current,
         });
       } catch {
-        // The request itself failed: offline, or a deploy swapped the action.
+        // The request itself failed: offline, or the connection dropped.
         offline = typeof navigator !== "undefined" && navigator.onLine === false;
         result = { ok: false, reason: "error" };
       }
       if (result.ok) {
         versionRef.current = result.version;
         serverRef.current = snapshot;
+        unconfirmedRef.current = null;
         attemptRef.current = 0;
         failingRef.current = false;
         setStatus({ kind: "saved", at: result.savedAt });
+        setDirty(isDirty());
+        if (isDirty()) schedule();
+        return;
+      }
+      // An error may still have been written (the answer, not the save, was
+      // lost); if a later save is refused as stale, this is how it's known.
+      if (result.reason === "error") unconfirmedRef.current = snapshot;
+      // "Stale" can be this tab merely behind — Back showed an old copy, or
+      // an earlier save landed without telling us. Only a real conflict stops.
+      if (result.reason === "stale" && (await catchUp())) {
+        attemptRef.current = 0;
+        failingRef.current = false;
         if (isDirty()) schedule();
         return;
       }
       if (isFinalDraftFailure(result.reason)) {
         // Another try would be refused the same way: stale, closed, signed
         // out… Stop, and say so.
-        stoppedRef.current = true;
+        stoppedRef.current = result.reason;
         failingRef.current = false;
         clearTimer();
         setStatus({ kind: "stopped", reason: result.reason });
@@ -169,6 +287,8 @@ export function SubmitForm({
   }
   const saveRef = useRef(saveNow);
   saveRef.current = saveNow;
+  const catchUpRef = useRef(catchUp);
+  catchUpRef.current = catchUp;
 
   /** Save after a pause in typing — or, typing without pause, every DRAFT_MAX_WAIT_MS. */
   function schedule() {
@@ -188,8 +308,38 @@ export function SubmitForm({
     if (next.body !== undefined) setBody(next.body);
     if (next.link !== undefined) setLink(next.link);
     setSaved(false);
+    setDirty(isDirty());
     schedule();
   }
+
+  // The page may have come out of the router cache (Back/Forward), older than
+  // the draft: read it again now, and take the newer text if nothing has been
+  // typed here yet. A save or submit already running sorts itself out (a
+  // stale answer reads it again).
+  useEffect(() => {
+    if (!enabled) return;
+    let live = true;
+    void (async () => {
+      const remote = await loadDraft(assignmentId).catch(() => null);
+      if (!live || !remote || remote.state !== "ready") return;
+      if (inFlightRef.current || submittingRef.current || stoppedRef.current) return;
+      const r = reconcileDraft(
+        { version: versionRef.current, base: serverRef.current, work: sent(workRef.current) },
+        remote,
+      );
+      if (r.kind === "adopt") adopt(r.start, r.handedIn);
+      else if (r.kind === "landed") {
+        versionRef.current = r.version;
+        serverRef.current = r.text;
+        setDirty(isDirty());
+      }
+    })();
+    return () => {
+      live = false;
+    };
+    // Refs only; enabled and the assignment are fixed for the page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, assignmentId]);
 
   // A hidden tab, a backgrounded phone or a closed page saves what's there
   // now rather than waiting out the typing pause. Leaving the page inside the
@@ -214,11 +364,21 @@ export function SubmitForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
-  // When autosave has said it isn't keeping up, closing the tab asks first.
+  // Closing or reloading with text the server doesn't have yet: send it now
+  // (a keepalive request, finished after the page is gone) and let the page
+  // go. Ask first only when that can't be relied on — saves are failing or
+  // stopped, a save is still running with newer text queued behind it, or a
+  // submit is on its way (an ordinary request, which leaving cancels).
   useEffect(() => {
+    if (autosave === "off") return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      const atRisk = autosave === "failed" || stoppedRef.current || failingRef.current;
-      if (!atRisk || submittingRef.current || !isDirty()) return;
+      const atRisk = autosave === "failed" || !!stoppedRef.current || failingRef.current;
+      let ask = submittingRef.current;
+      if (isDirty()) {
+        if (atRisk || inFlightRef.current) ask = true;
+        else void saveRef.current();
+      }
+      if (!ask) return;
       e.preventDefault();
       e.returnValue = "";
     };
@@ -230,40 +390,70 @@ export function SubmitForm({
   function submit() {
     setError(null);
     setSaved(false);
-    if (
-      status.kind === "stopped" &&
-      status.reason === "stale" &&
-      !window.confirm(
-        "Newer text was saved in another tab or on another device. Submit what's in this tab anyway?",
-      )
-    ) {
-      return;
+    let force = false;
+    if (stoppedRef.current === "stale") {
+      if (!window.confirm(STALE_CONFIRM)) return;
+      force = true;
     }
     submittingRef.current = true;
     clearTimer();
     startTransition(async () => {
       try {
-        // Let an autosave that's mid-flight land, so its version is the one
-        // the submit clears.
+        // Let an autosave that's mid-flight land, so the version this sends
+        // is the one it left.
         while (inFlightRef.current) await inFlightRef.current;
-        const snapshot = { ...workRef.current };
-        const res = await submitWork({
-          assignmentId,
-          body: snapshot.body,
-          linkUrl: showLink ? snapshot.link : null,
-          draftVersion: versionRef.current,
-        });
-        if (!res.ok) {
-          setError(res.error);
+        for (;;) {
+          const snapshot = sent(workRef.current);
+          let res: Awaited<ReturnType<typeof submitWork>>;
+          try {
+            res = await submitWork({
+              assignmentId,
+              body: snapshot.body,
+              linkUrl: showLink ? snapshot.link : null,
+              // null: no autosave here, so nothing to compare (as before 0105).
+              draftVersion: enabled ? versionRef.current : null,
+              force,
+            });
+          } catch (e) {
+            // No answer: it may have gone through. Reading the draft back
+            // tells (a submit clears it); otherwise say it failed.
+            pendingSubmitRef.current = snapshot;
+            if (enabled && (await catchUpRef.current(true)) && !pendingSubmitRef.current) return;
+            setError(getActionError(e));
+            return;
+          }
+          if (!res.ok) {
+            setError(res.error);
+            return;
+          }
+          if (res.data?.outcome === "stale") {
+            // Newer work from elsewhere that this tab never saw. Handing this
+            // in would replace it, so ask; declining leaves both alone, and
+            // this tab stops saving over it too.
+            if (!force && window.confirm(STALE_CONFIRM)) {
+              force = true;
+              continue;
+            }
+            stoppedRef.current = "stale";
+            failingRef.current = false;
+            setStatus({ kind: "stopped", reason: "stale" });
+            return;
+          }
+          pendingSubmitRef.current = null;
+          unconfirmedRef.current = null;
+          if (res.data) versionRef.current = res.data.draftVersion;
+          serverRef.current = snapshot;
+          dirtySinceRef.current = null;
+          setHandedIn(snapshot);
+          setSaved(true);
+          setDirty(isDirty());
+          // A tab stopped as stale is in step again once its text is the
+          // submission and it holds the version the submit left.
+          if (stoppedRef.current === "stale") stoppedRef.current = null;
+          if (!stoppedRef.current && enabled) setStatus({ kind: "idle" });
+          router.refresh();
           return;
         }
-        versionRef.current = res.data?.draftVersion ?? versionRef.current;
-        serverRef.current = snapshot;
-        dirtySinceRef.current = null;
-        setHandedIn(snapshot);
-        setSaved(true);
-        if (!stoppedRef.current && enabled) setStatus({ kind: "idle" });
-        router.refresh();
       } catch (e) {
         setError(getActionError(e));
       } finally {
@@ -275,14 +465,19 @@ export function SubmitForm({
   }
 
   const driveHint = showLink && link.trim() && isGoogleLink(link.trim());
+  // Typed but not saved yet reads as saving, never as the last save's "saved".
+  const shown: DraftStatus =
+    enabled && dirty && (status.kind === "idle" || status.kind === "restored" || status.kind === "saved")
+      ? { kind: "saving" }
+      : status;
   const line = saved
     ? null
-    : draftStatusLine(status, {
+    : draftStatusLine(shown, {
         handedIn: !!handedIn,
         unsubmitted: !sameWork({ body, link: showLink ? link : "" }, handedIn),
         // A restored draft's time renders on the server too: program time
         // keeps the two renders identical. A save's is only ever local.
-        formatTime: (iso) => (status.kind === "restored" ? formatEastern(iso) : savedTime(iso)),
+        formatTime: (iso) => (shown.kind === "restored" ? formatEastern(iso) : savedTime(iso)),
       });
 
   return (

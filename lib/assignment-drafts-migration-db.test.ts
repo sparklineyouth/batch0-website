@@ -10,9 +10,11 @@ import { MIGRATION_CHECKS } from "./migration-plan.ts";
  * through save_course_assignment_draft() as the service role (the server
  * action), reads AS signed-in users so the owner-only policy is asserted.
  *
- * What it pins: a stale tab can't overwrite newer text, losing access stops
- * the saves, a draft is never a submission, and nobody but the student reads
- * it — not their mentor, not an admin.
+ * What it pins: a stale tab can't overwrite newer text — including after a
+ * submit cleared the draft and a new one was started, when a reused version
+ * number would have matched — a retried save isn't mistaken for a stale one,
+ * losing access stops the saves, a draft is never a submission, and nobody
+ * but the student reads it — not their mentor, not an admin.
  */
 
 const assignments = await readFile(
@@ -161,6 +163,26 @@ async function save(
   }
 }
 
+/** As submitAssignment, after it has stored the submission. */
+async function clear(
+  db: PGlite,
+  user: string,
+  assignment: string,
+  upTo: number,
+): Promise<{ cleared: boolean; version: number }> {
+  await db.exec(`set role service_role;`);
+  try {
+    const { rows } = await db.query<{ r: any }>(`select public.clear_course_assignment_draft($1, $2, $3) as r`, [
+      user,
+      assignment,
+      upTo,
+    ]);
+    return rows[0].r;
+  } finally {
+    await db.exec(`reset role;`);
+  }
+}
+
 async function as<T = any>(db: PGlite, uid: string, sql: string, params: unknown[] = []) {
   await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`);
   try {
@@ -172,7 +194,7 @@ async function as<T = any>(db: PGlite, uid: string, sql: string, params: unknown
 
 async function draftOf(db: PGlite, user: string, assignment: string) {
   const { rows } = await db.query<any>(
-    `select body, link_url, version from public.course_assignment_drafts where user_id = $1 and assignment_id = $2`,
+    `select body, link_url, version, cleared_at is not null as cleared from public.course_assignment_drafts where user_id = $1 and assignment_id = $2`,
     [user, assignment],
   );
   return rows[0] ?? null;
@@ -197,12 +219,15 @@ test("0105 applies twice; the only policy is the owner's read, and clients can't
   assert.deepEqual(grants, []);
 
   const sig = "public.save_course_assignment_draft(uuid, uuid, text, text, integer)";
-  const { rows: exec } = await db.query<any>(
-    `select has_function_privilege('anon', '${sig}', 'execute') as anon,
-            has_function_privilege('authenticated', '${sig}', 'execute') as authed,
-            has_function_privilege('service_role', '${sig}', 'execute') as service`,
-  );
-  assert.deepEqual(exec[0], { anon: false, authed: false, service: true });
+  const clearSig = "public.clear_course_assignment_draft(uuid, uuid, integer)";
+  for (const fn of [sig, clearSig]) {
+    const { rows: exec } = await db.query<any>(
+      `select has_function_privilege('anon', '${fn}', 'execute') as anon,
+              has_function_privilege('authenticated', '${fn}', 'execute') as authed,
+              has_function_privilege('service_role', '${fn}', 'execute') as service`,
+    );
+    assert.deepEqual(exec[0], { anon: false, authed: false, service: true }, fn);
+  }
 
   // Half-run (table, no function) reads as not done — false, not an error —
   // and a re-run finishes it.
@@ -210,10 +235,17 @@ test("0105 applies twice; the only policy is the owner's read, and clients can't
   assert.equal((await db.query<{ ok: boolean }>(MIGRATION_CHECKS["0105"])).rows[0].ok, false);
   await db.exec(migration);
   assert.equal((await db.query<{ ok: boolean }>(MIGRATION_CHECKS["0105"])).rows[0].ok, true);
-  // A grant to clients (Supabase's default for a new function) fails it too.
-  await db.exec(`grant execute on function ${sig} to authenticated`);
+  // An earlier draft of this file (no clear function) reads as not done.
+  await db.exec(`drop function ${clearSig}`);
   assert.equal((await db.query<{ ok: boolean }>(MIGRATION_CHECKS["0105"])).rows[0].ok, false);
   await db.exec(migration);
+  // A grant to clients (Supabase's default for a new function) fails it too.
+  for (const fn of [sig, clearSig]) {
+    await db.exec(`grant execute on function ${fn} to authenticated`);
+    assert.equal((await db.query<{ ok: boolean }>(MIGRATION_CHECKS["0105"])).rows[0].ok, false, fn);
+    await db.exec(migration);
+  }
+  assert.equal((await db.query<{ ok: boolean }>(MIGRATION_CHECKS["0105"])).rows[0].ok, true);
 
   // A signed-in student calling it over /rest/v1/rpc with someone else's id.
   await assert.rejects(
@@ -224,6 +256,7 @@ test("0105 applies twice; the only policy is the owner's read, and clients can't
     as(db, ANA, `insert into public.course_assignment_drafts (assignment_id, user_id, body) values ($1, $2, 'x')`, [OPEN, ANA]),
     /permission denied/,
   );
+  await assert.rejects(as(db, BEN, `select public.clear_course_assignment_draft($1, $2, 99)`, [ANA, OPEN]), /permission denied/);
 });
 
 test("save, save again, restore: each save names the version it was typed on", async () => {
@@ -257,10 +290,73 @@ test("a stale tab can't overwrite newer text", async () => {
   assert.equal((await draftOf(db, BEN, OPEN)).body, "phone draft");
   // The draft was submitted (and cleared) from another tab: a tab still
   // holding its old version is told so rather than resurrecting it.
-  await db.query(`delete from public.course_assignment_drafts where user_id = $1 and assignment_id = $2`, [ANA, OPEN]);
+  assert.deepEqual(await clear(db, ANA, OPEN, 2), { cleared: true, version: 3 });
   const after = await save(db, ANA, OPEN, "late keystroke", 2);
-  assert.deepEqual([after.outcome, after.version ?? null], ["stale", null]);
-  assert.equal(await draftOf(db, ANA, OPEN), null);
+  assert.deepEqual([after.outcome, after.version], ["stale", 3]);
+  assert.deepEqual(await draftOf(db, ANA, OPEN), { body: null, link_url: null, version: 3, cleared: true });
+});
+
+test("versions never repeat: a submit empties the draft rather than deleting it", async () => {
+  // Reviewer's case (a). Phone and laptop both open on v1. The laptop
+  // submits (clearing it), then keeps typing. The phone, still on v1, saves
+  // its older text: with a deleted row the laptop's new draft would be back
+  // at v1 and the phone's write would have replaced it.
+  const db = await setup();
+  await save(db, ANA, OPEN, "v1 text", 0);
+  assert.deepEqual(await clear(db, ANA, OPEN, 1), { cleared: true, version: 2 });
+  const laptop = await save(db, ANA, OPEN, "Y newer laptop text", 2);
+  assert.deepEqual([laptop.outcome, laptop.version], ["saved", 3]);
+  const phone = await save(db, ANA, OPEN, "X old phone text", 1);
+  assert.deepEqual([phone.outcome, phone.version], ["stale", 3]);
+  assert.equal((await draftOf(db, ANA, OPEN)).body, "Y newer laptop text");
+
+  // Case (b). Tab A sits on v3 and never autosaves. Tab B submits, then
+  // types new work. Tab A's submit clears only up to v3: B's new draft stays.
+  await save(db, BEN, OPEN, "b1", 0);
+  await save(db, BEN, OPEN, "b2", 1);
+  await save(db, BEN, OPEN, "b3", 2);
+  assert.deepEqual(await clear(db, BEN, OPEN, 3), { cleared: true, version: 4 });
+  assert.equal((await save(db, BEN, OPEN, "B's newer unsubmitted work", 4)).outcome, "saved");
+  assert.deepEqual(await clear(db, BEN, OPEN, 3), { cleared: false, version: 5 });
+  assert.deepEqual(await draftOf(db, BEN, OPEN), { body: "B's newer unsubmitted work", link_url: null, version: 5, cleared: false });
+});
+
+test("a cleared draft: saving on top of it is a draft again; a tab that never saw it can't", async () => {
+  const db = await setup();
+  await save(db, ANA, OPEN, "before submit", 0);
+  assert.deepEqual(await clear(db, ANA, OPEN, 1), { cleared: true, version: 2 });
+  // Submitting again (nothing typed since) is already clear: same version.
+  assert.deepEqual(await clear(db, ANA, OPEN, 2), { cleared: true, version: 2 });
+  // A tab that loaded before any draft existed is behind the clear.
+  assert.equal((await save(db, ANA, OPEN, "from a tab that saw nothing", 0)).outcome, "stale");
+  // The tab that submitted saves on top of the version the clear left.
+  const next = await save(db, ANA, OPEN, "after submit", 2);
+  assert.deepEqual([next.outcome, next.version], ["saved", 3]);
+  assert.deepEqual(await draftOf(db, ANA, OPEN), { body: "after submit", link_url: null, version: 3, cleared: false });
+  // Nothing to clear: no row is "clear" at version 0.
+  assert.deepEqual(await clear(db, BEN, OPEN, 0), { cleared: true, version: 0 });
+  assert.equal(await draftOf(db, BEN, OPEN), null);
+});
+
+test("a save retried after its answer was lost is the same save, not a stale one", async () => {
+  const db = await setup();
+  await save(db, ANA, OPEN, "first", 0);
+  // v1 → v2 lands, but the browser never hears back; it retries from v1.
+  assert.equal((await save(db, ANA, OPEN, "first, then more", 1, "https://docs.google.com/d/1")).outcome, "saved");
+  const retry = await save(db, ANA, OPEN, "first, then more", 1, "https://docs.google.com/d/1");
+  assert.deepEqual([retry.outcome, retry.version], ["saved", 2]);
+  // Same for a first save (base 0) whose answer was lost.
+  await save(db, BEN, OPEN, "ben's first", 0);
+  assert.deepEqual(
+    [(await save(db, BEN, OPEN, "ben's first", 0)).outcome, (await draftOf(db, BEN, OPEN)).version],
+    ["saved", 1],
+  );
+  // Different text on the old version is still stale…
+  assert.equal((await save(db, ANA, OPEN, "first, then something else", 1)).outcome, "stale");
+  // …and so is the old text of a cleared draft: a clear isn't that text.
+  await clear(db, ANA, OPEN, 2);
+  assert.equal((await save(db, ANA, OPEN, "first, then more", 2, "https://docs.google.com/d/1")).outcome, "stale");
+  assert.equal((await draftOf(db, ANA, OPEN)).version, 3);
 });
 
 test("who may save: enrolled, targeted, open, started, not yet reviewed", async () => {

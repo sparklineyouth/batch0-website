@@ -32,14 +32,17 @@ release bell when a scheduled assignment opens; bell + email (`assignment.due_so
 
 ## Drafts
 
-What a student types autosaves as a private draft (`course_assignment_drafts`, migration `0105_assignment_drafts.sql`): two seconds after typing pauses (at least every ten seconds while it doesn't), and when the tab is hidden or closed. Reloading, or opening the assignment on another device, restores it. Submit is still the only way to hand work in.
+What a student types autosaves as a private draft (`course_assignment_drafts`, migration `0105_assignment_drafts.sql`): two seconds after typing pauses (at least every ten seconds while it doesn't), and when the tab is hidden, closed or navigated away from. Reloading, pressing Back, or opening the assignment on another device restores it. Submit is still the only way to hand work in.
 
-- **Never a submission.** Its own table, so the matrix, review queue, overdue count and reminders can't see it. The read policy is the owner's alone — no mentor or admin clause. Submitting copies the text into `course_assignment_submissions` and clears the draft (only up to the version that tab last saved; a newer one from another tab is left alone).
-- **Which text the form opens with.** A draft saved after the last submit wins (unsubmitted edits, or never handed in) and the form says so; one saved before it was overtaken by that submit, so the submission shows (`startingWork`, `lib/assignment-drafts.ts`).
-- **Versions.** Every save names the draft version it was typed on. A tab holding an older one is refused (`stale`), stops autosaving and says to reload; Submit from that tab asks first.
-- **Access.** `save_course_assignment_draft()` (service role only, called by `saveAssignmentDraft`) re-checks on every save what Submit checks: published and open, enrolled (and targeted), cohort started, not reviewed or excused. Losing any of them stops the saves.
-- **Honest status.** The line under the answer box says saving / saved / couldn't save, retrying / stopped and why. Closing the tab while saves are failing asks first.
-- **Before 0105 runs** the page reads the missing table as "not set up yet" and the form works exactly as before, without autosave.
+- **Never a submission.** Its own table, so the matrix, review queue, overdue count and reminders can't see it. The read policy is the owner's alone — no mentor or admin clause. Submitting copies the text into `course_assignment_submissions` and then empties the draft (`clear_course_assignment_draft()`), up to the newest version that submit accounted for; a draft saved after it in another tab is left alone.
+- **Which text the form opens with.** A draft saved after the last submit wins (unsubmitted edits, or never handed in) and the form says so; one saved before it was overtaken by that submit, and an emptied one is no draft, so the submission shows (`startingWork`, `lib/assignment-drafts.ts`).
+- **Versions.** Every save names the draft version it was typed on, and versions only go up: submitting empties the row rather than deleting it, so an old number can never match a newer draft. A tab holding an older version is refused (`stale`), stops autosaving and says to reload. Submit compares versions too: from a tab that's behind (newer text saved, or submitted, elsewhere) it hands in nothing and asks first (`submitConflict`); confirming hands this tab's text in.
+- **Out-of-date pages and lost answers.** Back/Forward renders the page from the router cache, so the form re-reads the draft when it mounts and takes the newer text if nothing has been typed there yet. A "stale" answer is re-checked the same way before it stops anything: a save whose answer was lost on a dropped connection, retried, is recognised as the same text (in `save_course_assignment_draft()` and in `reconcileDraft`), and so is a submit whose answer was lost.
+- **Transport.** Saves go to `POST /api/assignments/<id>/draft` (and the re-read to `GET`), not a server action: a save sent as the page closes is a keepalive request the browser finishes afterwards (`lib/assignment-drafts-client.ts`), and since `/api` isn't behind middleware's sign-in redirect, a signed-out session is a 401 the form can name. Signed out means Auth rejected the session; Auth being unreachable is retried (`draftAuthor`, `lib/assignment-drafts-server.ts`).
+- **Access.** `save_course_assignment_draft()` (service role only) re-checks on every save what Submit checks: published and open, enrolled (and targeted), cohort started, not reviewed or excused. Losing any of them stops the saves.
+- **Honest status.** The line under the answer box says saving (including an edit still waiting for the typing pause) / saved / couldn't save, retrying / stopped and why. Leaving the page with unsaved text sends it on the way out; it asks first only when that can't be relied on (saves failing or stopped, a save still running, a submit on its way).
+- **Before 0105 runs** the page reads the missing table as "not set up yet" and the form works exactly as before, without autosave; Submit sends no version, so it compares and clears nothing.
+- **Preview.** `/dev/assignment` (404 on production) walks the states against an in-memory server: two racing tabs, flaky, a lost answer, revoked, pre-migration.
 
 ## Data
 
@@ -49,4 +52,4 @@ What a student types autosaves as a private draft (`course_assignment_drafts`, m
 
 Before 0093 is applied every page shows an empty state and the cron is a no-op.
 
-Tests: `lib/assignments.test.ts` (dates, DST, status), `lib/assignments-migration-db.test.ts` (RLS in PGlite), `lib/assignment-drafts.test.ts` and `lib/assignment-drafts-migration-db.test.ts` (drafts: restore, stale tabs, access, privacy).
+Tests: `lib/assignments.test.ts` (dates, DST, status), `lib/assignments-migration-db.test.ts` (RLS in PGlite), `lib/assignment-drafts.test.ts`, `lib/assignment-drafts-client.test.ts` and `lib/assignment-drafts-migration-db.test.ts` (drafts: restore, Back, stale tabs and submits, lost answers, access, privacy).
