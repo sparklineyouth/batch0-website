@@ -69,7 +69,7 @@ braces (no fixed release exists), micromatch, chokidar, fast-glob, postcss-selec
 
 ### Holding it in place
 
-`lib/dependency-advisories.test.ts` (part of `npm test`) reads `package-lock.json` and fails if any installed copy of these packages falls back inside a published vulnerable range, if `next`/`@next/third-parties` or `react`/`react-dom` drift apart, or if nodemailer 10 stops giving `lib/email/send.ts` the transport it calls. To re-check advisories:
+`lib/dependency-advisories.test.ts` (part of `npm test`) reads `package-lock.json` and fails if any installed copy of these packages falls back inside a published vulnerable range, if `next`/`@next/third-parties` or `react`/`react-dom` drift apart, if the README's Stack line names a different Next.js or React release than the lockfile, or if nodemailer 10 stops giving `lib/email/send.ts` the transport it calls. It also round-trips the Server Action argument shapes the app sends (a plain object, useActionState's prevState plus FormData, a bound id plus FormData, a file, a typed array) through Next's vendored Flight encoder and decoder, multipart bodies by the busboy path the node runtime uses, since the localhost smoke test only makes GET requests. To re-check advisories:
 
 ```sh
 npm ci

@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
 // The October 2026 dependency patch, held in place. `npm audit` is not enough
 // on its own: the critical Next.js image-optimizer RCE and the React Server
@@ -127,6 +129,119 @@ test("package.json asks for the same patched releases the lockfile resolves", ()
   // nodemailer 10 ships its own declarations; the old DefinitelyTyped package
   // would load beside them as an implicit type library and describe 9.x.
   assert.equal(pkg.devDependencies["@types/nodemailer"], undefined);
+});
+
+// The README's Stack line is where people look to see whether the deployed
+// app carries a given Next/React fix. It said 15.5.25 for a while after the
+// lockfile moved past it, which reads as "still vulnerable". Exact versions
+// stay in the README because that question needs them; this keeps them true.
+test("the README names the Next.js and React releases the lockfile installs", () => {
+  const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+  const stack = readme.split(/^## /m).find((section) => section.startsWith("Stack\n")) ?? "";
+  const stated = (label: string) => stack.match(new RegExp(`${label} (\\d+\\.\\d+\\.\\d+)`))?.[1];
+  assert.equal(stated("Next\\.js"), lock.packages["node_modules/next"]?.version, "README Stack: Next.js version");
+  assert.equal(stated("React"), lock.packages["node_modules/react"]?.version, "README Stack: React version");
+});
+
+// The Server Actions fixes in next 15.5.28 rewrote parts of the vendored
+// Flight reply decoder, and every form and mutation in the app goes through
+// it. The localhost smoke test only makes GET requests, so this round-trips
+// the argument shapes the app actually sends through Next's own encoder and
+// decoder: a plain object (sign-up, bulk charges), useActionState's
+// (prevState, FormData) pair, a bound id before FormData, a FormData carrying
+// a file, and a typed array, the path the patch changed. Multipart bodies take
+// the route Next's node runtime takes for a fetch action (busboy, then
+// decodeReplyFromBusboy). It has to run in a child process: the decoder
+// refuses to load without the "react-server" export condition, and the test
+// runner cannot set that per file.
+const FLIGHT_ROUND_TRIP = String.raw`
+const { Readable, pipeline } = require("node:stream");
+const server = require("next/dist/compiled/react-server-dom-webpack/server.node.js");
+const client = require("next/dist/compiled/react-server-dom-webpack/client.node.js");
+const busboy = require("next/dist/compiled/busboy");
+
+async function viaBusboy(body) {
+  const res = new Response(body);
+  const parser = busboy({
+    defParamCharset: "utf8",
+    headers: { "content-type": res.headers.get("content-type") },
+    limits: { fieldSize: 1024 * 1024 },
+  });
+  pipeline(Readable.fromWeb(res.body), parser, () => {});
+  return server.decodeReplyFromBusboy(parser, {}, { temporaryReferences: server.createTemporaryReferenceSet() });
+}
+
+async function describe(value) {
+  if (value instanceof FormData) {
+    const entries = [];
+    for (const [k, v] of value) {
+      entries.push([k, typeof v === "string" ? v : { name: v.name, type: v.type, text: await v.text() }]);
+    }
+    return { formData: entries };
+  }
+  if (value instanceof Uint8Array) return { bytes: Array.from(value) };
+  if (Array.isArray(value)) return Promise.all(value.map(describe));
+  return value;
+}
+
+(async () => {
+  const form = () => {
+    const fd = new FormData();
+    fd.set("email", "student@example.test");
+    fd.set("cohort", "fall-2026");
+    return fd;
+  };
+  const withFile = form();
+  withFile.set("attachment", new File(["screenshot bytes"], "shot.png", { type: "image/png" }));
+  const cases = {
+    plainObject: [{ email: "student@example.test", fullName: "Ada" }],
+    actionState: [{ ok: false, message: "" }, form()],
+    boundArgument: ["ticket-42", form()],
+    fileUpload: [null, withFile],
+    typedArray: [new Uint8Array([0, 1, 127, 255])],
+  };
+  const out = {};
+  for (const [name, args] of Object.entries(cases)) {
+    const body = await client.encodeReply(args);
+    const decoded = typeof body === "string" ? await server.decodeReply(body, {}) : await viaBusboy(body);
+    out[name] = { transport: typeof body === "string" ? "string" : "multipart", args: await describe(decoded) };
+  }
+  process.stdout.write(JSON.stringify(out));
+})().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+`;
+
+test("Server Action arguments survive Next's vendored Flight encoder and decoder", () => {
+  const child = spawnSync(process.execPath, ["--conditions", "react-server", "-e", FLIGHT_ROUND_TRIP], {
+    // -e resolves require() from the working directory: the repository root,
+    // so it loads the next/ that package-lock.json installs.
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
+    env: { ...process.env, NODE_ENV: "production" },
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+  assert.equal(child.status, 0, child.stderr || "Flight round-trip child process failed");
+  const form = { formData: [["email", "student@example.test"], ["cohort", "fall-2026"]] };
+  assert.deepEqual(JSON.parse(child.stdout), {
+    plainObject: { transport: "string", args: [{ email: "student@example.test", fullName: "Ada" }] },
+    actionState: { transport: "multipart", args: [{ ok: false, message: "" }, form] },
+    boundArgument: { transport: "multipart", args: ["ticket-42", form] },
+    fileUpload: {
+      transport: "multipart",
+      args: [
+        null,
+        {
+          formData: [
+            ...form.formData,
+            ["attachment", { name: "shot.png", type: "image/png", text: "screenshot bytes" }],
+          ],
+        },
+      ],
+    },
+    typedArray: { transport: "multipart", args: [{ bytes: [0, 1, 127, 255] }] },
+  });
 });
 
 // The SMTP transport in lib/email/send.ts, exercised on nodemailer 10 without
