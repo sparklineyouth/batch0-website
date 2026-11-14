@@ -17,6 +17,7 @@ export default async function AdminDemoDayPage() {
     { data: criteria },
     { data: scores },
     { data: cohortsForDiscord },
+    { data: releases },
   ] = await Promise.all([
     admin
       .from("teams")
@@ -33,6 +34,9 @@ export default async function AdminDemoDayPage() {
       .from("cohorts")
       .select("id, name")
       .order("starts_on", { ascending: false }),
+    admin
+      .from("demo_day_feedback_releases")
+      .select("team_id, released_at, show_on_dashboard, emailed_at"),
   ]);
 
   const subByTeam = new Map<string, any>(
@@ -55,6 +59,9 @@ export default async function AdminDemoDayPage() {
   const reactByTeam = new Map<string, number>(reactionCounts);
   const critById = new Map<string, any>(
     (criteria ?? []).map((c: any) => [c.id, c]),
+  );
+  const releaseByTeam = new Map<string, any>(
+    ((releases ?? []) as any[]).map((r) => [r.team_id, r]),
   );
 
   // Average score across judges for each (team, criterion), then a
@@ -91,6 +98,7 @@ export default async function AdminDemoDayPage() {
       judgeCount: judgeIds.size,
       reactions: reactByTeam.get(t.id) ?? 0,
       weighted,
+      feedback: feedbackState(releaseByTeam.get(t.id)),
     };
   });
 
@@ -105,9 +113,14 @@ export default async function AdminDemoDayPage() {
             Submission status, weighted leaderboard, and audience reactions.
           </p>
         </div>
-        <ButtonLink href="/admin/demo-day/rubric" variant="secondary" size="sm">
-          Edit rubric →
-        </ButtonLink>
+        <div className="flex flex-wrap items-center gap-2">
+          <ButtonLink href="/admin/demo-day/rubric" variant="secondary" size="sm">
+            Edit rubric →
+          </ButtonLink>
+          <ButtonLink href="/admin/demo-day/feedback" variant="secondary" size="sm">
+            Release feedback →
+          </ButtonLink>
+        </div>
       </div>
 
       <Card className="mt-6 !p-0">
@@ -117,7 +130,8 @@ export default async function AdminDemoDayPage() {
           <div className="col-span-2">Submitted</div>
           <div className="col-span-1">Judges</div>
           <div className="col-span-1">React</div>
-          <div className="col-span-2 text-right">Weighted</div>
+          <div className="col-span-1">Fed back</div>
+          <div className="col-span-1 text-right">Weighted</div>
         </div>
         <ul className="divide-y divide-line">
           {teamRows.length === 0 && (
@@ -148,7 +162,12 @@ export default async function AdminDemoDayPage() {
                 <div className="col-span-1 text-xs text-ink-soft">
                   {r.reactions}
                 </div>
-                <div className="col-span-2 text-right text-sm font-semibold tracking-tight text-phosphor-ink">
+                <div className="col-span-1 text-xs" title={r.feedback.title}>
+                  <span className={r.feedback.className}>
+                    {r.feedback.label}
+                  </span>
+                </div>
+                <div className="col-span-1 text-right text-sm font-semibold tracking-tight text-phosphor-ink">
                   {r.weighted != null ? `${r.weighted.toFixed(1)}%` : "—"}
                 </div>
               </Link>
@@ -175,4 +194,31 @@ export default async function AdminDemoDayPage() {
       />
     </div>
   );
+}
+
+/**
+ * How a team's feedback release reads in one column. Scores being in the
+ * database is not the same as the founders having seen them, and this column
+ * is the only place on the leaderboard where that difference shows.
+ */
+function feedbackState(release: any): {
+  label: string;
+  className: string;
+  title: string;
+} {
+  if (!release?.released_at)
+    return {
+      label: "No",
+      className: "text-ink-faint",
+      title: "Not released — the team cannot see their scores.",
+    };
+  const where = [
+    release.show_on_dashboard ? "dashboard" : null,
+    release.emailed_at ? "email" : null,
+  ].filter(Boolean);
+  return {
+    label: where.length > 0 ? where.join(" + ") : "Hidden",
+    className: "text-emerald-700 dark:text-emerald-300",
+    title: `Released${where.length ? ` via ${where.join(" and ")}` : ", but currently hidden"}.`,
+  };
 }

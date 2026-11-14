@@ -15,7 +15,7 @@ import { TeamProfileTab } from "./team-profile-tab";
 import { TeamMembersTab } from "./team-members-tab";
 import { TeamDriveTab } from "./team-drive-tab";
 import { TeamThreadTab } from "./team-thread-tab";
-import { TeamPitchTab } from "./team-pitch-tab";
+import { TeamPitchTab, type ReleasedFeedback } from "./team-pitch-tab";
 
 type Team = {
   id: string;
@@ -43,6 +43,7 @@ export function TeamHome({
   messages,
   pitch,
   passHolderIds = [],
+  feedback = null,
 }: {
   currentUserId: string;
   team: Team;
@@ -52,6 +53,7 @@ export function TeamHome({
   messages: any[];
   pitch: any;
   passHolderIds?: string[];
+  feedback?: ReleasedFeedback | null;
 }) {
   const [tab, setTab] = useState<Tab>("overview");
 
@@ -60,7 +62,13 @@ export function TeamHome({
     { id: "members", label: `Members (${members.length})`, icon: Users },
     { id: "thread", label: "Thread", icon: MessageSquare },
     { id: "drive", label: `Drive (${files.length})`, icon: FolderOpen },
-    { id: "pitch", label: "Demo Day", icon: Rocket },
+    {
+      id: "pitch",
+      // The dot is the only hint a founder gets that judge feedback has
+      // landed on a tab they have no other reason to reopen after submitting.
+      label: feedback ? "Demo Day ●" : "Demo Day",
+      icon: Rocket,
+    },
   ];
 
   const showApprovedLogo =
@@ -171,7 +179,11 @@ export function TeamHome({
           <TeamDriveTab teamId={team.id} files={files} />
         )}
         {tab === "pitch" && (
-          <TeamPitchTab teamId={team.id} pitch={pitch} />
+          <TeamPitchTab
+            teamId={team.id}
+            pitch={pitch}
+            feedback={feedback}
+          />
         )}
       </div>
     </div>

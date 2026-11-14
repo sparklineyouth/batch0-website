@@ -696,6 +696,118 @@ One account, one pass — the code stops working the moment it's claimed.`,
   }),
 
   /**
+   * The Demo Day scorecard, sent to a team's founders when an admin releases
+   * it from /admin/demo-day/feedback.
+   *
+   * The numbers come with their written band ("4 — early real usage, a signed
+   * pilot or a first paying customer") because a bare 4/5 is not feedback,
+   * and because the band is the same sentence the judge was reading when they
+   * clicked it. Judge notes are included only when the admin ticked the box,
+   * and never with a name attached: a 16-year-old should not be able to work
+   * out which investor in the room wrote the blunt one.
+   *
+   * The full card lives on their dashboard; this email is deliberately a
+   * complete copy rather than a "click to see it", because this is the one
+   * email a founder forwards to a parent.
+   */
+  demoDayRubricFeedback: (args: {
+    teamName: string;
+    weightedPct: number | null;
+    judgeCount: number;
+    note?: string | null;
+    rows: {
+      label: string;
+      score: string;
+      sharePct: number;
+      band: string | null;
+      comments: string[];
+    }[];
+  }) => {
+    const rows = args.rows
+      .map(
+        (r) => `
+        <tr>
+          <td style="padding:12px 0;border-top:1px solid rgba(255,255,255,0.08);vertical-align:top">
+            <div style="color:#fff;font-weight:600">${escape(r.label)}</div>
+            <div style="color:#888;font-size:12px;margin-top:2px">${r.sharePct}% of the score</div>
+            ${
+              r.band
+                ? `<div style="color:#bbb;font-size:13px;margin-top:6px">${escape(r.band)}</div>`
+                : ""
+            }
+            ${r.comments
+              .map(
+                (c) =>
+                  `<div style="margin-top:8px;padding:8px 10px;border-left:2px solid rgba(255,187,0,0.5);color:#ddd;font-size:13px">${escape(c)}</div>`,
+              )
+              .join("")}
+          </td>
+          <td style="padding:12px 0;border-top:1px solid rgba(255,255,255,0.08);text-align:right;vertical-align:top;white-space:nowrap;color:#ffbb00;font-weight:700">
+            ${escape(r.score)}
+          </td>
+        </tr>`,
+      )
+      .join("");
+
+    return {
+      subject: `Your Demo Day scorecard — ${args.teamName}`,
+      html: layout({
+        preheader:
+          args.weightedPct != null
+            ? `Weighted score ${args.weightedPct.toFixed(1)}% across ${args.judgeCount} judge${args.judgeCount === 1 ? "" : "s"}.`
+            : "Your judges' scorecard is here.",
+        body: `
+        <h1 style="margin:0 0 12px 0;font-size:22px;color:#ffbb00">Your Demo Day scorecard</h1>
+        <p>Here's how the judges scored ${escape(args.teamName)}, criterion by criterion.</p>
+        ${
+          args.weightedPct != null
+            ? `<div style="margin:18px 0;padding:14px 16px;border:1px solid rgba(255,255,255,0.08);border-radius:12px">
+                 <p style="margin:0;color:#fff;font-size:16px"><strong>${args.weightedPct.toFixed(1)}%</strong> weighted score</p>
+                 <p style="margin:6px 0 0 0;color:#888;font-size:13px">Averaged across ${args.judgeCount} judge${args.judgeCount === 1 ? "" : "s"}, weighted by criterion.</p>
+               </div>`
+            : ""
+        }
+        ${
+          args.note
+            ? `<p style="margin:0 0 18px 0;padding:12px 14px;border-left:3px solid #ffbb00;color:#ddd;white-space:pre-wrap">${escape(args.note)}</p>`
+            : ""
+        }
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:8px 0 0 0">
+          ${rows}
+        </table>
+        <p style="margin-top:22px;color:#888;font-size:13px">Judge notes are shared as written and without names. Scores are feedback, not a verdict — pick the one criterion you'd most like to move and work on that next.</p>
+      `,
+        cta: {
+          url: `${env.siteUrl}/dashboard/team`,
+          label: "Open your scorecard",
+        },
+      }),
+      // The plain-text part is assembled from blocks rather than lines, so
+      // the blank line between a criterion and the next one survives: a text
+      // client is exactly where an unbroken wall of scores is unreadable.
+      text: [
+        `Your Demo Day scorecard — ${args.teamName}`,
+        args.weightedPct != null
+          ? `Weighted score: ${args.weightedPct.toFixed(1)}% across ${args.judgeCount} judge${args.judgeCount === 1 ? "" : "s"}.`
+          : null,
+        args.note,
+        ...args.rows.map((r) =>
+          [
+            `${r.label}: ${r.score} (${r.sharePct}% of the score)`,
+            r.band ? `  ${r.band}` : null,
+            ...r.comments.map((c) => `  - "${c}"`),
+          ]
+            .filter((l): l is string => !!l)
+            .join("\n"),
+        ),
+        `Full card: ${env.siteUrl}/dashboard/team`,
+      ]
+        .filter((b): b is string => !!b && b.trim() !== "")
+        .join("\n\n"),
+    };
+  },
+
+  /**
    * Founder weekly recap for parents + mentors. Summarizes the team's
    * activity that week — check-ins, milestones, blockers — in plain
    * language so parents can follow along without needing an account.

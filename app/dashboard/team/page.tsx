@@ -7,6 +7,12 @@ import { CreateTeamForm } from "./create-team-form";
 import { TeamHome } from "./team-home";
 import { InvitesInbox } from "./invites-inbox";
 import { getStudentAccess } from "@/lib/access";
+import {
+  applicableCriteria,
+  buildScorecard,
+  coerceAnchors,
+  type CriterionRow,
+} from "@/lib/demo-day-rubric";
 import { LockedFeature } from "@/components/dashboard/locked-feature";
 
 export const metadata = { title: "Team · batch0" };
@@ -35,6 +41,7 @@ export default async function TeamPage() {
       { data: messages },
       { data: pitch },
       passHolders,
+      { data: release },
     ] = await Promise.all([
       admin
         .from("team_members")
@@ -68,7 +75,55 @@ export default async function TeamPage() {
         .eq("team_id", team.id)
         .maybeSingle(),
       passHolderUserIds(admin),
+      admin
+        .from("demo_day_feedback_releases")
+        .select("released_at, show_on_dashboard, include_comments, note")
+        .eq("team_id", team.id)
+        .maybeSingle(),
     ]);
+
+    // Judge scores reach this page only through a release an admin made.
+    // Two gates, deliberately: RLS stops the raw rows being read by the
+    // team's own session (migration 0075), and the card is only built here
+    // when the release says the dashboard is one of the channels. Fetching
+    // the scores *after* that check is what keeps an unreleased card out of
+    // the page's props, where it would be readable in the HTML regardless of
+    // what we chose to render.
+    const feedback = await (async () => {
+      const rel = release as any;
+      if (!rel?.released_at || !rel.show_on_dashboard) return null;
+      const [{ data: criteria }, { data: scores }] = await Promise.all([
+        admin
+          .from("demo_day_rubric_criteria")
+          .select(
+            "id, label, description, weight, max_score, cohort_id, anchors, position",
+          )
+          .order("position", { ascending: true }),
+        admin
+          .from("demo_day_scores")
+          .select("criterion_id, score, comment, judge_id")
+          .eq("team_id", team.id),
+      ]);
+      const rubric = applicableCriteria(
+        ((criteria ?? []) as any[]).map((c) => ({
+          ...c,
+          weight: Number(c.weight),
+          anchors: coerceAnchors(c.anchors),
+        })) as CriterionRow[],
+        (team as any).cohort_id ?? null,
+      );
+      const card = buildScorecard(rubric, (scores ?? []) as any[]);
+      if (card.scoredCount === 0) return null;
+      return {
+        card: rel.include_comments
+          ? card
+          : // Notes the admin chose not to share never leave the server.
+            { ...card, rows: card.rows.map((r) => ({ ...r, comments: [] })) },
+        note: (rel.note as string | null) ?? null,
+        releasedAt: rel.released_at as string,
+        includeComments: !!rel.include_comments,
+      };
+    })();
 
     return (
       <TeamHome
@@ -80,6 +135,7 @@ export default async function TeamPage() {
         messages={(messages ?? []) as any[]}
         pitch={pitch as any}
         passHolderIds={[...passHolders]}
+        feedback={feedback}
       />
     );
   }

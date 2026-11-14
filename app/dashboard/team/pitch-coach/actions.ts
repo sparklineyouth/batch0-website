@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { env } from "@/lib/env";
+import { coerceAnchors } from "@/lib/demo-day-rubric";
 import { applyUsage, isOverHardCap } from "@/lib/ai/usage";
 import { canUseAi } from "@/lib/access";
 import { logAudit } from "@/lib/audit";
@@ -71,7 +72,11 @@ export async function requestPitchCoach(input: PitchCoachInput): Promise<{
       .maybeSingle(),
     admin
       .from("demo_day_rubric_criteria")
-      .select("label, description, max_score")
+      // cohort_id is selected because the filter below needs it — without it
+      // every criterion looked global and a cohort-specific one leaked into
+      // every team's coaching. anchors give the model the same written bands
+      // the judges score against.
+      .select("label, description, max_score, cohort_id, anchors")
       .order("position", { ascending: true }),
   ]);
   const applicable = (criteria ?? []).filter(
@@ -112,7 +117,16 @@ export async function requestPitchCoach(input: PitchCoachInput): Promise<{
   const userMsg =
     `Team: ${team?.name ?? "Unknown"}${team?.tagline ? ` — ${team.tagline}` : ""}\n` +
     (team?.description ? `About: ${team.description}\n` : "") +
-    `\nRubric:\n${rubric.map((r: any) => `- ${r.label} (0-${r.max_score}): ${r.description ?? ""}`).join("\n")}\n\n${sourcePreamble}`;
+    `\nRubric:\n${rubric
+      .map((r: any) => {
+        const bands = coerceAnchors(r.anchors)
+          .map((a) => `    ${a.level} = ${a.label}`)
+          .join("\n");
+        return `- ${r.label} (0-${r.max_score}): ${r.description ?? ""}${
+          bands ? `\n${bands}` : ""
+        }`;
+      })
+      .join("\n")}\n\n${sourcePreamble}`;
 
   const msg = await client.messages.create({
     model: "claude-sonnet-4-6",

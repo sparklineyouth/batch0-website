@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label, FieldError } from "@/components/ui/input";
 import { LocalTime } from "@/components/ui/local-time";
 import { Upload, CheckCircle2 } from "lucide-react";
+import { RubricScorecard } from "@/components/demo-day/scorecard";
+import type { Scorecard } from "@/lib/demo-day-rubric";
 import {
   getTeamDriveUploadToken,
 } from "./actions";
@@ -14,6 +16,13 @@ import {
   upsertPitchSubmission,
   submitPitch,
 } from "./pitch-actions";
+
+export type ReleasedFeedback = {
+  card: Scorecard;
+  note: string | null;
+  releasedAt: string;
+  includeComments: boolean;
+};
 
 type Pitch = {
   team_id: string;
@@ -27,9 +36,11 @@ type Pitch = {
 export function TeamPitchTab({
   teamId,
   pitch,
+  feedback = null,
 }: {
   teamId: string;
   pitch: Pitch | null;
+  feedback?: ReleasedFeedback | null;
 }) {
   const router = useRouter();
   const [videoUrl, setVideoUrl] = useState(pitch?.video_url ?? "");
@@ -102,6 +113,39 @@ export function TeamPitchTab({
 
   return (
     <div className="space-y-6">
+      {/* Above the submission form on purpose: once feedback is back, it is
+          the reason a founder opens this tab. */}
+      {feedback && (
+        <Card>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="text-base font-semibold">Judges&apos; scorecard</h3>
+            <span className="text-xs text-ink-faint">
+              Released <LocalTime value={feedback.releasedAt} />
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-ink-faint">
+            How the Demo Day judges scored you, criterion by criterion, against
+            the written bands on the rubric. Scores are averaged across judges
+            {feedback.includeComments ? " and notes are shared without names" : ""}
+            .
+          </p>
+          {feedback.note && (
+            <p className="mt-4 border-l-2 border-phosphor pl-3 text-sm leading-relaxed text-ink-soft whitespace-pre-wrap">
+              {feedback.note}
+            </p>
+          )}
+          <RubricScorecard
+            card={feedback.card}
+            showComments={feedback.includeComments}
+            className="mt-5"
+          />
+          <p className="mt-5 border-t border-line pt-4 text-xs text-ink-faint">
+            Pick the one criterion you&apos;d most like to move and work on that
+            next — the pitch coach is a good place to start.
+          </p>
+        </Card>
+      )}
+
       <Card>
         <h3 className="text-base font-semibold">Demo Day submission</h3>
         <p className="mt-1 text-xs text-ink-faint">
