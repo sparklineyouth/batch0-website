@@ -3,8 +3,18 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea, Select, FieldError } from "@/components/ui/input";
-import { saveRubric, deleteCriterion, type RubricCriterion } from "./actions";
+import {
+  saveRubric,
+  deleteCriterion,
+  installDefaultRubric,
+  type RubricCriterion,
+} from "./actions";
 import { getActionError } from "@/lib/action-error";
+import {
+  anchorsToText,
+  coerceAnchors,
+  parseAnchorLines,
+} from "@/lib/demo-day-rubric";
 
 export function RubricEditor({
   initial,
@@ -15,9 +25,19 @@ export function RubricEditor({
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<RubricCriterion[]>(initial);
+  // Anchors are edited as text ("5 = …" per line) and parsed on save, so the
+  // textarea holds exactly what was typed while it's being typed. Parsing on
+  // every keystroke would eat the half-finished line someone is mid-way
+  // through writing.
+  const [anchorText, setAnchorText] = useState<string[]>(
+    initial.map((r) => anchorsToText(coerceAnchors(r.anchors))),
+  );
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
   const [okMsg, setOkMsg] = useState<string | undefined>();
+
+  const hasGlobal = rows.some((r) => !r.cohort_id);
+  const weightTotal = rows.reduce((s, r) => s + (Number(r.weight) || 0), 0);
 
   function add() {
     setRows((r) => [
@@ -26,11 +46,13 @@ export function RubricEditor({
         cohort_id: null,
         label: "",
         description: "",
-        weight: 1,
+        weight: 20,
         max_score: 5,
         position: r.length,
+        anchors: [],
       },
     ]);
+    setAnchorText((t) => [...t, ""]);
   }
 
   function remove(i: number) {
@@ -42,6 +64,7 @@ export function RubricEditor({
         try {
           await deleteCriterion(target.id!);
           setRows((r) => r.filter((_, j) => j !== i));
+          setAnchorText((t) => t.filter((_, j) => j !== i));
           setOkMsg("Removed.");
           router.refresh();
         } catch (e) {
@@ -50,16 +73,35 @@ export function RubricEditor({
       });
     } else {
       setRows((r) => r.filter((_, j) => j !== i));
+      setAnchorText((t) => t.filter((_, j) => j !== i));
     }
   }
 
   function save() {
     setError(undefined);
     setOkMsg(undefined);
+    const payload = rows.map((r, i) => ({
+      ...r,
+      anchors: parseAnchorLines(anchorText[i] ?? ""),
+    }));
     start(async () => {
       try {
-        await saveRubric(rows);
+        await saveRubric(payload);
         setOkMsg("Saved.");
+        router.refresh();
+      } catch (e) {
+        setError(getActionError(e));
+      }
+    });
+  }
+
+  function installStandard() {
+    setError(undefined);
+    setOkMsg(undefined);
+    start(async () => {
+      try {
+        const { inserted } = await installDefaultRubric(null);
+        setOkMsg(`Installed ${inserted} criteria. Edit anything you like.`);
         router.refresh();
       } catch (e) {
         setError(getActionError(e));
@@ -69,6 +111,28 @@ export function RubricEditor({
 
   return (
     <div className="space-y-5">
+      {!hasGlobal && (
+        <div className="rounded-xl border border-phosphor/30 bg-phosphor/10 p-4">
+          <div className="text-sm font-semibold text-ink">
+            Start from the standard pitch rubric
+          </div>
+          <p className="mt-1 text-xs text-ink-soft">
+            Five criteria — problem &amp; insight, product &amp; demo, traction
+            &amp; evidence, market &amp; business model, and pitch craft, Q&amp;A
+            &amp; team — weighted to 100 and scored 0–5 against written bands.
+            Installs for all cohorts; edit or delete anything afterwards.
+          </p>
+          <Button
+            className="mt-3"
+            size="sm"
+            onClick={installStandard}
+            disabled={pending}
+          >
+            {pending ? "Installing…" : "Install standard rubric"}
+          </Button>
+        </div>
+      )}
+
       <div className="space-y-4">
         {rows.map((r, i) => (
           <div
@@ -87,7 +151,7 @@ export function RubricEditor({
                       ),
                     )
                   }
-                  placeholder="e.g. Problem clarity"
+                  placeholder="e.g. Problem & insight"
                 />
               </div>
               <div className="sm:col-span-3">
@@ -129,6 +193,11 @@ export function RubricEditor({
                     )
                   }
                 />
+                <p className="mt-1 text-[11px] text-ink-faint tabular-nums">
+                  {weightTotal > 0
+                    ? `${(((Number(r.weight) || 0) / weightTotal) * 100).toFixed(0)}% of the score`
+                    : "—"}
+                </p>
               </div>
               <div>
                 <Label>Max score</Label>
@@ -166,8 +235,26 @@ export function RubricEditor({
                       ),
                     )
                   }
-                  placeholder="What does a 5/5 here actually look like?"
+                  placeholder="What is this criterion actually asking?"
                 />
+              </div>
+              <div className="sm:col-span-6">
+                <Label>Scoring bands</Label>
+                <Textarea
+                  rows={6}
+                  value={anchorText[i] ?? ""}
+                  onChange={(e) =>
+                    setAnchorText((t) =>
+                      t.map((v, j) => (j === i ? e.target.value : v)),
+                    )
+                  }
+                  placeholder={`5 = what full marks looks like\n4 = …\n3 = …\n2 = …\n1 = …`}
+                />
+                <p className="mt-1 text-[11px] text-ink-faint">
+                  One band per line, highest first. Judges see the band next to
+                  the number they&apos;re clicking, and founders see the band
+                  they landed on when feedback is released.
+                </p>
               </div>
             </div>
             <div className="mt-3 flex justify-end">

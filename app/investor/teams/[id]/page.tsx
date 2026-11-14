@@ -77,7 +77,7 @@ export default async function InvestorTeamDetailPage({
       .maybeSingle(),
     admin
       .from("demo_day_rubric_criteria")
-      .select("id, label, description, weight, max_score, cohort_id")
+      .select("id, label, description, weight, max_score, cohort_id, anchors")
       .order("position", { ascending: true }),
     admin
       .from("demo_day_scores")
