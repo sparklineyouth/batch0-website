@@ -7,7 +7,8 @@ import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { saveCohort, deleteCohort, type CohortInput } from "./actions";
-import { Pencil, Trash2, Plus, Flag, Megaphone } from "lucide-react";
+import { issueCohortCertificates } from "./cert-actions";
+import { Pencil, Trash2, Plus, Flag, Megaphone, Award } from "lucide-react";
 import { getActionError } from "@/lib/action-error";
 import { activePromo, promoPriceCents, type PromoConfig } from "@/lib/promo";
 import { easternDateOf } from "@/lib/cohort-eligibility";
@@ -17,6 +18,7 @@ import { ReadinessChecklist, ReadinessToggle } from "./readiness-checklist";
 type Cohort = CohortInput & {
   id: string;
   enrollments?: { count: number }[];
+  certificates?: { count: number }[];
 };
 
 const empty: CohortInput = {
@@ -46,8 +48,10 @@ export function CohortsManager({
   const [editing, setEditing] = useState<CohortInput | null>(null);
   const [openReadinessId, setOpenReadinessId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmCertsId, setConfirmCertsId] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | undefined>();
+  const [notice, setNotice] = useState<string | undefined>();
 
   function save(input: CohortInput) {
     setError(undefined);
@@ -100,8 +104,41 @@ export function CohortsManager({
     });
   }
 
+  function confirmIssueCerts() {
+    if (!confirmCertsId) return;
+    setError(undefined);
+    setNotice(undefined);
+    start(async () => {
+      try {
+        const res = await issueCohortCertificates({ cohortId: confirmCertsId });
+        if (!res.ok) {
+          setError(res.error);
+          return;
+        }
+        const { issued = 0, skipped = 0 } = res.data ?? {};
+        setNotice(
+          issued === 0
+            ? "Every enrolled student already had a certificate. Nothing issued."
+            : `Issued ${issued} certificate${issued === 1 ? "" : "s"}${
+                skipped > 0 ? ` (${skipped} already had one)` : ""
+              }. Each student was notified.`,
+        );
+        setConfirmCertsId(null);
+        router.refresh();
+      } catch (e: any) {
+        setError(getActionError(e));
+      }
+    });
+  }
+
   const cohortToDelete =
     initialCohorts.find((c) => c.id === confirmDeleteId) ?? null;
+
+  const cohortForCerts =
+    initialCohorts.find((c) => c.id === confirmCertsId) ?? null;
+  const certsEnrolled = cohortForCerts?.enrollments?.[0]?.count ?? 0;
+  const certsAlready = cohortForCerts?.certificates?.[0]?.count ?? 0;
+  const certsPending = Math.max(0, certsEnrolled - certsAlready);
 
   if (editing) {
     return (
@@ -194,6 +231,14 @@ export function CohortsManager({
                         <Megaphone className="h-4 w-4" />
                       </Link>
                       <button
+                        onClick={() => setConfirmCertsId(c.id!)}
+                        className="p-1.5 text-ink-faint hover:text-phosphor-ink"
+                        aria-label={`Issue certificates for ${c.name}`}
+                        title="Issue completion certificates"
+                      >
+                        <Award className="h-4 w-4" />
+                      </button>
+                      <button
                         onClick={() => setEditing(c)}
                         className="p-1.5 text-ink-faint hover:text-ink"
                         aria-label="Edit"
@@ -230,6 +275,9 @@ export function CohortsManager({
         </table>
       </div>
       {error && <p className="mt-4 text-xs text-red-700 dark:text-red-300">{error}</p>}
+      {notice && (
+        <p className="mt-4 text-xs text-emerald-700 dark:text-emerald-300">{notice}</p>
+      )}
 
       <ConfirmDialog
         open={confirmDeleteId !== null}
@@ -252,6 +300,57 @@ export function CohortsManager({
         pending={pending}
         onConfirm={confirmDelete}
         onCancel={() => !pending && setConfirmDeleteId(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmCertsId !== null}
+        title="Issue completion certificates?"
+        description={
+          cohortForCerts ? (
+            <>
+              <p>
+                {certsPending === 0 ? (
+                  <>
+                    All {certsEnrolled} student
+                    {certsEnrolled === 1 ? "" : "s"} enrolled in{" "}
+                    <span className="text-ink">{cohortForCerts.name}</span>{" "}
+                    already hold a certificate. Nothing will be issued.
+                  </>
+                ) : (
+                  <>
+                    {certsPending} of {certsEnrolled} student
+                    {certsEnrolled === 1 ? "" : "s"} enrolled in{" "}
+                    <span className="text-ink">{cohortForCerts.name}</span> will
+                    get a certificate
+                    {certsAlready > 0
+                      ? ` (${certsAlready} already have one and are skipped)`
+                      : ""}
+                    .
+                  </>
+                )}
+              </p>
+              <p className="mt-2">
+                Each one is notified in-app with a link to a public verification
+                page showing their name and this cohort. Re-running is safe — no
+                student gets a second certificate.
+              </p>
+              {cohortForCerts.status !== "completed" && (
+                <p className="mt-2 text-amber-700 dark:text-amber-300">
+                  This cohort is {cohortForCerts.status}, not completed. Issuing
+                  now certifies students who may not have finished.
+                </p>
+              )}
+            </>
+          ) : null
+        }
+        confirmLabel={
+          certsPending === 0
+            ? "Issue anyway"
+            : `Issue ${certsPending} certificate${certsPending === 1 ? "" : "s"}`
+        }
+        pending={pending}
+        onConfirm={confirmIssueCerts}
+        onCancel={() => !pending && setConfirmCertsId(null)}
       />
     </div>
   );
