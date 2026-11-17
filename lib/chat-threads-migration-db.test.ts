@@ -233,11 +233,22 @@ test("thread replies count on the thread, never on the channel: summary, unread 
   const db = await setup();
   await db.exec(threads);
   const general = await channelId(db, "general");
-  const root = await post(db, general, ENROLLED, "Anyone tried cold email?", { at: "2026-10-17T10:00:00Z" });
+  // These three sit on a clock relative to now, not on a fixed October date.
+  // chat_unread() counts a channel as unread from `now() - 14 days` when the
+  // reader has no chat_reads row, so a hardcoded timestamp stops counting as
+  // unread once it ages past that window — this assertion held for the two
+  // weeks after it was written and then began failing on every branch, for
+  // reasons having nothing to do with threads. An hour ago is inside every
+  // window the function uses (14 days for unread, 30 for mentions), and the
+  // five- and six-minute offsets the last_reply_at assertions below depend on
+  // are kept exactly.
+  const t0 = Math.floor((Date.now() - 60 * 60_000) / 60_000) * 60_000;
+  const at = (minutes: number) => new Date(t0 + minutes * 60_000).toISOString();
+  const root = await post(db, general, ENROLLED, "Anyone tried cold email?", { at: at(0) });
   const before = (await db.query<any>(`select message_count, last_message_at, last_message_preview from public.chat_channels where id = $1`, [general])).rows[0];
-  const r1 = await post(db, general, ACCEPTED, `<@${OTHER}> yes, works`, { root, at: "2026-10-17T10:05:00Z" });
+  const r1 = await post(db, general, ACCEPTED, `<@${OTHER}> yes, works`, { root, at: at(5) });
   await db.query(`update public.chat_messages set mentions = array['${OTHER}']::uuid[] where id = $1`, [r1]);
-  const r2 = await post(db, general, MENTOR, "Keep it short", { root, at: "2026-10-17T10:06:00Z" });
+  const r2 = await post(db, general, MENTOR, "Keep it short", { root, at: at(6) });
   const after = (await db.query<any>(`select message_count, last_message_at, last_message_preview from public.chat_channels where id = $1`, [general])).rows[0];
   assert.deepEqual(after, before, "the channel's summary is its feed's");
 
@@ -246,12 +257,12 @@ test("thread replies count on the thread, never on the channel: summary, unread 
 
   let t = await thread(db, root);
   assert.equal(t.reply_count, 2);
-  assert.equal(new Date(t.last_reply_at).toISOString(), "2026-10-17T10:06:00.000Z");
+  assert.equal(new Date(t.last_reply_at).toISOString(), at(6));
   // Deleting the newest reply takes it off the count, and the last reply is the one before.
   await del(db, r2, MENTOR);
   t = await thread(db, root);
   assert.equal(t.reply_count, 1);
-  assert.equal(new Date(t.last_reply_at).toISOString(), "2026-10-17T10:05:00.000Z");
+  assert.equal(new Date(t.last_reply_at).toISOString(), at(5));
   await del(db, r1, ACCEPTED);
   t = await thread(db, root);
   assert.equal(t.reply_count, 0);
