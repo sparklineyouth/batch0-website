@@ -11,23 +11,31 @@
 // static generation, so it must not reach for a database or an environment.
 
 /**
- * End of the promotion — 11:59:59 PM Eastern on October 21, 2026.
+ * End of the promotion — 11:59:59 PM Eastern on December 7, 2026.
  *
  * THE ONE DATE. Every deadline string, countdown, title tag, meta description
- * and `priceValidUntil` on the site is now derived from this constant (see
- * `PROMO` and `PROMO_VALID_UNTIL` below), so re-running or extending the promo
- * is a one-line edit here and nothing can disagree with anything else. The
- * previous run had the same date written out by hand in four places — this
+ * and `priceValidUntil` on the site is derived from this constant (see `PROMO`
+ * and `PROMO_VALID_UNTIL` below), so re-running or extending the promo is a
+ * one-line edit here and nothing can disagree with anything else. The run
+ * before last had the same date written out by hand in four places — this
  * module, the sale banner's seed label, and two schema literals — which is how
  * a site ends up advertising two different deadlines.
  *
- * Written with an explicit offset rather than a bare date: "until Oct 21" to a
- * U.S. audience means the end of that evening, and a plain `2026-10-22T00:00Z`
- * would have cut the offer off at 8 PM Eastern on the 21st, killing the last
- * night of a deadline-driven push. -04:00 is correct for October 21 — U.S. DST
- * does not end until November 1, 2026.
+ * This is an EARLY-BIRD deadline, not the application deadline. Winter 2026
+ * applications close on December 12 at 6:59 PM EST; the discount stops five
+ * days earlier, so the sale is its own reason to apply now rather than a
+ * restatement of the deadline already on the page. The ordering is the part
+ * that matters and the part a test pins: a promo running PAST the application
+ * close would advertise 10% off to people who can no longer apply, which is
+ * worse than advertising nothing.
+ *
+ * Written with an explicit offset rather than a bare date: "until Dec 7" to a
+ * U.S. audience means the end of that evening, and a plain `2026-12-08T00:00Z`
+ * would cut the offer off at 7 PM Eastern on the 7th, killing the last night
+ * of a deadline-driven push. -05:00 is correct for December 7 — U.S. DST ended
+ * on November 1, 2026, so Eastern is EST here, not EDT.
  */
-export const PROMO_ENDS_AT = "2026-10-21T23:59:59-04:00";
+export const PROMO_ENDS_AT = "2026-12-07T23:59:59-05:00";
 
 /** Percentage off the list price. Display only — see the note in `Promo`. */
 export const PROMO_PERCENT = 10;
@@ -35,20 +43,29 @@ export const PROMO_PERCENT = 10;
 /**
  * What the discount covers, in prose, for copy that has room to say it.
  *
- * The promo has always been site-wide — it discounts whatever cohort is
- * currently being sold, because `promoPriceCents()` is applied to the active
- * cohort's price whatever that row happens to be. But nothing on the site ever
- * SAID so, and "10% off tuition" with no scope reads like it might be one
- * cohort, one region, or a coupon someone else got. Naming the cohorts is what
- * makes the offer legible to a reader — and to a search engine or an assistant
+ * "10% off tuition" with no scope reads like it might be one cohort, one
+ * region, or a coupon someone else got. Naming the cohort is what makes the
+ * offer legible to a reader — and to a search engine or an assistant
  * summarising the page, which can only repeat a claim the page actually makes.
  *
- * Deliberately not built from cohort rows. The fall and winter cohorts are the
- * two that exist (Fall 2026 and Winter 2026, Dec 14 → Feb 12), and a label
- * assembled from whichever row `getSiteConfig` happens to pick would name just
- * one of them — which would be narrower than the offer really is.
+ * This run names ONE cohort. The previous one said "fall and winter cohorts",
+ * which was true while both were being sold; Fall 2026 ended on November 13,
+ * so carrying that wording forward would advertise a discount on a cohort that
+ * has already graduated — the kind of claim that is still sitting in a search
+ * snippet weeks later.
+ *
+ * Still deliberately not built from cohort rows, even now that it names
+ * exactly one. This is a declaration of what we chose to discount, not a
+ * reflection of whichever row `getSiteConfig` happens to pick; the two agree
+ * today, and the copy must not silently re-aim itself at a spring cohort the
+ * moment that row is created. Re-aiming the sale is an edit here, next to the
+ * deadline it runs with.
+ *
+ * Reads inside four sentences — "10% off {scope}" (price badge, sale banner),
+ * "for our {scope}" (meta description, FAQ answer) and "for the {scope}" (the
+ * sale Offer's description). Check all of them if this wording changes.
  */
-export const PROMO_SCOPE = "fall and winter cohorts";
+export const PROMO_SCOPE = "Winter 2026 cohort";
 
 /**
  * schema.org `priceValidUntil` for the Offer node. Exported separately from
@@ -412,7 +429,7 @@ export function promoTitle(promo: Promo): string {
  * the offer is live.
  */
 export function promoMetaDescription(promo: Promo, salePrice: string, listPrice: string): string {
-  // "10% off until October 21:" when there's a deadline, "10% off:" for an
+  // "10% off until December 7:" when there's a deadline, "10% off:" for an
   // open-ended admin promo — the colon and prices stay put either way.
   const lead = promo.longDeadline
     ? `${promo.percent}% off until ${promo.longDeadline}`
@@ -486,7 +503,7 @@ export function promoSentence(
   salePrice: string,
   listPrice: string,
 ): string {
-  // The year comes from `promo.validUntil` ("2026-10-21"), never from the seed
+  // The year comes from `promo.validUntil` ("2026-12-07"), never from the seed
   // constant: an admin can set a deadline in a different year at
   // /admin/pricing, and reading PROMO_ENDS_AT here would have printed the
   // seed's year beside their date.

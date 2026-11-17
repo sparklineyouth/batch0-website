@@ -33,7 +33,7 @@ export default function Pricing({ config }: { config: SiteConfig }) {
           </h2>
           {derived.isPromoPrice && (
             // The badge now names what the discount covers. "10% off · ends
-            // October 21" tells a reader when it stops but never what it
+            // Dec 7" tells a reader when it stops but never what it
             // applies to, which is the question someone comparing two cohorts
             // actually has. `promoDeadlineLabel` is "" for an open-ended
             // admin-set promo, so the "ends" clause drops out rather than

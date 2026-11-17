@@ -137,8 +137,10 @@ test("the meta description quotes two different prices", () => {
   const promo = activePromo(DURING)!;
   const desc = promoMetaDescription(promo, "$117", "$130");
   // The scope of the discount is the one fact a searcher cannot infer from a
-  // price, so it has to survive inside the 160-character budget.
-  assert.match(desc, /fall and winter cohorts/);
+  // price, so it has to survive inside the 160-character budget. Asserted
+  // against the constant, not a literal: re-aiming the sale at a new cohort is
+  // a one-line edit to PROMO_SCOPE and should not also be a test edit.
+  assert.ok(desc.includes(PROMO_SCOPE), desc);
   // Regression: this once rendered "tuition is $130, not $130" because the
   // sale price was read from a field holding the LIST price. Typechecking
   // cannot catch it — both arguments are strings.
@@ -384,7 +386,7 @@ test("the prose sentence is a complete, quotable answer", () => {
   assert.match(sentence, /^There is a site-wide/, "a statement, not an answer");
   assert.ok(!sentence.startsWith("Yes"), "callers supply their own affirmation");
   assert.match(sentence, /10% discount/);
-  assert.match(sentence, /fall and winter cohorts/);
+  assert.ok(sentence.includes(PROMO_SCOPE), sentence);
   assert.match(sentence, /\$117 instead of \$130/);
   assert.match(sentence, /no code to enter/);
   // The deadline is named with its year, and the year comes from the promo
@@ -400,9 +402,26 @@ test("the prose sentence drops the deadline clause when the promo is open-ended"
   assert.match(sentence, /site-wide 10% discount/);
 });
 
-test("PROMO_SCOPE names both cohorts, not whichever one is active", () => {
-  // The offer is site-wide; a label built from the single cohort row that
-  // getSiteConfig happens to pick would understate it.
-  assert.match(PROMO_SCOPE, /fall/);
-  assert.match(PROMO_SCOPE, /winter/);
+test("PROMO_SCOPE names the cohort this run discounts, and no graduated one", () => {
+  // The scope is a declaration rather than a reflection of the active cohort
+  // row — but it still has to name a cohort we are actually selling. Fall 2026
+  // ended on November 13, so carrying the previous run's "fall and winter"
+  // wording forward would advertise a discount on a graduated cohort.
+  assert.match(PROMO_SCOPE, /Winter 2026/);
+  assert.doesNotMatch(PROMO_SCOPE, /fall/i);
+});
+
+test("the promo deadline does not outlive the winter application deadline", () => {
+  // The sale is an early bird: it ends before "Apply by Dec 12, 6:59 PM EST",
+  // so it is its own reason to apply now. The ORDERING is the invariant, not
+  // the gap — a promo running past the application close would advertise 10%
+  // off to people who can no longer apply, which is worse than advertising
+  // nothing. Extending the sale is fine; extending it past this is not,
+  // unless applications are reopened and this date moves with them.
+  const WINTER_APPLICATIONS_CLOSE = "2026-12-12T18:59:59-05:00";
+  assert.ok(
+    new Date(PROMO_ENDS_AT).getTime() <=
+      new Date(WINTER_APPLICATIONS_CLOSE).getTime(),
+    `promo ends ${PROMO_ENDS_AT}, after applications close`,
+  );
 });
