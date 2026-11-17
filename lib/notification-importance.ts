@@ -99,6 +99,13 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
     default: "important",
   },
   {
+    type: "certificate_issued",
+    label: "Certificate issued",
+    hint: "Sent when your cohort's completion certificates go out.",
+    group: "Your place in the program",
+    default: "important",
+  },
+  {
     type: "welcome",
     label: "Welcome message",
     hint: "Sent once, when your account is created.",
@@ -503,9 +510,6 @@ export const RETIRED_NOTIFICATION_KINDS: NotificationKind[] = [
   { type: "office_hours_recap", label: "Office hours recap", group: "Schedule & calls", default: "other" },
   // Google Drive replaced in-app files and their mentor feedback (migration 0094).
   { type: "file_feedback", label: "Feedback on a file", group: "Assignments & feedback", default: "other" },
-  // Nothing issues certificates: the bulk-issue action was never on a page,
-  // and was removed in October 2026. Issued certificates still verify.
-  { type: "certificate_issued", label: "Certificate issued", group: "Your place in the program", default: "other" },
 ];
 
 const BY_TYPE = new Map(

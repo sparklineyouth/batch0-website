@@ -19,12 +19,12 @@ export default async function AdminCohortsPage() {
   // renders pre-migration.
   let { data: cohorts, error } = await admin
     .from("cohorts")
-    .select("*, enrollments(count)")
+    .select("*, enrollments(count), certificates(count)")
     .order("cohort_number", { ascending: true, nullsFirst: false });
   if (error && /column .*cohort_number.* does not exist/i.test(error.message)) {
     ({ data: cohorts } = await admin
       .from("cohorts")
-      .select("*, enrollments(count)")
+      .select("*, enrollments(count), certificates(count)")
       .order("starts_on", { ascending: true, nullsFirst: false }));
   }
   // Upcoming and active cohorts only; never throws (see the loader).
