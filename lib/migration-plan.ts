@@ -178,6 +178,16 @@ where permissions @> array['ai_usage.view']::text[];`,
                where oid = to_regprocedure('public.admin_move_student_cohort(uuid, uuid, uuid)')
                  and prosrc like '%from public.profiles where id = p_user_id for no key update;%'
                  and prosrc like '%from public.cohorts where id = p_to_cohort_id for update;%') as ok;`,
+  "0112": `select exists (select 1 from pg_trigger
+               where tgrelid = to_regclass('public.chat_threads') and tgname = 'chat_threads_stamp_root')
+   and (to_regclass('public.support_tickets') is null
+        or exists (select 1 from pg_trigger
+                   where tgrelid = to_regclass('public.support_tickets') and tgname = 'support_tickets_stamp_thread'))
+   -- Readers may select the stamp (Realtime sends it): re-running 0101 takes that away.
+   and exists (select 1 from information_schema.column_privileges
+               where table_schema = 'public' and table_name = 'chat_messages'
+                 and column_name = 'thread_changed_at' and grantee = 'authenticated'
+                 and privilege_type = 'SELECT') as ok;`,
 };
 
 /**

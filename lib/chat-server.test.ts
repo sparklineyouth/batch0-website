@@ -505,6 +505,38 @@ test("the feed leaves thread replies out; a message with replies carries its cou
   assert.ok(!around.messages.some((m) => m.threadRootId), "still no replies in the feed");
 });
 
+test("a moderator's transcript marks each thread reply with its root, read even when the window starts after it", async () => {
+  const CH = id(860);
+  const OLD_ROOT = id(861);
+  const ROOT = id(863);
+  const MAYA = id(2);
+  const rows = [
+    message(861, CH, "2026-10-17T09:00:00.000Z", { sender_id: MAYA, deleted_at: "2026-10-17T09:30:00.000Z", body: "" }),
+    message(862, CH, "2026-10-17T10:00:00.000Z"),
+    message(863, CH, "2026-10-17T10:01:00.000Z", { sender_id: MAYA }),
+    message(864, CH, "2026-10-17T10:02:00.000Z", { thread_root_id: ROOT }),
+    message(865, CH, "2026-10-17T10:03:00.000Z", { thread_root_id: OLD_ROOT }),
+    message(866, CH, "2026-10-17T10:04:00.000Z"),
+  ];
+  reset({ chat_messages: rows, chat_threads: [], chat_message_revisions: [] });
+  // The newest four: the old root is outside the window.
+  const t = await chat.listTranscript(CH, { limit: 4 });
+  assert.deepEqual(
+    t.messages.map((m) => [m.id, m.threadRootId ?? null]),
+    [[ROOT, null], [id(864), ROOT], [id(865), OLD_ROOT], [id(866), null]],
+    "replies stay in time order among the feed, each saying which thread it's in",
+  );
+  assert.deepEqual(t.threadRoots.get(ROOT), { id: ROOT, senderId: MAYA, kind: "message", createdAt: "2026-10-17T10:01:00.000Z", deleted: false, shown: true });
+  assert.deepEqual(t.threadRoots.get(OLD_ROOT), { id: OLD_ROOT, senderId: MAYA, kind: "message", createdAt: "2026-10-17T09:00:00.000Z", deleted: true, shown: false });
+  assert.equal(t.threadRoots.size, 2, "only the roots a reply in the window hangs off");
+  assert.equal(state.selected.filter((x) => x === "chat_messages: id, sender_id, kind, created_at, deleted_at").length, 1, "one read for the roots outside the window");
+  // A transcript without replies reads no roots.
+  reset({ chat_messages: [message(870, id(869), "2026-10-17T10:00:00.000Z")], chat_threads: [], chat_message_revisions: [] });
+  const plain = await chat.listTranscript(id(869));
+  assert.equal(plain.threadRoots.size, 0);
+  assert.ok(!state.selected.includes("chat_messages: id, sender_id, kind, created_at, deleted_at"), "no root lookup");
+});
+
 test("a message whose only thread state is an 'Ask about this' link still gets a summary, so its chip can be resolved per viewer", async () => {
   const CH = id(820);
   // A staff post (never a question), a quote-reply (never a question), and a

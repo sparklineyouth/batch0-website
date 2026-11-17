@@ -22,6 +22,8 @@ import {
   toAttachments,
   type ChatPerson,
   type Revision,
+  type Transcript,
+  type TranscriptRoot,
 } from "@/lib/chat";
 import { ReportControls, type MuteTarget } from "./report-controls";
 
@@ -36,10 +38,12 @@ const TRANSCRIPT_WINDOW = 200;
  * channel, and the transcript around it — deleted messages included with
  * what they said, edited ones with every earlier version, files included.
  * Bodies are shown as written (spoilers open, line breaks kept): this is the
- * evidence, not a preview. A moderator any report on the channel names — in
- * the DM or group, the sender of a reported message, a party to an earlier
- * report — gets a 404: who reported them, and why, is exactly what they must
- * not learn.
+ * evidence, not a preview. Thread replies (0110) sit in the transcript in
+ * time order, as they were posted, but indented and marked with the message
+ * they answer, so a reply never reads as said to the channel. A moderator
+ * any report on the channel names — in the DM or group, the sender of a
+ * reported message, a party to an earlier report — gets a 404: who reported
+ * them, and why, is exactly what they must not learn.
  */
 export default async function ChatReportPage(props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
@@ -100,6 +104,7 @@ export default async function ChatReportPage(props: { params: Promise<{ id: stri
               {name(reported.sender_id, reported.kind)} · <LocalTime value={reported.created_at} mode="datetime-short" />
               {reported.deleted_at ? " · deleted" : ""}
               {reported.edited_at ? " · edited" : ""}
+              {reported.thread_root_id ? " · a reply in a thread" : ""}
             </p>
             <p className="mt-2 whitespace-pre-wrap break-words rounded-md border border-line bg-wash p-3 text-sm text-ink">
               {reported.deleted_at
@@ -155,8 +160,17 @@ export default async function ChatReportPage(props: { params: Promise<{ id: stri
               return (
                 <li
                   key={m.id}
-                  className={`px-4 py-2.5 text-sm ${m.id === report.messageId ? "bg-phosphor/15" : ""} ${m.deletedAt ? "bg-red-500/5" : ""}`}
+                  id={`msg-${m.id}`}
+                  className={`py-2.5 pr-4 text-sm ${m.threadRootId ? "pl-10" : "pl-4"} ${m.id === report.messageId ? "bg-phosphor/15" : ""} ${m.deletedAt ? "bg-red-500/5" : ""}`}
                 >
+                  {m.threadRootId ? (
+                    <ThreadMark
+                      rootId={m.threadRootId}
+                      root={transcript.threadRoots.get(m.threadRootId)}
+                      chatHref={`/chat?c=${channel.id}&thread=${m.threadRootId}`}
+                      name={name}
+                    />
+                  ) : null}
                   <p className="text-xs text-ink-faint">
                     <strong className="text-ink">{name(m.senderId, m.kind)}</strong> · <LocalTime value={m.createdAt} mode="datetime-short" />
                     {m.deletedAt ? " · deleted" : ""}
@@ -193,7 +207,7 @@ async function load(id: string, viewerId: string, caps: Parameters<typeof getCha
     channel ? listReportsForChannel(channel.id, viewer) : Promise.resolve([report]),
     channel
       ? listTranscript(channel.id, { around: report.messageId, limit: TRANSCRIPT_WINDOW })
-      : Promise.resolve({ messages: [], hasMoreBefore: false, hasMoreAfter: false }),
+      : Promise.resolve<Transcript>({ messages: [], hasMoreBefore: false, hasMoreAfter: false, threadRoots: new Map() }),
     report.messageId ? getMessageRow(report.messageId) : Promise.resolve(null),
     report.messageId ? listRevisions(report.messageId) : Promise.resolve([] as Revision[]),
   ]);
@@ -202,6 +216,7 @@ async function load(id: string, viewerId: string, caps: Parameters<typeof getCha
   const people = await getPeople([
     ...members,
     ...transcript.messages.flatMap((m) => [m.senderId, ...mentioned(m.body), ...m.revisions.flatMap((r) => mentioned(r.body))]),
+    ...Array.from(transcript.threadRoots.values(), (r) => r.senderId),
     ...(reported ? [reported.sender_id, ...mentioned(reported.body ?? "")] : []),
     ...revisions.flatMap((r) => mentioned(r.body)),
   ]);
@@ -226,6 +241,52 @@ async function load(id: string, viewerId: string, caps: Parameters<typeof getCha
   ).filter((m): m is MuteTarget => !!m);
 
   return { report, channel, members, all, transcript, reported, revisions, people, mutes };
+}
+
+/**
+ * A thread reply's mark: it answers this message, not the channel. The root
+ * links to its row when the window shows it, and otherwise to the thread in
+ * Chat (staff read every text channel, and threads are text channels' only).
+ */
+function ThreadMark({
+  rootId,
+  root,
+  chatHref,
+  name,
+}: {
+  rootId: string;
+  root: TranscriptRoot | undefined;
+  chatHref: string;
+  name: (uid: string | null, kind?: string) => string;
+}) {
+  const whose = root ? `${name(root.senderId, root.kind)}’s message` : "a message";
+  return (
+    <p className="mb-0.5 text-[11px] text-ink-faint">
+      <span className="font-medium text-phosphor-ink">↳ Reply in a thread</span> on{" "}
+      {root?.shown ? (
+        <a href={`#msg-${rootId}`} className="link-ink">
+          {whose}
+        </a>
+      ) : (
+        whose
+      )}
+      {root ? (
+        <>
+          {" "}
+          from <LocalTime value={root.createdAt} mode="datetime-short" />
+          {root.deleted ? " (deleted)" : ""}
+        </>
+      ) : null}
+      {!root?.shown ? (
+        <>
+          {" · "}
+          <Link href={chatHref} prefetch={false} className="link-ink">
+            open the thread
+          </Link>
+        </>
+      ) : null}
+    </p>
+  );
 }
 
 /** A message's files: the live route for a message still up, the moderator route for a deleted one's. */

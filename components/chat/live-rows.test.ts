@@ -1,6 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyUpdate, bumpSidebarRow, isThreadReply, pendingTwin, quotePreview, sameMessage, toUiMessage, withoutMessage } from "./live-rows.ts";
+import {
+  THREAD_STAMP_SLACK_MS,
+  applyUpdate,
+  bumpSidebarRow,
+  isThreadReply,
+  pendingTwin,
+  quotePreview,
+  sameMessage,
+  threadStampNews,
+  toUiMessage,
+  withoutMessage,
+} from "./live-rows.ts";
 import { mergeMessages, reconcilePage } from "../../lib/chat-view.ts";
 import { bumpThread } from "../../lib/chat-threads-rules.ts";
 import { appendStubs, newClientId } from "./util.ts";
@@ -337,4 +348,37 @@ test("sameMessage: a root whose thread changed (a reply, an answer) is a change"
   assert.equal(sameMessage(a, { ...a, thread: { ...a.thread!, replyCount: 2 } }), false);
   assert.equal(sameMessage(a, { ...a, thread: { ...a.thread!, question: "answered", answerId: "r" } }), false);
   assert.equal(sameMessage(msg("x"), msg("x", { threadRootId: "root" })), false);
+});
+
+test("threadStampNews: a root's UPDATE is news when its commit wrote the thread stamp (0112), once per stamp", () => {
+  const seen = new Map<string, string>();
+  const stamp = "2026-10-18T14:03:12.123456+00:00";
+  const commit = "2026-10-18T14:03:12.130Z";
+  // The question changed: the stamp is the commit's own.
+  assert.equal(threadStampNews(seen, row("root", { thread_changed_at: stamp }), commit), true);
+  // The same stamp again (a second stamp in that transaction, an edit a moment later): read once.
+  assert.equal(threadStampNews(seen, row("root", { thread_changed_at: stamp }), commit), false);
+  // An edit or a reaction long after carries the old stamp: not news.
+  const other = new Map<string, string>();
+  assert.equal(threadStampNews(other, row("root", { thread_changed_at: stamp, body: "edited" }), "2026-10-18T15:00:00.000Z"), false);
+  assert.equal(other.size, 0, "and nothing remembered, so its own change later still reads");
+  // At the slack's edge, and just past it.
+  const at = Date.parse(commit);
+  assert.equal(threadStampNews(new Map(), row("r2", { thread_changed_at: new Date(at - THREAD_STAMP_SLACK_MS).toISOString() }), commit), true);
+  assert.equal(threadStampNews(new Map(), row("r3", { thread_changed_at: new Date(at - THREAD_STAMP_SLACK_MS - 1).toISOString() }), commit), false);
+  // A later change on the same root is a new stamp: news again.
+  assert.equal(threadStampNews(seen, row("root", { thread_changed_at: "2026-10-18T14:09:00.000+00:00" }), "2026-10-18T14:09:00.010Z"), true);
+});
+
+test("threadStampNews: no stamp, no commit time, a reply or a deleted root is never news", () => {
+  const commit = "2026-10-18T14:03:12.130Z";
+  const stamp = "2026-10-18T14:03:12.123Z";
+  // Before 0112: the column isn't there, or it's null.
+  assert.equal(threadStampNews(new Map(), row("a", {}), commit), false);
+  assert.equal(threadStampNews(new Map(), row("a", { thread_changed_at: null }), commit), false);
+  // Without the database's commit time there's no telling, and this device's clock is never asked.
+  assert.equal(threadStampNews(new Map(), row("a", { thread_changed_at: stamp }), null), false);
+  assert.equal(threadStampNews(new Map(), row("a", { thread_changed_at: "not a time" }), commit), false);
+  assert.equal(threadStampNews(new Map(), row("r", { thread_changed_at: stamp, thread_root_id: "a" }), commit), false);
+  assert.equal(threadStampNews(new Map(), row("a", { thread_changed_at: stamp, deleted_at: commit }), commit), false);
 });

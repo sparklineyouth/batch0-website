@@ -1821,19 +1821,42 @@ export type TranscriptMessage = ChatMessage & {
   revisions: Revision[];
 };
 
+/** The message a thread reply in a transcript hangs off (0110), whether or not the window shows it. */
+export type TranscriptRoot = {
+  id: string;
+  senderId: string | null;
+  kind: "message" | "system";
+  createdAt: string;
+  deleted: boolean;
+  /** In this transcript's window, so a reply's mark can point at it. */
+  shown: boolean;
+};
+
+export type Transcript = {
+  messages: TranscriptMessage[];
+  hasMoreBefore: boolean;
+  hasMoreAfter: boolean;
+  /** Each thread reply's root, by id: a reply sits among the feed in time order, and says whose message it answers. */
+  threadRoots: Map<string, TranscriptRoot>;
+};
+
 /**
  * A moderator's transcript: deleted messages included, with every earlier
  * version of anything edited or deleted (words and attachments). Around one
  * message when the report names one — the reported message and its context,
- * however old — otherwise the newest `limit`.
+ * however old — otherwise the newest `limit`. Thread replies (0110) are in
+ * it too, in time order like everything else, each with its
+ * `threadRootId`; `threadRoots` names their roots, read here when the
+ * window doesn't reach back to one.
  */
 export async function listTranscript(
   channelId: string,
   opts: { around?: string | null; limit?: number } = {},
-): Promise<{ messages: TranscriptMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean }> {
+): Promise<Transcript> {
   const admin = createAdminClient();
   const limit = Math.min(Math.max(opts.limit ?? 200, 2), 500);
-  const base = () => admin.from("chat_messages").select(MESSAGE_COLS).eq("channel_id", channelId);
+  const cols = await screenMessageCols();
+  const base = () => admin.from("chat_messages").select(cols).eq("channel_id", channelId);
   let rows: any[] = [];
   let hasMoreBefore = false;
   let hasMoreAfter = false;
@@ -1873,7 +1896,7 @@ export async function listTranscript(
     rows = newest.slice(0, limit).reverse();
   }
   const changed = rows.filter((r) => r.deleted_at || r.edited_at).map((r) => r.id);
-  const [revisions, messages] = await Promise.all([revisionsFor(changed), attachReplies(rows)]);
+  const [revisions, messages, threadRoots] = await Promise.all([revisionsFor(changed), attachReplies(rows), transcriptRoots(channelId, rows)]);
   return {
     messages: messages.map((m, i) => ({
       ...m,
@@ -1882,7 +1905,42 @@ export async function listTranscript(
     })),
     hasMoreBefore,
     hasMoreAfter,
+    threadRoots,
   };
+}
+
+/** The roots of a transcript's thread replies: from the window itself, or read when it starts after one. */
+async function transcriptRoots(channelId: string, rows: any[]): Promise<Map<string, TranscriptRoot>> {
+  const out = new Map<string, TranscriptRoot>();
+  const wanted = uniq(rows.map((r) => r.thread_root_id).filter(isUuid));
+  if (wanted.length === 0) return out;
+  const root = (r: any, shown: boolean): TranscriptRoot => ({
+    id: r.id,
+    senderId: r.sender_id ?? null,
+    kind: r.kind === "system" ? "system" : "message",
+    createdAt: r.created_at,
+    deleted: !!r.deleted_at,
+    shown,
+  });
+  const inWindow = new Map(rows.map((r) => [r.id, r]));
+  const missing = wanted.filter((id) => !inWindow.has(id));
+  for (const id of wanted) if (inWindow.has(id)) out.set(id, root(inWindow.get(id), true));
+  if (missing.length) {
+    const admin = createAdminClient();
+    const found = (
+      await Promise.all(
+        chunks(missing).map(
+          async (part) =>
+            (must(
+              await admin.from("chat_messages").select("id, sender_id, kind, created_at, deleted_at").eq("channel_id", channelId).in("id", part),
+              "the transcript's threads",
+            ) ?? []) as any[],
+        ),
+      )
+    ).flat();
+    for (const r of found) out.set(r.id, root(r, false));
+  }
+  return out;
 }
 
 /** Everyone who runs chat: who hears about reports and flags. Fails closed. */

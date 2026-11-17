@@ -290,12 +290,18 @@ export function ThreadPanel({
     return () => clearInterval(t);
   }, [channel.id, channel.moderatorView, rootId]);
 
-  // Live: replies and edits from the open channel's feed, and a resync on reconnect.
+  // Live: replies and edits from the open channel's feed, a resync on
+  // reconnect, and a read again when this thread's question or help request
+  // changed on someone else's screen (0112).
   useEffect(
     () =>
       bus.subscribe((e) => {
         if (e.kind === "resync") {
           void refresh();
+          return;
+        }
+        if (e.kind === "changed") {
+          if (e.rootId === rootRef.current) void refresh();
           return;
         }
         const row = e.row;

@@ -25,6 +25,11 @@ import { MIGRATION_PROBES } from "./pending-migrations.ts";
  *   - the verify query in lib/migration-plan.ts tells before from after, and
  *     notices a re-run of 0101.
  *
+ * Then 0112 on top: what readers see of a thread changing (its question,
+ * its answer, its help request worked in Support) stamps the root message,
+ * which Realtime carries to the open channel; a reply's count and the
+ * course item never do, and neither does a deleted root.
+ *
  * The fixture is the slice of 0001..0100 that 0101 needs (as in
  * lib/chat-migration-db.test.ts, without the optional history tables), plus a
  * stand-in support_tickets for the help request's foreign key.
@@ -33,6 +38,7 @@ import { MIGRATION_PROBES } from "./pending-migrations.ts";
 const chat = await readFile(new URL("../supabase/migrations/0101_chat.sql", import.meta.url), "utf8");
 const clientIds = await readFile(new URL("../supabase/migrations/0104_chat_client_ids.sql", import.meta.url), "utf8");
 const threads = await readFile(new URL("../supabase/migrations/0110_chat_threads.sql", import.meta.url), "utf8");
+const live = await readFile(new URL("../supabase/migrations/0112_chat_thread_live.sql", import.meta.url), "utf8");
 
 const ADMIN = "a0000000-0000-4000-8000-000000000001";
 const STAFF = "a0000000-0000-4000-8000-000000000002";
@@ -117,8 +123,10 @@ async function setup({ withTickets = true } = {}) {
     insert into public.applications (user_id, status) values ('${ACCEPTED}', 'accepted');
   `);
   if (withTickets) {
-    // A stand-in for 0090's table: only the key the help request points at.
-    await db.exec(`create table public.support_tickets (id uuid primary key default gen_random_uuid(), status text not null default 'open');`);
+    // A stand-in for 0090's table: the key the help request points at, and
+    // the state and owner a thread shows of it (0112 watches those two).
+    await db.exec(`create table public.support_tickets (id uuid primary key default gen_random_uuid(), status text not null default 'open',
+      assigned_to uuid references public.profiles(id) on delete set null, subject text);`);
   }
   await db.exec(chat);
   await db.exec(clientIds);
@@ -434,4 +442,136 @@ test("deleting a channel full of threads, answers, follows and history still wor
   }
   assert.equal((await db.query<any>(`select count(*)::int as n from public.chat_thread_events where root_id = $1`, [root])).rows[0].n, 0);
   assert.equal((await db.query<any>(`select count(*)::int as n from public.chat_thread_follows where root_id = $1`, [root])).rows[0].n, 0);
+});
+
+// ---------------------------------------------------------------------------
+// 0112: a thread's question and help request change live
+// ---------------------------------------------------------------------------
+
+const liveVerified = async (db: PGlite) => (await db.query<{ ok: boolean }>(MIGRATION_CHECKS["0112"])).rows[0]?.ok === true;
+
+const stamp = async (db: PGlite, id: string): Promise<string | null> =>
+  (await db.query<{ s: string | null }>(`select thread_changed_at::text as s from public.chat_messages where id = $1`, [id])).rows[0]?.s ?? null;
+
+/** Move the stamp out of the way, so the next write's own stamp is told apart from it. */
+const clearStamp = (db: PGlite, id: string) => db.query(`update public.chat_messages set thread_changed_at = null where id = $1`, [id]);
+
+test("0112 applies twice on top of 0110; its verify query tells before from after, and notices 0101 run again", async () => {
+  const db = await setup();
+  await db.exec(threads);
+  assert.equal(await liveVerified(db), false);
+  await db.exec(live);
+  await db.exec(live);
+  assert.equal(await liveVerified(db), true);
+  // 0101 again takes the column's grant away: 0104, 0110 and 0112 again put everything back.
+  await db.exec(chat);
+  assert.equal(await liveVerified(db), false);
+  await db.exec(clientIds);
+  await db.exec(threads);
+  await db.exec(live);
+  assert.equal(await liveVerified(db), true);
+  // Where support_tickets doesn't exist, it applies without the help request's trigger.
+  const bare = await setup({ withTickets: false });
+  await bare.exec(threads);
+  await bare.exec(live);
+  assert.equal(await liveVerified(bare), true);
+  // Before 0110 there's nothing to stamp: the verify query says no rather than erroring.
+  const early = await setup();
+  assert.equal(await liveVerified(early), false);
+});
+
+test("0112: a question's state or answer stamps its root; a reply's count and the course item don't", async () => {
+  const db = await setup();
+  await db.exec(threads);
+  await db.exec(live);
+  const help = await channelId(db, "help");
+  const q = await post(db, help, ENROLLED, "Is the pitch template the 10-slide one?");
+  // Asked by its own insert: the message's INSERT already says so, no stamp.
+  assert.equal(await stamp(db, q), null);
+  const reply = await post(db, help, MENTOR, "Yes, the 10-slide one", { root: q });
+  assert.equal((await thread(db, q)).reply_count, 1);
+  assert.equal(await stamp(db, q), null, "a reply's own INSERT carries it");
+  assert.equal(await stamp(db, reply), null, "a reply is never stamped");
+  // The course item is shown only to people who can open it: no stamp says there is one.
+  await db.query(`update public.chat_threads set about_kind = 'lesson', about_id = gen_random_uuid() where root_id = $1`, [q]);
+  assert.equal(await stamp(db, q), null);
+
+  await db.query(`update public.chat_threads set question = 'answered', answer_id = $2, question_changed_by = $3 where root_id = $1`, [q, reply, ENROLLED]);
+  assert.ok(await stamp(db, q), "accepted");
+  await clearStamp(db, q);
+  // The same state written again isn't a change.
+  await db.query(`update public.chat_threads set question = 'answered', answer_id = $2 where root_id = $1`, [q, reply]);
+  assert.equal(await stamp(db, q), null);
+  // Deleting the accepted answer reopens it in the delete's statement: stamped there too.
+  await del(db, reply, MENTOR);
+  assert.equal((await thread(db, q)).question, "open");
+  assert.ok(await stamp(db, q), "reopened by the delete");
+  // Unmarked by the asker.
+  await clearStamp(db, q);
+  await db.query(`update public.chat_threads set question = null, question_changed_by = $2 where root_id = $1`, [q, ENROLLED]);
+  assert.ok(await stamp(db, q), "unmarked");
+  // A root that's gone isn't touched: its delete is the UPDATE that says so.
+  await db.query(`update public.chat_threads set question = 'open', question_changed_by = $2 where root_id = $1`, [q, ENROLLED]);
+  await clearStamp(db, q);
+  await del(db, q, ENROLLED);
+  assert.equal((await thread(db, q)).question, null);
+  assert.equal(await stamp(db, q), null);
+});
+
+test("0112: the help request linked, then its state or owner changed in Support, stamps the root; other ticket writes don't", async () => {
+  const db = await setup();
+  await db.exec(threads);
+  await db.exec(live);
+  const help = await channelId(db, "help");
+  const q = await post(db, help, ENROLLED, "My Drive folder won't open");
+  const other = await post(db, help, OTHER, "Unrelated question");
+  const T = "5e000000-0000-4000-8000-000000000002";
+  const U = "5e000000-0000-4000-8000-000000000003";
+  await db.exec(`insert into public.support_tickets (id) values ('${T}'), ('${U}')`);
+  await db.query(`update public.chat_threads set help_ticket_id = $2 where root_id = $1`, [q, T]);
+  assert.ok(await stamp(db, q), "linked");
+  const steps: [string, boolean][] = [
+    [`assigned_to = '${STAFF}'`, true],
+    [`subject = 'Drive access'`, false],
+    [`status = 'waiting_on_requester'`, true],
+    [`status = 'waiting_on_requester'`, false],
+    [`status = 'resolved', assigned_to = null`, true],
+  ];
+  for (const [set, stamped] of steps) {
+    await clearStamp(db, q);
+    await db.exec(`update public.support_tickets set ${set} where id = '${T}'`);
+    assert.equal(!!(await stamp(db, q)), stamped, set);
+  }
+  // A ticket no thread holds stamps nothing.
+  await db.exec(`update public.support_tickets set status = 'closed' where id = '${U}'`);
+  assert.equal(await stamp(db, other), null);
+  // A deleted ticket unlinks (0110's set null): that's a change readers see too.
+  await clearStamp(db, q);
+  await db.exec(`delete from public.support_tickets where id = '${T}'`);
+  assert.ok(await stamp(db, q), "unlinked");
+});
+
+test("0112: the channel's readers read the stamp (Realtime sends it); nobody else reads it, and nobody signed in can stamp", async () => {
+  const db = await setup();
+  await db.exec(threads);
+  await db.exec(live);
+  const help = await channelId(db, "help");
+  const team = await channelId(db, `team:${TEAM_A}`);
+  const q = await post(db, help, ENROLLED, "Where's the kickoff recording?");
+  await db.query(`update public.chat_threads set question = 'answered', question_changed_by = $2 where root_id = $1`, [q, STAFF]);
+  const seen = await asUser(db, ACCEPTED, `select id, thread_changed_at is not null as stamped from public.chat_messages where id = '${q}'`);
+  assert.deepEqual(seen.rows, [{ id: q, stamped: true }]);
+  // A team channel's thread: an outsider reads neither the root nor its stamp.
+  const root = await post(db, team, ENROLLED, "Who's presenting?");
+  await db.query(`insert into public.chat_threads (root_id, channel_id) values ($1, $2) on conflict do nothing`, [root, team]);
+  await db.query(`update public.chat_threads set question = 'open', question_changed_by = $2 where root_id = $1`, [root, ENROLLED]);
+  assert.ok(await stamp(db, root));
+  assert.equal((await asUser(db, OTHER, `select thread_changed_at from public.chat_messages where id = '${root}'`)).rows.length, 0);
+  // The stamp is the triggers' to write: nobody signed in may call the
+  // function, and no write policy lets them update the row (0101).
+  await assert.rejects(asUser(db, ENROLLED, `select public.chat_stamp_thread_root('${q}')`), /permission denied/);
+  await clearStamp(db, q);
+  const wrote = await asUser(db, ENROLLED, `update public.chat_messages set thread_changed_at = now() where id = '${q}' returning id`);
+  assert.equal(wrote.rows.length, 0);
+  assert.equal(await stamp(db, q), null);
 });

@@ -79,17 +79,25 @@ export type LiveRow = {
    * feed. Missing before 0110 runs.
    */
   thread_root_id?: string | null;
+  /**
+   * When the thread on this message last changed in a way its readers see:
+   * its question, its accepted answer, its help request (0112). A hint to
+   * read the thread again, never the change itself. Missing before 0112.
+   */
+  thread_changed_at?: string | null;
 };
 
 /**
  * Subscribe to inserts and updates in the open channel. `onConnected` fires
- * on every (re)join — Realtime has no replay, so that's when to resync.
+ * on every (re)join — Realtime has no replay, so that's when to resync. An
+ * update comes with its transaction's commit time, as Realtime reports it
+ * (the database's clock), when it has one.
  */
 export function useMessageFeed(
   channelId: string | null,
   handlers: {
     onInsert: (row: LiveRow) => void;
-    onUpdate: (row: LiveRow) => void;
+    onUpdate: (row: LiveRow, committedAt: string | null) => void;
     onConnected?: () => void;
   },
 ) {
@@ -113,7 +121,7 @@ export function useMessageFeed(
           ref.current.onInsert(p.new as LiveRow),
         )
         .on("postgres_changes" as any, { event: "UPDATE", schema: "public", table: "chat_messages", filter }, (p: any) =>
-          ref.current.onUpdate(p.new as LiveRow),
+          ref.current.onUpdate(p.new as LiveRow, typeof p.commit_timestamp === "string" ? p.commit_timestamp : null),
         )
         .subscribe((status: string) => {
           if (status === "SUBSCRIBED" && !cancelled) ref.current.onConnected?.();
