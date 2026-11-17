@@ -178,6 +178,16 @@ where permissions @> array['ai_usage.view']::text[];`,
                where oid = to_regprocedure('public.admin_move_student_cohort(uuid, uuid, uuid)')
                  and prosrc like '%from public.profiles where id = p_user_id for no key update;%'
                  and prosrc like '%from public.cohorts where id = p_to_cohort_id for update;%') as ok;`,
+
+  // Both halves of 0112, because they fail independently: the bucket insert
+  // can succeed on a project whose storage schema is fine while the ALTER
+  // never ran, and a re-run of an older file could drop the column back.
+  // Checking the column alone would call a half-applied 0112 applied.
+  "0112": `select exists (select 1 from storage.buckets where id = 'email-attachments')
+             and exists (select 1 from information_schema.columns
+               where table_schema = 'public'
+                 and table_name = 'email_outbox'
+                 and column_name = 'attachments') as ok;`,
 };
 
 /**

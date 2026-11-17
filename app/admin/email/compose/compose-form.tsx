@@ -20,6 +20,7 @@ import { RichTextEditor } from "@/components/admin/rich-text-editor";
 import { getActionError } from "@/lib/action-error";
 import { COMMON_VARIABLES, AUDIENCE_SEGMENTS } from "@/lib/email/catalog";
 import { parseAddresses, MAX_DIRECT_RECIPIENTS } from "./shared";
+import { AttachmentPicker } from "./attachment-picker";
 import {
   sendCompose,
   sendTestCompose,
@@ -46,6 +47,7 @@ const EMPTY: ComposeDraft = {
   ctaLabel: "",
   ctaUrl: "",
   scheduledFor: "",
+  attachments: [],
 };
 
 /**
@@ -201,7 +203,17 @@ export function ComposeForm({
         setFailures(res.failed);
         // Clear the recipients but keep the copy — the usual next action is
         // "same message, different person", not "start over".
-        setV((p) => ({ ...p, to: "", studentIds: [], scheduledFor: "" }));
+        setV((p) => ({
+          ...p,
+          to: "",
+          studentIds: [],
+          scheduledFor: "",
+          // The copy is kept — the usual next action is "same message,
+          // different person". The attachments are not: they were just sent,
+          // and silently re-attaching them to the next email is how the wrong
+          // person receives a file.
+          attachments: [],
+        }));
       } catch (err) {
         setError(getActionError(err));
       }
@@ -528,6 +540,20 @@ export function ComposeForm({
                 </div>
               </>
             )}
+          </Card>
+
+          {/* ---- Attachments ---- */}
+          {/* Outside the template/ad-hoc split above on purpose: a saved
+              template has no attachments of its own, but "send the standard
+              welcome email, with this year's handbook on it" is a real and
+              frequent request. */}
+          <Card>
+            <AttachmentPicker
+              value={v.attachments ?? []}
+              onChange={(next) => set("attachments", next)}
+              recipientCount={recipientCount}
+              disabled={pending}
+            />
           </Card>
 
           {/* ---- When ---- */}

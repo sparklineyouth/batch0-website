@@ -1,6 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { env } from "@/lib/env";
 import { sendEmail, type EmailResult } from "@/lib/email/send";
+import { resolveAttachments } from "@/lib/email/attachments";
+import {
+  parseStagedEmailAttachments,
+  type OutboundAttachment,
+} from "@/lib/email-attachment-rules";
 import { renderTemplate, renderAdHoc } from "@/lib/email/render";
 import { getEmailSettings, formatFrom } from "@/lib/email/settings";
 import {
@@ -274,6 +279,19 @@ export type EnqueueArgs = {
   /** For a one-off with no template behind it. */
   subjectOverride?: string | null;
   htmlOverride?: string | null;
+  /**
+   * Staged email-attachments paths to carry to the send, as
+   * `{path, name, size, type}`. Paths rather than bytes, for the reasons
+   * migration 0112 spells out: a jsonb column is the wrong home for 10 MB of
+   * base64, the file should be whatever is in storage at send time, and one
+   * copy is what lets the orphan sweeper know this row still needs it.
+   *
+   * Only ever set by a caller that has already proved the paths belong to
+   * the person scheduling the email — sendCompose resolves them with the
+   * sender's id before enqueuing. sendQueuedRow re-reads and re-measures
+   * them, but cannot re-check ownership (see resolveAttachments).
+   */
+  attachments?: { path: string; name: string; size: number; type: string }[];
 };
 
 /**
@@ -295,6 +313,7 @@ export async function enqueueEmail(args: EnqueueArgs): Promise<string | null> {
         variables: args.vars ?? {},
         subject_override: args.subjectOverride ?? null,
         html_override: args.htmlOverride ?? null,
+        attachments: args.attachments ?? [],
         send_after: (args.sendAfter ?? new Date()).toISOString(),
         dedupe_key: args.dedupeKey ?? null,
         status: "pending",
@@ -327,6 +346,8 @@ export type QueuedRow = {
   html_override: string | null;
   automation_id: string | null;
   step_id: string | null;
+  /** Migration 0112. Defaults to [] on every row written before it. */
+  attachments?: unknown;
 };
 
 /**
@@ -498,6 +519,25 @@ export async function sendQueuedRow(
       return false;
     }
 
+    // Attachments are resolved here rather than at enqueue time, for the same
+    // reason the template is: the row has been sitting in the outbox, and the
+    // send should carry what storage holds now.
+    //
+    // A row whose file has gone missing FAILS rather than sending without it.
+    // An email written around an attachment that arrives without one is worse
+    // than one that visibly didn't go: the outbox shows the failure and the
+    // reason, and somebody can fix it. Nobody ever notices the other case.
+    let attachments: OutboundAttachment[] | undefined;
+    const staged = parseStagedEmailAttachments(row.attachments ?? []).items;
+    if (staged.length > 0) {
+      const resolved = await resolveAttachments(staged, null);
+      if (!resolved.ok) {
+        await finish(admin, row.id, { status: "failed", error: resolved.error });
+        return false;
+      }
+      attachments = resolved.attachments;
+    }
+
     const result = await sendEmail({
       to: row.to_email,
       subject,
@@ -506,6 +546,7 @@ export async function sendQueuedRow(
       templateKey,
       from,
       replyTo,
+      attachments,
     });
 
     await finish(admin, row.id, {

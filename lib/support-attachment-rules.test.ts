@@ -621,10 +621,32 @@ test("formatBytes says nothing for something that isn't a size", () => {
 // The module stays importable from the browser
 // ---------------------------------------------------------------------------
 
-test("the rules module has no imports", () => {
+test("the rules module stays free of runtime dependencies", () => {
   // The picker is a client component and imports this file. One import of
   // anything server-side here and the browser bundle gets it too.
+  //
+  // This used to assert the file had NO imports at all. It now allows exactly
+  // one: lib/file-name-rules.ts, which holds the file-name and content-type
+  // helpers that email attachments needed too. The property being guarded was
+  // never "no imports" — it was "nothing that drags a database driver in" — so
+  // the allow-list is checked by name AND the allowed module is held to the
+  // original, stricter rule just below. Widening this list is a deliberate act.
+  const ALLOWED = ["./file-name-rules.ts"];
   const src = readFileSync(new URL("./support-attachment-rules.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /\brequire\(/);
+  for (const [, spec] of src.matchAll(/^\s*(?:import|export)[^"']*from\s+["']([^"']+)["']/gm)) {
+    assert.ok(
+      ALLOWED.includes(spec),
+      `support-attachment-rules.ts imports ${spec}, which is not a known pure-rules module`,
+    );
+  }
+});
+
+test("the shared file-name rules have no imports at all", () => {
+  // The end of the chain. Nothing may be imported here, or the guard above is
+  // a formality — a server-only import one hop away reaches the bundle just
+  // as surely as one in the file itself.
+  const src = readFileSync(new URL("./file-name-rules.ts", import.meta.url), "utf8");
   assert.doesNotMatch(src, /^\s*import\s/m);
   assert.doesNotMatch(src, /\brequire\(/);
 });

@@ -228,6 +228,7 @@ check-ins, in-app files, discussions and the old recorder at once:
 | 0109 | `0109_intro_requests_server_writes.sql` | Investor intro requests lose their client write policies and table write privileges (an investor's own JWT could file requests past the five-waiting cap, or set their row back to `requested` or on to `wired`); writes go through server actions. Reads are unchanged except `admin_notes`, which only the service role reads now. Changes no rows. |
 | 0110 | `0110_chat_threads.sql` | Chat threads and #help's questions: `chat_messages.thread_root_id` (one level, a reply's root always in its own channel by a `(thread_root_id, channel_id)` foreign key, readable by the channel's readers for Realtime), `chat_threads` (live reply count, #help's open/answered state with an accepted answer that must be a live reply in that thread, the thread's one Support help request, the course item a question is about), `chat_thread_events` (append-only audit of every question transition, written by trigger), and `chat_thread_follows` (who hears about replies). Deleting the accepted answer reopens its question in the same statement. Thread replies are left out of channel summaries and unread counts (two 0101 functions replaced, bodies otherwise unchanged). New tables are service role only. Changes no existing data. See `docs/chat.md`. |
 | 0111 | `0111_hardening.sql` | `admin_move_student_cohort()` re-created with its profile lock taken FOR NO KEY UPDATE instead of FOR UPDATE: two moves of one student still run one at a time, but foreign key checks on that profile (any insert that references the student) no longer wait for a move. It also locks the destination cohort before the enrollment and the application, as the checkout and settlement functions do (0080, 0081), so a Stripe settlement for that student can't deadlock with a move. Otherwise 0103's function unchanged; changes no data. |
+| 0112 | `0112_email_attachments.sql` | Attachments on outbound email: a private `email-attachments` bucket (10 MB a file, no MIME allow-list — the extension allow-list lives in `lib/email-attachment-rules.ts`) that the compose picker uploads straight into against a signed URL, and `email_outbox.attachments` (jsonb, default `[]`, at most 5 entries) so a scheduled send remembers which staged files it carries. Paths, never bytes. A partial GIN index on pending rows with attachments keeps the orphan sweeper's "is any unsent email still pointing at this object?" lookup off a full scan. No RLS policies on `storage.objects`, as with `support-attachments` (0090): nothing reaches the bucket with a user's own credentials. Changes no existing data. See `docs/email-attachments.md`. |
 
 ## Verify
 
@@ -401,6 +402,13 @@ select exists (select 1 from pg_proc
                where oid = to_regprocedure('public.admin_move_student_cohort(uuid, uuid, uuid)')
                  and prosrc like '%from public.profiles where id = p_user_id for no key update;%'
                  and prosrc like '%from public.cohorts where id = p_to_cohort_id for update;%') as ok;
+
+-- 0112
+select exists (select 1 from storage.buckets where id = 'email-attachments')
+   and exists (select 1 from information_schema.columns
+     where table_schema = 'public'
+       and table_name = 'email_outbox'
+       and column_name = 'attachments') as ok;
 ```
 
 Background for each change: `docs/assignments.md`, `docs/google-drive.md`,

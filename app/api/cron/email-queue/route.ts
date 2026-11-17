@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { drainEmailQueue } from "@/lib/email/queue";
+import { sweepOrphanedAttachments } from "@/lib/email/attachments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,5 +45,20 @@ export async function GET(req: Request) {
   if (report.errors.length > 0) {
     console.error("[cron/email-queue]", report.errors.join("; "));
   }
-  return NextResponse.json(report);
+
+  // Reclaim attachments nobody is going to send: staged over a day ago and
+  // not referenced by any unsent outbox row. After the drain, deliberately —
+  // a row this run just sent is no longer pending, so its file becomes
+  // collectable on the NEXT run rather than racing this one.
+  //
+  // Never allowed to fail the drain. Sending email is the job; housekeeping
+  // is not worth a non-200 that makes Vercel retry the whole thing.
+  let swept = { deleted: 0, skipped: 0 };
+  try {
+    swept = await sweepOrphanedAttachments();
+  } catch (err: any) {
+    console.error("[cron/email-queue] attachment sweep failed", err?.message ?? err);
+  }
+
+  return NextResponse.json({ ...report, attachmentsSwept: swept });
 }
