@@ -11,7 +11,7 @@ import {
   renderAdHoc,
   renderBodyFragment,
 } from "@/lib/email/render";
-import { sendEmail, sendEmailBatch } from "@/lib/email/send";
+import { sendEmail, sendEmailBatch, type BatchItem } from "@/lib/email/send";
 import { getTemplateById, toStoredTemplate } from "@/lib/email/store";
 import type { StoredTemplate } from "@/lib/email/render";
 import { baseVariables, enqueueEmail } from "@/lib/email/dispatch";
@@ -21,6 +21,14 @@ import { isAudienceSegment } from "@/lib/email/catalog";
 import { exampleValues, extractTags } from "@/lib/email/vars";
 import { STATUS_RANK } from "@/app/admin/email/blast/shared";
 import { parseAddresses, MAX_DIRECT_RECIPIENTS } from "./shared";
+import { resolveAttachments } from "@/lib/email/attachments";
+import {
+  describeAttachments,
+  parseStagedEmailAttachments,
+  refuseForRecipientCount,
+  type OutboundAttachment,
+  type StagedEmailAttachment,
+} from "@/lib/email-attachment-rules";
 
 /**
  * The one-off composer: send this email, to these addresses, now or later.
@@ -57,6 +65,14 @@ export type ComposeDraft = {
   ctaUrl: string;
   /** ISO datetime to hold it until, or "" for now. */
   scheduledFor: string;
+  /**
+   * Files already uploaded to the email-attachments bucket, as
+   * `{path, name, size, type}`. Paths, never bytes: a server action body caps
+   * at 1 MB, so the picker uploads straight to storage and the draft carries
+   * only pointers. Optional so an older client — or any of the existing
+   * callers that build a draft literal — keeps type-checking.
+   */
+  attachments?: StagedEmailAttachment[];
 };
 
 export type ComposeResult =
@@ -199,6 +215,33 @@ async function renderFor(
   });
 }
 
+/**
+ * The draft's attachments, measured and encoded, or a refusal.
+ *
+ * Called once per send and shared across every recipient. Doing it per
+ * recipient would re-download and re-base64 the same file once per address:
+ * on a 60-person cohort with a 5 MB PDF that is 300 MB of pointless transfer
+ * before a single email leaves.
+ */
+async function attachmentsFor(
+  draft: ComposeDraft,
+  senderId: string,
+  recipientCount: number,
+): Promise<{ ok: true; attachments: OutboundAttachment[]; staged: StagedEmailAttachment[] } | { ok: false; error: string }> {
+  const { items, rejected } = parseStagedEmailAttachments(draft.attachments ?? []);
+  if (rejected.length > 0) {
+    return { ok: false, error: rejected[0].reason };
+  }
+  if (items.length === 0) return { ok: true, attachments: [], staged: [] };
+
+  const tooMany = refuseForRecipientCount(recipientCount, items.length);
+  if (tooMany) return { ok: false, error: tooMany };
+
+  const resolved = await resolveAttachments(items, senderId);
+  if (!resolved.ok) return resolved;
+  return { ok: true, attachments: resolved.attachments, staged: items };
+}
+
 async function loadStored(id: string): Promise<StoredTemplate | null> {
   const tpl = await getTemplateById(id);
   return tpl ? toStoredTemplate(tpl) : null;
@@ -327,7 +370,7 @@ export async function listComposeStudents(): Promise<
 export async function sendTestCompose(
   draft: ComposeDraft,
 ): Promise<{ ok: boolean; message: string }> {
-  await assertPermission("email.send");
+  const { userId } = await assertPermission("email.send");
   const v = validateDraft(draft);
   if (!v.ok) return { ok: false, message: v.error };
 
@@ -343,11 +386,19 @@ export async function sendTestCompose(
   });
   if (!rendered) return { ok: false, message: "That template no longer exists." };
 
+  // The test send carries the attachments too. A test that silently drops
+  // them is testing a different email than the one about to go out, and the
+  // attachment is the most common thing to get wrong (the wrong draft of a
+  // PDF, a 12 MB export) — so it is exactly what a test send is for.
+  const files = await attachmentsFor(draft, userId, 1);
+  if (!files.ok) return { ok: false, message: files.error };
+
   const result = await sendEmail({
     to: user.email,
     subject: `[TEST] ${rendered.subject}`,
     html: rendered.html,
     text: rendered.text,
+    attachments: files.attachments.length > 0 ? files.attachments : undefined,
   });
   return result.ok
     ? { ok: true, message: `Test sent to ${user.email}.` }
@@ -369,6 +420,13 @@ export async function sendCompose(draft: ComposeDraft): Promise<ComposeResult> {
   const r = await resolveRecipients(draft);
   if (!r.ok) return { ok: false, error: r.error };
   const people = r.people;
+
+  // Resolved before either branch: a scheduled send has to fail NOW if its
+  // attachment is missing or oversized. Discovering that at 6am on the send
+  // date, in a cron log, is how an email goes out without the file it was
+  // written around.
+  const files = await attachmentsFor(draft, userId, people.length);
+  if (!files.ok) return { ok: false, error: files.error };
 
   // ---- Scheduled: queue it and let the drainer send ----
   if (draft.scheduledFor) {
@@ -402,6 +460,10 @@ export async function sendCompose(draft: ComposeDraft): Promise<ComposeResult> {
               cta_url: draft.ctaUrl.trim() || null,
               variables: [],
             }),
+        // Paths, not bytes: the drainer resolves them again at send time, so
+        // a file replaced in storage before then goes out as what is there
+        // then, and one copy of it is kept rather than one per recipient.
+        attachments: files.staged,
       });
       if (id) queued++;
     }
@@ -416,6 +478,7 @@ export async function sendCompose(draft: ComposeDraft): Promise<ComposeResult> {
         sendAfter: when.toISOString(),
         templateId: draft.templateId || null,
         subject: draft.subject || null,
+        attachments: files.staged.map((a) => ({ name: a.name, size: a.size })),
         sender: userId,
       },
     });
@@ -429,7 +492,7 @@ export async function sendCompose(draft: ComposeDraft): Promise<ComposeResult> {
   }
 
   // ---- Immediate ----
-  const items: { to: string; subject: string; html: string; text?: string }[] = [];
+  const items: BatchItem[] = [];
   const preloaded = draft.templateId ? await loadStored(draft.templateId) : null;
   if (draft.templateId && !preloaded) {
     return { ok: false, error: "That template no longer exists." };
@@ -450,6 +513,10 @@ export async function sendCompose(draft: ComposeDraft): Promise<ComposeResult> {
       subject: rendered.subject,
       html: rendered.html,
       text: rendered.text,
+      // The same array instance on every item, deliberately: one email's
+      // attachments do not vary by recipient, and sendEmailBatch hands the
+      // transport whatever it is given once per message.
+      attachments: files.attachments.length > 0 ? files.attachments : undefined,
     });
   }
 
@@ -469,6 +536,9 @@ export async function sendCompose(draft: ComposeDraft): Promise<ComposeResult> {
       recipients: people.map((p) => p.email),
       templateId: draft.templateId || null,
       subject: items[0]?.subject ?? null,
+      // Names and sizes, not paths: the audit row answers "what did we send
+      // this person", and a bucket key answers a different question.
+      attachments: files.staged.map((a) => ({ name: a.name, size: a.size })),
       sent,
       failed: failed.length,
       sender: userId,
@@ -480,8 +550,9 @@ export async function sendCompose(draft: ComposeDraft): Promise<ComposeResult> {
     sent,
     failed,
     message:
-      failed.length === 0
+      (failed.length === 0
         ? `Sent to ${sent} address${sent === 1 ? "" : "es"}.`
-        : `Sent ${sent}, failed ${failed.length}.`,
+        : `Sent ${sent}, failed ${failed.length}.`) +
+      (files.staged.length > 0 ? ` Attached ${describeAttachments(files.staged)}.` : ""),
   };
 }

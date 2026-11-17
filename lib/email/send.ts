@@ -6,6 +6,7 @@ import {
   formatFrom,
   type EmailSettings,
 } from "@/lib/email/settings";
+import type { OutboundAttachment } from "@/lib/email-attachment-rules";
 
 type EmailArgs = {
   to: string | string[];
@@ -17,6 +18,16 @@ type EmailArgs = {
   from?: string;
   /** Tag written into the Resend payload / SMTP headers, so each send is attributable in email_events. */
   templateKey?: string;
+  /**
+   * Files to hang off the message, already base64 and already checked.
+   *
+   * This layer does no validation: by the time anything reaches here the
+   * bytes have been read back out of storage and measured
+   * (resolveAttachments, lib/email/attachments.ts), because that is the only
+   * place the real size and type are knowable. A caller that builds these by
+   * hand is responsible for the same checks.
+   */
+  attachments?: OutboundAttachment[];
 };
 
 export type EmailResult = {
@@ -172,6 +183,14 @@ export async function sendEmail(args: EmailArgs): Promise<EmailResult> {
         text: args.text,
         replyTo,
         headers: args.templateKey ? { "X-Batch0-Template": args.templateKey } : undefined,
+        // nodemailer takes the base64 string as-is when told the encoding;
+        // without it the string itself would be sent as the file's contents.
+        attachments: args.attachments?.map((a) => ({
+          filename: a.filename,
+          content: a.content,
+          encoding: "base64" as const,
+          contentType: a.contentType,
+        })),
       });
       return { ok: true, id: info.messageId };
     } catch (err: any) {
@@ -192,6 +211,9 @@ export async function sendEmail(args: EmailArgs): Promise<EmailResult> {
       replyTo,
       headers: args.templateKey ? { "X-Batch0-Template": args.templateKey } : undefined,
       tags: resendTags(args.templateKey),
+      // Resend's Attachment is {content, filename, contentType} with content
+      // as base64 — the shape OutboundAttachment already is.
+      attachments: args.attachments,
     });
     if (error) {
       console.error("[email] resend send failed", error);
@@ -221,6 +243,14 @@ export type BatchItem = {
   html: string;
   text?: string;
   templateKey?: string;
+  /**
+   * The SAME array instance for every item of a batch, in the one caller that
+   * sets it (sendCompose). One email's attachments do not vary by recipient,
+   * so the bytes are read out of storage once and shared across the batch —
+   * resolving per recipient would re-download and re-encode the file N times
+   * before a single message left.
+   */
+  attachments?: OutboundAttachment[];
 };
 export type BatchItemResult = {
   to: string;
@@ -242,6 +272,11 @@ const BATCH_LIMIT = 100;
  * shouldn't sink the other 99, and the caller gets per-recipient failure
  * reasons either way.
  *
+ * With attachments, a chunk of 100 carries 100 copies of the same file in one
+ * request, which is why EMAIL_ATTACHMENT_MAX_RECIPIENTS caps an attached send
+ * well below a blast: the cap is enforced in sendCompose, before anything
+ * reaches here.
+ *
  * SMTP has no batch verb, so that transport falls through to sequential
  * sends over the pooled connection.
  */
@@ -260,6 +295,7 @@ export async function sendEmailBatch(
         html: i.html,
         text: i.text,
         templateKey: i.templateKey,
+        attachments: i.attachments,
       });
       results.push({ to: i.to, ok: r.ok, id: r.id, reason: r.reason });
     }
@@ -296,6 +332,7 @@ export async function sendEmailBatch(
             ? { "X-Batch0-Template": i.templateKey }
             : undefined,
           tags: resendTags(i.templateKey),
+          attachments: i.attachments,
         })),
       );
       if (error) throw new Error(error.message);
@@ -312,6 +349,7 @@ export async function sendEmailBatch(
           html: i.html,
           text: i.text,
           templateKey: i.templateKey,
+          attachments: i.attachments,
         });
         results.push({ to: i.to, ok: r.ok, id: r.id, reason: r.reason });
       }

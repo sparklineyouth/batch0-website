@@ -238,7 +238,7 @@ export async function drainEmailQueue(): Promise<DrainReport> {
       .in("id", ids)
       .eq("status", "pending")
       .select(
-        "id, template_id, to_email, to_name, user_id, variables, subject_override, html_override, automation_id, step_id, attempts, created_at",
+        "id, template_id, to_email, to_name, user_id, variables, subject_override, html_override, automation_id, step_id, attempts, created_at, attachments",
       );
 
     const rows = (claimed ?? []) as any[];
