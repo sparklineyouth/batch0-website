@@ -41,8 +41,14 @@ export async function GET() {
 
   lines.push("# batch0");
   lines.push("");
+  // Tuition is interpolated, not written out. This summary said "$130" while
+  // the cohort row had moved to $150.99, which is the one error this file
+  // cannot afford: an assistant quoting a tuition we do not charge, directly
+  // above a "Current offer" section computing a discount off the real price.
+  // `listPriceLabel` is the pre-discount price in every state, so the summary
+  // states list and the offer section below states the sale.
   lines.push(
-    "> batch0 is a live, online startup accelerator for U.S. high schoolers (ages 13–18). Students build a real company across four one-week sprints — Validate, Build, Market, Pitch — and pitch it at a live demo day. Tuition is $130, charged only if accepted; applying is free and no equity is ever taken.",
+    `> batch0 is a live, online startup accelerator for U.S. high schoolers (ages 13–18). Students build a real company across four one-week sprints — Validate, Build, Market, Pitch — and pitch it at a live demo day. Tuition is ${config.derived.listPriceLabel}, charged only if accepted; applying is free and no equity is ever taken.`,
   );
   lines.push("");
   // Stated before the page map, because this is the fact most likely to be

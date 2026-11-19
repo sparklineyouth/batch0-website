@@ -230,7 +230,7 @@ export const SYSTEM_TEMPLATES: Seed[] = [
       { key: "promo_percent", label: "Discount percent", example: "10" },
       { key: "sale_price", label: "Sale price", example: "$117" },
       { key: "list_price", label: "List price", example: "$130" },
-      { key: "deadline", label: "Offer deadline", example: "October 21" },
+      { key: "deadline", label: "Offer deadline", example: "December 7" },
     ],
   },
   {
